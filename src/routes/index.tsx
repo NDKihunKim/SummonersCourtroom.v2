@@ -20,7 +20,7 @@ import { useShard } from "@/hooks/useShard";
 import {
   getOrFetchMatchHistory,
   type CachedSummonerPayload,
-} from "@/server/summoner-cache.functions";
+} from "@/functions/summoner-cache.functions";
 import { SearchSuggestions } from "@/components/SearchSuggestions";
 import { useRecentSearches } from "@/hooks/useRecentSearches";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";

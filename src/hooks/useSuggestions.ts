@@ -21,7 +21,7 @@ import {
   getSuggestionsFromIndex,
   type IndexSuggestion,
   getProfileIconsForKeys,
-} from "@/server/summoner-cache.functions";
+} from "@/functions/summoner-cache.functions";
 
 /** Source tag — UI uses this to decide whether to render a tier crest. */
 export type SuggestionSource = "recent" | "index";
