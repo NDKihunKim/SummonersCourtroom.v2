@@ -18,7 +18,7 @@ import type { Shard } from "@/lib/regions";
 import {
   refreshSummoner,
   type CachedSummonerPayload,
-} from "@/server/summoner-cache.functions";
+} from "@/functions/summoner-cache.functions";
 
 interface Props {
   shard: Shard;
