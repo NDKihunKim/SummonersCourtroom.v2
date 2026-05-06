@@ -59,29 +59,42 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-gold: var(--gold);
+  --color-gold-glow: var(--gold-glow);
+  --color-hex-blue: var(--hex-blue);
 }
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  /* Hextech / Runeterra inspired dark theme */
+  --background: oklch(0.18 0.04 240);
+  --foreground: oklch(0.95 0.02 85);
+  --card: oklch(0.23 0.045 240);
+  --card-foreground: oklch(0.95 0.02 85);
+  --popover: oklch(0.22 0.045 240);
+  --popover-foreground: oklch(0.95 0.02 85);
+  --primary: oklch(0.78 0.13 85);
+  --primary-foreground: oklch(0.18 0.04 240);
+  --secondary: oklch(0.3 0.06 230);
+  --secondary-foreground: oklch(0.95 0.02 85);
+  --muted: oklch(0.27 0.04 240);
+  --muted-foreground: oklch(0.7 0.03 230);
+  --accent: oklch(0.65 0.15 220);
+  --accent-foreground: oklch(0.18 0.04 240);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0.01 85);
+  --success: oklch(0.7 0.15 165);
+  --border: oklch(0.35 0.06 230);
+  --input: oklch(0.27 0.05 240);
+  --ring: oklch(0.78 0.13 85);
+  --gold: oklch(0.78 0.13 85);
+  --gold-glow: oklch(0.85 0.14 90);
+  --hex-blue: oklch(0.55 0.16 235);
+  --gradient-hero: radial-gradient(ellipse at top, oklch(0.3 0.09 235) 0%, oklch(0.18 0.04 240) 60%);
+  --gradient-gold: linear-gradient(135deg, var(--gold), var(--gold-glow));
+  --shadow-gold: 0 0 30px -5px oklch(0.78 0.13 85 / 0.45);
+  --shadow-elegant: 0 10px 40px -10px oklch(0.1 0.05 240 / 0.7);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -141,4 +154,68 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+}
+
+/*
+ * .scrollbar-always — forces the vertical scrollbar to always render
+ * (even on macOS, where the OS hides scrollbars by default until you
+ * scroll). Used in dropdowns where the scrollability needs to be
+ * visually obvious so users know there's more content below.
+ *
+ * Uses both the modern CSS `scrollbar-*` properties (Firefox + recent
+ * Chromium) and the legacy `-webkit-scrollbar` pseudo-elements (Safari,
+ * older Chrome) so the bar appears in every supported browser.
+ */
+.scrollbar-always {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--color-border) transparent;
+}
+.scrollbar-always::-webkit-scrollbar {
+  width: 8px;
+  /* `display: block` keeps the track visible when idle on WebKit. */
+  display: block;
+}
+.scrollbar-always::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-always::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 4px;
+}
+.scrollbar-always::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-muted-foreground);
+}
+
+/* ---------------------------------------------------------------------
+ * Judge expand-toggle pulse
+ * ---------------------------------------------------------------------
+ * A soft, breathing gold glow used by <ExpandToggle /> on Defeat match
+ * rows so the AI Judge entry point reads as a real CTA instead of a
+ * tiny chevron. The animation layers two box-shadows:
+ *   1. An expanding gold ring that fades out (the "ping" effect) — this
+ *      is what catches the eye.
+ *   2. The existing --shadow-gold token kept constant so the button
+ *      always sits on a subtle ambient glow.
+ * Color is hard-coded to the same oklch() value as --gold so the
+ * keyframe stays self-contained and doesn't rely on CSS-var resolution
+ * inside box-shadow color stops (which some browsers handle inconsistently).
+ * Honors prefers-reduced-motion via the `motion-reduce:animate-none`
+ * Tailwind utility on the consumer.
+ * ------------------------------------------------------------------- */
+@keyframes judge-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 oklch(0.78 0.13 85 / 0.55),
+      var(--shadow-gold);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px oklch(0.78 0.13 85 / 0),
+      var(--shadow-gold);
+  }
+}
+.animate-judge-pulse {
+  animation: judge-pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

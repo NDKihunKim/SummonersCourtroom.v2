@@ -1,26 +1,691 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { ArrowLeft, Loader2, Search, Swords, Trophy } from "lucide-react";
+import { toast } from "sonner";
+import { MatchCard } from "@/components/MatchCard";
+import { AdFrame } from "@/components/AdFrame";
+import { RegionPicker } from "@/components/RegionPicker";
+import { ShowMoreMatchesButton } from "@/components/ShowMoreMatchesButton";
+import { SHARDS, type Shard } from "@/lib/regions";
+import { useShard } from "@/hooks/useShard";
+import {
+  getOrFetchMatchHistory,
+  type CachedSummonerPayload,
+} from "@/server/summoner-cache.functions";
+import { SearchSuggestions } from "@/components/SearchSuggestions";
+import { useRecentSearches } from "@/hooks/useRecentSearches";
+import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
+import { RefreshButton } from "@/components/RefreshButton";
+import { TierEmblem } from "@/components/TierEmblem";
+import { tierLabel } from "@/lib/tier";
+import { ProfileIcon } from "@/components/ProfileIcon";
+import type { Participant } from "@/lib/match-types";
+import { SampleSizeSelector } from "@/components/SampleSizeSelector";
+import { useSampleSize } from "@/hooks/useSampleSize";
+import { computeMatchStats } from "@/lib/match-stats";
 
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Riftlog — League of Legends Match History" },
+      {
+        name: "description",
+        content:
+          "Search any League of Legends Riot ID and view recent match history, KDA, and AI judgement.",
+      },
+      { property: "og:title", content: "Riftlog — League of Legends Match History" },
+      {
+        property: "og:description",
+        content: "Search any Riot ID and view recent League match history with AI judgement.",
+      },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. For sites with multiple pages (About, Services, Contact, etc.),
-// create separate route files (about.tsx, services.tsx, contact.tsx) — don't put all pages in this file.
-function PlaceholderIndex() {
+function parseRiotId(input: string): { gameName: string; tagLine: string } | null {
+  const trimmed = input.trim();
+  const hash = trimmed.lastIndexOf("#");
+  if (hash < 1 || hash === trimmed.length - 1) return null;
+  return {
+    gameName: trimmed.slice(0, hash).trim(),
+    tagLine: trimmed.slice(hash + 1).trim(),
+  };
+}
+
+/**
+ * Type-guard for shard codes received from URL query params. We never trust
+ * `?shard=` blindly — an attacker (or a stale bookmark) could pass any
+ * string, and the cache function will reject unknown shards with a 500.
+ * Using the canonical SHARDS list keeps this in sync automatically when
+ * new shards are added in `src/lib/regions.ts`.
+ */
+function isKnownShard(value: string): value is Shard {
+  return SHARDS.some((s) => s.code === value);
+}
+
+/**
+ * Build the same-origin URL used to deep-link a player into a fresh tab.
+ * Encapsulated so the new-tab opener and any future share/copy-link feature
+ * stay in sync. The `autosearch=1` flag is what tells the index route to
+ * auto-trigger the search on mount (see the URL-param effect in `Index`).
+ */
+function buildPlayerSearchUrl(riotId: string, shard: Shard): string {
+  const params = new URLSearchParams({
+    riotId,
+    shard,
+    autosearch: "1",
+  });
+  return `/?${params.toString()}`;
+}
+
+function Index() {
+  const [riotId, setRiotId] = useState("");
+  // Per-shard selection (e.g. "NA", "EUW", "KR"). The hook auto-detects from
+  // the visitor's IANA timezone on first visit, then persists their choice
+  // (or any later manual override) to localStorage. On submit we translate
+  // to the routing cluster the backend expects (handled inside the cache fn).
+  const { shard, setShard } = useShard();
+  const [data, setData] = useState<CachedSummonerPayload | null>(null);
+
+  // ─── Autocomplete (recent searches) ────────────────────────────────────
+  // Owned here so the form's submit + keyboard handlers can drive it.
+  const { recents, addRecent, removeRecent, clearAll } = useRecentSearches();
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const listboxId = useId();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Composed suggestions: local recents first, then shared backend index
+  // (sorted Challenger -> Iron). Debounces the server call internally.
+  const suggestions = useSuggestions({ recents, query: riotId, shard, limit: 5 });
+
+  // Reset highlight whenever the visible list changes so we never point at
+  // a stale index (which would otherwise read as "selected" via aria).
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [suggestions]);
+
+  // Suggestions are shard-scoped; switching shard mid-type would otherwise
+  // show stale results from the previous shard for a frame.
+  useEffect(() => {
+    setIsSuggestOpen(false);
+  }, [shard]);
+
+  // Outside-click → close. Listens at the document level but ignores clicks
+  // inside our wrapper (input + dropdown).
+  useEffect(() => {
+    if (!isSuggestOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (!wrapperRef.current) return;
+      if (!wrapperRef.current.contains(e.target as Node)) setIsSuggestOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [isSuggestOpen]);
+
+  const mutation = useMutation({
+    mutationFn: async (vars: { gameName: string; tagLine: string; shard: Shard }) => {
+      return getOrFetchMatchHistory({ data: vars });
+    },
+    onSuccess: (result) => {
+      setData(result);
+      // Persist this successful lookup for future autocomplete suggestions.
+      // Source the canonical name/tag from the server response so casing
+      // matches Riot's record (the user may have typed it differently).
+      addRecent({
+        gameName: result.account.gameName,
+        tagLine: result.account.tagLine,
+        shard,
+      });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to load matches"),
+  });
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const parsed = parseRiotId(riotId);
+    if (!parsed) {
+      toast.error("Enter your Riot ID as Name#TAG (e.g. Faker#KR1).");
+      return;
+    }
+    // Close the dropdown on submit so it doesn't linger over the result view.
+    setIsSuggestOpen(false);
+    // Cache function takes the raw shard and handles routing internally.
+    mutation.mutate({ ...parsed, shard });
+  }
+
+  /** Apply a clicked / Enter-selected suggestion: fill input + submit. */
+  function selectSuggestion(item: Suggestion) {
+    const value = `${item.gameName}#${item.tagLine}`;
+    setRiotId(value);
+    setIsSuggestOpen(false);
+    // Use the suggestion's parsed parts directly — avoids re-parsing the
+    // string we just constructed and dodges any stale-state edge cases
+    // around setRiotId not being applied before mutation.mutate runs.
+    mutation.mutate({
+      gameName: item.gameName,
+      tagLine: item.tagLine,
+      shard,
+    });
+  }
+
+  /** Footer "Clear all history" — wipes local recents only. */
+  function handleClearAll() {
+    const cleared = clearAll();
+    if (cleared > 0) {
+      toast.success(`Cleared ${cleared} recent search${cleared === 1 ? "" : "es"}.`);
+    }
+  }
+
+  /**
+   * Open a player's match history in a NEW tab.
+   *
+   * Used by the in-row roster click handler — clicking any ally/enemy name
+   * (or your own "you" row) opens that player in a fresh browser tab so the
+   * current tab stays anchored on the original lookup.
+   *
+   * Implementation notes:
+   *   - We use `window.open(url, "_blank", "noopener,noreferrer")`. The
+   *     `noopener` flag is critical for both security and performance:
+   *     without it the new tab gets a `window.opener` reference back into
+   *     this tab, which (a) lets the new page navigate this tab via
+   *     `opener.location` (tabnabbing), and (b) prevents the browser from
+   *     running the two tabs in separate processes.
+   *   - SSR-safe: guards against `window` being undefined.
+   *   - Uses the CURRENT shard. Cross-region lookups would require a shard
+   *     hint we don't have for arbitrary roster names; sticking to the
+   *     active shard matches op.gg-style tools and avoids surprising the
+   *     user. The deep-link URL carries the shard so the new tab inherits
+   *     it instead of falling back to the visitor's stored preference.
+   *   - Validates the Riot ID up front so a malformed roster entry never
+   *     opens a useless blank tab.
+   */
+  function searchPlayerById(rawRiotId: string) {
+    const parsed = parseRiotId(rawRiotId);
+    if (!parsed) {
+      // Should be unreachable from the roster (every Riot ID has a tag) but
+      // we surface a friendly toast instead of silently failing.
+      toast.error(`Couldn't parse "${rawRiotId}" — expected Name#TAG.`);
+      return;
+    }
+    if (typeof window === "undefined") return; // SSR safety
+    const url = buildPlayerSearchUrl(rawRiotId, shard);
+    // `noopener,noreferrer` — see security note above.
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  // ─── Deep-link auto-search (?riotId=...&shard=...&autosearch=1) ───────
+  // When this route is opened with the deep-link query params (set by
+  // `searchPlayerById` when a roster row is clicked in another tab), we
+  // pre-fill the input, sync the shard, and trigger the same mutation the
+  // form's submit handler uses. Then we strip the params so a manual
+  // refresh later doesn't repeatedly re-trigger the search.
+  //
+  // Runs once on mount only (`[]` deps) — subsequent in-tab navigations
+  // are driven by user input, not URL params.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const rawRiotId = params.get("riotId");
+    const auto = params.get("autosearch");
+    if (!rawRiotId || auto !== "1") return;
+
+    const parsed = parseRiotId(rawRiotId);
+    if (!parsed) {
+      // Bad deep link — silently strip the params and let the user retype.
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+
+    // Optional shard override from the URL. Falls back to the user's stored
+    // shard preference (already loaded by `useShard`) when missing or unknown.
+    const shardParam = params.get("shard");
+    const effectiveShard: Shard =
+      shardParam && isKnownShard(shardParam) ? shardParam : shard;
+    if (shardParam && isKnownShard(shardParam) && shardParam !== shard) {
+      setShard(shardParam);
+    }
+
+    // Mirror the form's submit behavior so caching / recent searches /
+    // toasts all behave identically to a manual lookup.
+    setRiotId(rawRiotId);
+    setIsSuggestOpen(false);
+    mutation.mutate({ ...parsed, shard: effectiveShard });
+
+    // Clean the URL so a refresh doesn't re-fire (we already have `data`
+    // in state and don't need the params anymore).
+    window.history.replaceState(null, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Keyboard navigation inside the input when the dropdown is open. */
+  function onInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    // Open the dropdown on first arrow key even if it was closed.
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !isSuggestOpen && suggestions.length > 0) {
+      setIsSuggestOpen(true);
+      e.preventDefault();
+      return;
+    }
+    if (!isSuggestOpen || suggestions.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === "Enter") {
+      // Only intercept Enter when a suggestion is highlighted; otherwise
+      // let the form submit normally with the typed text.
+      if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+        e.preventDefault();
+        selectSuggestion(suggestions[highlightedIndex]);
+      }
+    } else if (e.key === "Escape") {
+      setIsSuggestOpen(false);
+    }
+  }
+
+  if (data) {
+    return (
+      <AdFrame>
+        <MatchHistory
+          result={data}
+          shard={shard}
+          onRefreshed={(fresh) => setData(fresh)}
+          onBack={() => {
+            setData(null);
+            mutation.reset();
+          }}
+          onSearchPlayer={searchPlayerById}
+        />
+      </AdFrame>
+    );
+  }
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <AdFrame fitViewport>
+      {/* h-full lets the hero fill the leftover space between the
+          north & south ads (AdFrame's middle row is flex-1 in fit
+          mode). Padding is reduced so the form stays visible on
+          shorter viewports without scrolling. */}
+      <div className="h-full rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
+        <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-6 md:py-10">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-gold">
+            <Swords className="h-3.5 w-3.5" /> Summoner Lookup
+          </div>
+          <h1 className="bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-center text-5xl font-bold tracking-tight text-transparent md:text-6xl">
+            Riftlog
+          </h1>
+          <p className="mt-3 max-w-md text-center text-muted-foreground">
+            Enter your Riot ID to pull recent matches live from Riot, then let the AI Judge weigh in
+            on every loss.
+          </p>
+
+          <form onSubmit={onSubmit} className="mt-10 w-full max-w-xl">
+            {/* Wrapper is `relative` so the suggestions dropdown can stack
+                directly under the input row without affecting layout. */}
+            <div ref={wrapperRef} className="relative">
+            <div
+              className="flex flex-col gap-2 rounded-xl border border-border bg-card/80 p-2 backdrop-blur transition-all focus-within:border-gold sm:flex-row"
+              style={{ boxShadow: "var(--shadow-elegant)" }}
+            >
+              {/* Shard picker sits on the LEFT, separated by a subtle divider */}
+              <div className="flex items-center sm:border-r sm:border-border sm:pr-1">
+                <RegionPicker value={shard} onChange={setShard} />
+              </div>
+              <div className="flex flex-1 items-center">
+                <Search className="ml-3 h-5 w-5 shrink-0 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={riotId}
+                  onChange={(e) => {
+                    setRiotId(e.target.value);
+                    // Re-open as the user types so suggestions re-appear
+                    // even if they previously dismissed via Esc.
+                    setIsSuggestOpen(true);
+                  }}
+                  onFocus={() => setIsSuggestOpen(true)}
+                  onKeyDown={onInputKeyDown}
+                  role="combobox"
+                  aria-expanded={isSuggestOpen && suggestions.length > 0}
+                  aria-controls={listboxId}
+                  aria-autocomplete="list"
+                  aria-activedescendant={
+                    highlightedIndex >= 0 ? `recent-option-${highlightedIndex}` : undefined
+                  }
+                  placeholder="Riot ID (e.g. Faker#KR1)"
+                  autoComplete="off"
+                  className="w-full bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={mutation.isPending}
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {mutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                  </>
+                ) : (
+                  "Search"
+                )}
+              </button>
+            </div>
+
+            {/* Dropdown — only mounted when there's something to show, so
+                the listbox isn't announced empty by screen readers.
+                We require `suggestions.length > 0` (not just `recents.length`)
+                so that immediately after "Clear all history" the dropdown
+                disappears instead of lingering with backend index entries
+                that look identical to local history. */}
+            {isSuggestOpen && suggestions.length > 0 && (
+              <SearchSuggestions
+                items={suggestions}
+                highlightedIndex={highlightedIndex}
+                query={riotId}
+                listboxId={listboxId}
+                onHover={setHighlightedIndex}
+                onSelect={selectSuggestion}
+                onRemove={removeRecent}
+                recentsCount={recents.length}
+                onClearAll={handleClearAll}
+              />
+            )}
+            </div>
+          </form>
+
+          <p className="mt-6 text-xs text-muted-foreground">
+            Pick your shard (NA, EUW, KR, etc.).
+          </p>
+        </div>
+      </div>
+    </AdFrame>
+  );
+}
+
+function MatchHistory({
+  result,
+  shard,
+  onRefreshed,
+  onBack,
+  onSearchPlayer,
+}: {
+  result: CachedSummonerPayload;
+  shard: Shard;
+  onRefreshed: (fresh: CachedSummonerPayload) => void;
+  onBack: () => void;
+  /** Called when a roster row is clicked — searches that player same-tab. */
+  onSearchPlayer: (rawRiotId: string) => void;
+}) {
+  const { account, matches, ranked, cachedAt, refreshAvailableAt, profileIconId } = result;
+  // ─── Stats vs. visible split ─────────────────────────────────────────
+  // We cache up to 30 matches server-side (see `MATCH_COUNT`) so the
+  // Performance Block selector (10 / 20 / 30) can slice locally with no
+  // extra Riot round-trip. The rendered match list defaults to the first
+  // 10 cards so the page stays scannable, and grows to 20 on demand via
+  // the "Show more matches" button (hard cap at 20 per product spec).
+  const INITIAL_VISIBLE = 10;
+  const EXPANDED_VISIBLE = 20;
+  const [expanded, setExpanded] = useState(false);
+
+  // Collapse back to 10 whenever the viewed account changes — otherwise a
+  // user who expanded Player A would land on Player B's page already
+  // expanded, which is surprising. Keying off `puuid` (stable per account)
+  // is cheaper and more correct than keying off `matches` identity.
+  useEffect(() => {
+    setExpanded(false);
+  }, [account.puuid]);
+
+  // Cap defensively — if the cache somehow holds <10, slice() handles it;
+  // if it ever holds >20, we still respect the 20-match product cap.
+  const visibleCount = Math.min(
+    expanded ? EXPANDED_VISIBLE : INITIAL_VISIBLE,
+    matches.length,
+  );
+  const visibleMatches = matches.slice(0, visibleCount);
+
+  // How many more matches the user could reveal by clicking the button.
+  // 0 means "hide the button entirely" (already at cap or not enough cached).
+  const remainingCount = Math.max(
+    0,
+    Math.min(EXPANDED_VISIBLE, matches.length) - visibleCount,
+  );
+
+  // Ref pointed at the FIRST newly-revealed card (index === INITIAL_VISIBLE).
+  // Scroll it into view after expansion so the user immediately sees the
+  // new content rather than having to hunt for it down-page.
+  const firstNewMatchRef = useRef<HTMLDivElement | null>(null);
+  const justExpandedRef = useRef(false);
+  useEffect(() => {
+    if (expanded && justExpandedRef.current && firstNewMatchRef.current) {
+      firstNewMatchRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      justExpandedRef.current = false;
+    }
+  }, [expanded]);
+
+  // ─── Performance Block sample size ───────────────────────────────────
+  // The user picks 10 / 20 / 30 via `SampleSizeSelector`. Their choice
+  // persists in localStorage (see `useSampleSize`) so it sticks across
+  // searches and reloads.
+  const { sampleSize, setSampleSize } = useSampleSize();
+
+  // Memoize so unrelated re-renders (e.g. RefreshButton ticking its
+  // "updated Xm ago" label) don't recompute the full reduce.
+  const { wins, losses, wr, avgKda, sampleUsed } = useMemo(
+    () => computeMatchStats(matches, sampleSize),
+    [matches, sampleSize],
+  );
+  const seed = (account.puuid.charCodeAt(0) + account.puuid.charCodeAt(1)) % 100;
+
+  // Defensive: short PUUIDs (shouldn't happen in production, but keeps tests
+  // and dev-time fixtures from crashing on `charCodeAt` reads off the end).
+  // Already guarded by `% 100` above — kept as-is.
+
+  return (
+    <div className="rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <button
+          onClick={onBack}
+          className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-gold"
+        >
+          <ArrowLeft className="h-4 w-4" /> New search
+        </button>
+
+        <div
+          className="rounded-2xl border border-border bg-card p-6"
+          style={{ boxShadow: "var(--shadow-elegant)" }}
+        >
+          {/*
+           * Header layout — three columns on wide viewports:
+           *   LEFT   : profile icon + Riot ID + refresh button
+           *   CENTER : official tier emblem image with tier name + LP underneath
+           *   RIGHT  : "Last N matches" trophy line, then Win Rate / W-L / Avg KDA
+           *
+           * Wraps gracefully on narrow viewports — the columns stack and the
+           * tier emblem becomes a centered block above the stats.
+           */}
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            {/* ── LEFT: identity ───────────────────────────────────────── */}
+            <div className="flex items-center gap-4">
+              {/* Real Data Dragon profile icon when we have one; falls back
+                  automatically to the colored letter avatar otherwise. */}
+              <ProfileIcon
+                iconId={profileIconId}
+                seed={seed}
+                size={88}
+                alt={`${account.gameName}#${account.tagLine} profile icon`}
+              />
+              <div>
+                <h1 className="text-3xl font-bold text-foreground">
+                  {account.gameName}
+                  <span className="text-muted-foreground">#{account.tagLine}</span>
+                </h1>
+                {/* Refresh control + "Updated Xm ago" — sits directly under
+                    the Riot ID per the new layout. */}
+                <div className="mt-2">
+                  <RefreshButton
+                    shard={shard}
+                    gameName={account.gameName}
+                    tagLine={account.tagLine}
+                    cachedAt={cachedAt}
+                    refreshAvailableAt={refreshAvailableAt}
+                    onRefreshed={onRefreshed}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── CENTER: tier emblem + label + LP ─────────────────────── */}
+            {/* Rendered for both ranked and unranked players — TierEmblem
+                gracefully renders the inline SVG fallback when `tier` is
+                null so the column doesn't collapse on unranked accounts. */}
+            <div className="flex flex-col items-center gap-1">
+              <TierEmblem tier={ranked?.tier ?? null} size={88} />
+              <div className="text-sm font-semibold text-foreground">
+                {tierLabel(ranked)}
+              </div>
+              {/* LP only when the player is actually ranked — otherwise a
+                  blank line would make the unranked state look broken. */}
+              {ranked ? (
+                <div className="text-xs uppercase tracking-wider text-gold">
+                  {ranked.lp ?? 0} LP
+                </div>
+              ) : null}
+            </div>
+
+            {/* ── RIGHT: Performance Block ─────────────────────────────── */}
+            {/* The trophy line + selector are horizontally CENTERED above
+                the 3-stat row (items-center on the column) so the label
+                visually balances the stats group beneath it. The stats row
+                itself keeps its own internal alignment. */}
+            <div className="flex flex-col items-center gap-2">
+              {/* Trophy line — uses `sampleUsed` (not the requested
+                  `sampleSize`) so the count is always truthful. If the
+                  user picked 30 but the cache only has 17, we show
+                  "Last 17 matches" instead of lying about it. */}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Trophy className="h-4 w-4 text-gold" />
+                <span>Last {sampleUsed} matches</span>
+              </div>
+              {/* 10 / 20 / 30 selector — only render when we actually
+                  have matches to slice. Avoids a dangling control on
+                  empty histories. */}
+              {matches.length > 0 ? (
+                <SampleSizeSelector
+                  value={sampleSize}
+                  onChange={setSampleSize}
+                />
+              ) : null}
+              <div className="flex gap-6 text-center">
+                <Stat label="Win Rate" value={`${wr}%`} accent />
+                <Stat label="W / L" value={`${wins}W ${losses}L`} />
+                <Stat label="Avg KDA" value={avgKda} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Recent Matches
+        </h2>
+        {visibleMatches.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+            No recent matches found for this account.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {visibleMatches.map((m, idx) => {
+              // Build the "you" Participant per match — the viewing player as
+              // they appear in this specific game. We use the canonical Riot
+              // ID (gameName#tagLine from the Account) plus this match's
+              // champion + KDA so the row visually matches the rest of the
+              // roster. Built inline (not memoized) — match list is tiny
+              // (≤10) so the allocation cost is negligible vs. the
+              // complexity of a memo + dependency list.
+              //
+              // Defensive: if Riot ever returns a partial Account (missing
+              // gameName/tagLine), we fall back to whatever's available so
+              // the Allies column still renders 5 rows instead of silently
+              // dropping back to 4. The PUUID is always present on a valid
+              // lookup — RosterColumns uses it for de-dup.
+              const safeName = account.gameName?.trim() || "You";
+              const safeTag = account.tagLine?.trim() || "";
+              const youSummoner = safeTag
+                ? `${safeName}#${safeTag}`
+                : safeName;
+              const you: Participant = {
+                champion: m.champion,
+                summoner: youSummoner,
+                kills: m.kills,
+                deaths: m.deaths,
+                assists: m.assists,
+                puuid: account.puuid,
+                // Forward the viewer's own side + lane so RosterColumns can
+                // sort "you" into the correct slot in the Allies column.
+                // Without these fields the participant sorts as "unknown"
+                // and is always pushed to the bottom of the column.
+                teamId: m.userTeamId,
+                teamPosition: m.userTeamPosition,
+              };
+              // Tag the first newly-revealed row so we can scroll to it
+              // after the user clicks "Show more". Only the card at index
+              // === INITIAL_VISIBLE qualifies; everything else gets no ref.
+              const isFirstNewMatch = idx === INITIAL_VISIBLE;
+              return (
+                <div
+                  key={m.id}
+                  ref={isFirstNewMatch ? firstNewMatchRef : undefined}
+                >
+                  <MatchCard
+                    match={m}
+                    you={you}
+                    onPlayerClick={onSearchPlayer}
+                  />
+                </div>
+              );
+            })}
+            {/* "Show more" CTA — rendered only while there are still more
+                matches available within the 20-match cap. Disappears
+                entirely once expanded (per product spec). */}
+            {remainingCount > 0 ? (
+              <ShowMoreMatchesButton
+                remainingCount={remainingCount}
+                onClick={() => {
+                  // Mark intent BEFORE flipping state so the post-render
+                  // effect knows this transition was user-driven (vs.
+                  // e.g. a parent re-render that happened to set expanded).
+                  justExpandedRef.current = true;
+                  setExpanded(true);
+                }}
+              />
+            ) : null}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function Index() {
-  return <PlaceholderIndex />;
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div>
+      <div className={`text-2xl font-bold ${accent ? "text-gold" : "text-foreground"}`}>{value}</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+    </div>
+  );
 }

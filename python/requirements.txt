@@ -1,0 +1,2 @@
+# Editable install of `rift_contextualizer` (stdlib only; no PyPI deps).
+-e .
