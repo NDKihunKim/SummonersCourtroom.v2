@@ -94,6 +94,7 @@ function normaliseMatch(
     items: [me.item0, me.item1, me.item2, me.item3, me.item4, me.item5],
     trinket: me.item6 ?? 0,
     spells: [spellName(me.summoner1Id), spellName(me.summoner2Id)],
+    runes: extractRunes(me),
     team: allies.map(toParticipant),
     enemies: enemies.map(toParticipant),
     riotMatchId: raw.metadata.matchId,

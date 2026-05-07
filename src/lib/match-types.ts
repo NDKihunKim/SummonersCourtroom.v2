@@ -48,6 +48,11 @@ export type Match = {
   /** Trinket slot (item6). `0` when the player has no trinket. */
   trinket: number;
   spells: [string, string];
+  /**
+   * Keystone perk id (e.g. 8005 Press the Attack) and secondary tree id
+   * (e.g. 8100 Domination). Optional for backward compat with cached rows.
+   */
+  runes?: { keystoneId: number; secondaryStyleId: number };
   team: Participant[];
   enemies: Participant[];
   /** Riot match-v5 id (e.g. NA1_7344857921). Sent to Python contextualizer. */
