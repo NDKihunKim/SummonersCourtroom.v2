@@ -145,6 +145,18 @@ export type RiotMatchParticipant = {
    * queues that omit it don't break parsing.
    */
   teamPosition?: string;
+  /**
+   * Rune selections. Two entries: primaryStyle (keystone tree) and subStyle
+   * (secondary tree). Optional because some non-SR queues / older matches
+   * may omit it. We surface only the keystone perk + secondary tree id.
+   */
+  perks?: {
+    styles?: Array<{
+      description?: string; // "primaryStyle" | "subStyle"
+      style?: number;       // tree id (8000, 8100, 8200, 8300, 8400)
+      selections?: Array<{ perk?: number }>;
+    }>;
+  };
 };
 
 export type RiotMatch = {

@@ -5,6 +5,7 @@ import { ChampionIcon } from "./ChampionIcon";
 import { MatchupHeader } from "./MatchupHeader";
 import { ItemGrid } from "./ItemGrid";
 import { SummonerSpells } from "./SummonerSpells";
+import { RuneIcons } from "./RuneIcons";
 import { RosterColumns } from "./RosterColumns";
 import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
@@ -159,9 +160,11 @@ export function MatchCard({
               breakpoint as the stats column to its right). */}
           <div className="hidden items-center gap-1.5 md:flex">
             <SummonerSpells spells={match.spells} />
+            <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
+            <RuneIcons runes={match.runes} />
             {/* Same vertical divider used inside ItemGrid (between items
-                and trinket) so the loadout reads as three grouped sections:
-                spells | items | trinket. */}
+                and trinket) so the loadout reads as four grouped sections:
+                spells | runes | items | trinket. */}
             <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
             <ItemGrid items={match.items} trinket={match.trinket} />
           </div>
