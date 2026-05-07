@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { getTimelineWindow } from "@/functions/timeline-window.functions";
 import { PromptBlock } from "./judge-prompts/PromptBlock";
 import { UPPER_PROMPT, LOWER_PROMPT } from "./judge-prompts/promptText";
 import { substituteSubjects } from "./judge-prompts/substituteSubjects";
@@ -100,25 +100,16 @@ export function TimelineWindowResult({
     setDurationMs(null);
     const t0 = performance.now();
     try {
-      const res = await supabase.functions.invoke("judge-match", {
-        body: {
-          stage: "timeline-window",
+      const data = await getTimelineWindow({
+        data: {
           matchId,
           userPuuid,
           ...(routingRegion ? { routingRegion } : {}),
           startMs,
           endMs,
-          // The edge function's Body type still requires these two — they're
-          // unused by the timeline-window stage but the type is shared with
-          // the judge stages. Pass minimal stubs.
-          matchContext: { queue: "", duration: "", result: "" },
-          playerA: { name: "", champion: "", kills: 0, deaths: 0, assists: 0 },
-          playerB: { name: "", champion: "", kills: 0, deaths: 0, assists: 0 },
         },
       });
       setDurationMs(Math.round(performance.now() - t0));
-      if (res.error) throw res.error;
-      const data = res.data as WindowResponse;
       if (data.error) throw new Error(data.error);
       setResult(data);
     } catch (e) {

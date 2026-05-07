@@ -136,7 +136,7 @@ $$;
 CREATE TRIGGER trg_cached_summoners_tier_rank
   BEFORE INSERT OR UPDATE ON public.cached_summoners
   FOR EACH ROW
-  EXECUTE FUNCTION public.cached_summoners_set_tier_rank();/Users/andykim/Desktop/loljudge_Project/match-history-pro/supabase/migrations/20260425231812_60c38d44-11e9-48c1-a163-09280df796d4.sql
+  EXECUTE FUNCTION public.cached_summoners_set_tier_rank();
 
 -- ----------------------------------------------------------------------------
 -- Row-Level Security
