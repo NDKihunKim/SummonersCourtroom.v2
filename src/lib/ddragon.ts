@@ -131,19 +131,15 @@ export function summonerSpellIconUrl(spellName: string, version: string): string
 }
 
 /**
- * Rune perk + style icon URLs from CommunityDragon.
+ * Rune perk + style icon URLs from Riot Data Dragon.
  *
- * CommunityDragon serves a JSON manifest at /v1/perks.json and /v1/perkstyles.json
- * with `iconPath` fields like "/lol-game-data/assets/v1/perk-images/Styles/...".
- * Lowercasing the path and rewriting the prefix to the public asset root
- * yields a stable image URL keyed by perk/style id.
- *
- * We hardcode the small map of currently-active keystones + tree ids to avoid
- * an extra fetch. Unknown ids return null so the UI renders an empty tile.
+ * Runes live under `/cdn/img/perk-images/...` instead of the versioned
+ * champion/item/spell directories. We hardcode the small map of currently
+ * active keystones + tree ids to avoid an extra manifest fetch. Unknown ids
+ * return null so the UI renders an empty tile.
  */
 
-const PERK_ROOT =
-  "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images";
+const PERK_ROOT = "https://ddragon.leagueoflegends.com/cdn/img/perk-images";
 
 // Keystone perk id → CommunityDragon path segment (Styles/<Tree>/<Perk>/<Perk>.png)
 const KEYSTONE_PATHS: Record<number, string> = {
