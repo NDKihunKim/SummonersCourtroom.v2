@@ -131,6 +131,68 @@ export function summonerSpellIconUrl(spellName: string, version: string): string
 }
 
 /**
+ * Rune perk + style icon URLs from CommunityDragon.
+ *
+ * CommunityDragon serves a JSON manifest at /v1/perks.json and /v1/perkstyles.json
+ * with `iconPath` fields like "/lol-game-data/assets/v1/perk-images/Styles/...".
+ * Lowercasing the path and rewriting the prefix to the public asset root
+ * yields a stable image URL keyed by perk/style id.
+ *
+ * We hardcode the small map of currently-active keystones + tree ids to avoid
+ * an extra fetch. Unknown ids return null so the UI renders an empty tile.
+ */
+
+const PERK_ROOT =
+  "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images";
+
+// Keystone perk id → CommunityDragon path segment (Styles/<Tree>/<Perk>/<Perk>.png)
+const KEYSTONE_PATHS: Record<number, string> = {
+  // Precision (8000)
+  8005: "Styles/Precision/PressTheAttack/PressTheAttack.png",
+  8008: "Styles/Precision/LethalTempo/LethalTempoTemp.png",
+  8021: "Styles/Precision/FleetFootwork/FleetFootwork.png",
+  8010: "Styles/Precision/Conqueror/Conqueror.png",
+  // Domination (8100)
+  8112: "Styles/Domination/Electrocute/Electrocute.png",
+  8124: "Styles/Domination/Predator/Predator.png",
+  8128: "Styles/Domination/DarkHarvest/DarkHarvest.png",
+  9923: "Styles/Domination/HailOfBlades/HailOfBlades.png",
+  // Sorcery (8200)
+  8214: "Styles/Sorcery/SummonAery/SummonAery.png",
+  8229: "Styles/Sorcery/ArcaneComet/ArcaneComet.png",
+  8230: "Styles/Sorcery/PhaseRush/PhaseRush.png",
+  // Resolve (8400)
+  8437: "Styles/Resolve/GraspOfTheUndying/GraspOfTheUndying.png",
+  8439: "Styles/Resolve/VeteranAftershock/VeteranAftershock.png",
+  8465: "Styles/Resolve/Guardian/Guardian.png",
+  // Inspiration (8300)
+  8351: "Styles/Inspiration/GlacialAugment/GlacialAugment.png",
+  8360: "Styles/Inspiration/UnsealedSpellbook/UnsealedSpellbook.png",
+  8369: "Styles/Inspiration/FirstStrike/FirstStrike.png",
+};
+
+// Tree style id → tree icon path
+const STYLE_PATHS: Record<number, string> = {
+  8000: "Styles/7201_Precision.png",
+  8100: "Styles/7200_Domination.png",
+  8200: "Styles/7202_Sorcery.png",
+  8300: "Styles/7203_Whimsy.png",
+  8400: "Styles/7204_Resolve.png",
+};
+
+/** URL for a keystone rune icon, or null if id unknown. */
+export function runeIconUrl(perkId: number): string | null {
+  const path = KEYSTONE_PATHS[perkId];
+  return path ? `${PERK_ROOT}/${path}` : null;
+}
+
+/** URL for a rune tree (style) icon, or null if id unknown. */
+export function runeStyleIconUrl(styleId: number): string | null {
+  const path = STYLE_PATHS[styleId];
+  return path ? `${PERK_ROOT}/${path}` : null;
+}
+
+/**
  * Read a previously cached version from sessionStorage. Best-effort — never
  * throws (SSR, private mode, blocked storage all return undefined).
  */
