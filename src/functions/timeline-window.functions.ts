@@ -7,6 +7,12 @@ type WindowItem = Record<string, unknown> & {
   timestamp: string;
 };
 
+type InternalWindowItem = WindowItem & {
+  timestampMs: number;
+  participantRawId?: number;
+  involvedRawIds?: number[];
+};
+
 type TimelineFrame = {
   timestamp?: unknown;
   participantFrames?: Record<string, Record<string, unknown>>;
@@ -24,8 +30,34 @@ type MatchPayload = {
     participants?: Array<{
       participantId?: number;
       championName?: string;
+      puuid?: string;
+      teamId?: number;
+      teamPosition?: string;
+      riotIdGameName?: string;
+      riotIdTagline?: string;
+      summonerName?: string;
     }>;
   };
+};
+
+type ParticipantInfo = {
+  participantId: number;
+  championName: string;
+  label: string;
+  puuid?: string;
+  teamId?: number;
+  teamPosition?: string;
+};
+
+type SubjectInfo = {
+  key: "Subject A" | "Subject B";
+  participant?: ParticipantInfo;
+  fallbackChampion?: string;
+};
+
+type SubjectInput = {
+  champion?: string;
+  puuid?: string;
 };
 
 const TimelineWindowInputSchema = z.object({
@@ -34,6 +66,12 @@ const TimelineWindowInputSchema = z.object({
   routingRegion: z.enum(["americas", "europe", "asia", "sea"]).optional(),
   startMs: z.number().int().min(0),
   endMs: z.number().int().min(0),
+  subjects: z
+    .object({
+      a: z.object({ champion: z.string().optional(), puuid: z.string().optional() }).optional(),
+      b: z.object({ champion: z.string().optional(), puuid: z.string().optional() }).optional(),
+    })
+    .optional(),
 });
 
 const PLATFORM_TO_REGIONAL: Record<string, RegionalRouting> = {
@@ -126,6 +164,469 @@ function buildChampionLookup(match: MatchPayload): Record<number, string> {
   return lookup;
 }
 
+function normalizeChampion(value?: string): string {
+  return (value ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function roleLabel(value?: string): string {
+  const normalized = (value ?? "").toUpperCase();
+  if (normalized === "TOP") return "Top";
+  if (normalized === "JUNGLE") return "Jungle";
+  if (normalized === "MIDDLE") return "Mid";
+  if (normalized === "BOTTOM") return "Bot";
+  if (normalized === "UTILITY") return "Support";
+  return "Unknown role";
+}
+
+function teamName(teamId?: number): string {
+  if (teamId === 100) return "Blue";
+  if (teamId === 200) return "Red";
+  return "Unknown side";
+}
+
+function buildParticipants(match: MatchPayload): ParticipantInfo[] {
+  return (match.info?.participants ?? [])
+    .filter(
+      (participant) =>
+        typeof participant.participantId === "number" &&
+        typeof participant.championName === "string",
+    )
+    .map((participant) => {
+      const role = roleLabel(participant.teamPosition);
+      return {
+        participantId: participant.participantId as number,
+        championName: participant.championName as string,
+        label: `${participant.championName} ${role}`,
+        puuid: participant.puuid,
+        teamId: participant.teamId,
+        teamPosition: participant.teamPosition,
+      };
+    });
+}
+
+function findSubject(
+  participants: ParticipantInfo[],
+  input?: SubjectInput,
+): ParticipantInfo | undefined {
+  if (!input) return undefined;
+  if (input.puuid) {
+    const byPuuid = participants.find((participant) => participant.puuid === input.puuid);
+    if (byPuuid) return byPuuid;
+  }
+
+  const champion = normalizeChampion(input.champion);
+  if (!champion) return undefined;
+  return participants.find(
+    (participant) => normalizeChampion(participant.championName) === champion,
+  );
+}
+
+function subjectLabel(subject: SubjectInfo): string {
+  if (subject.participant) {
+    return `${subject.participant.label} (${teamName(subject.participant.teamId)})`;
+  }
+  return subject.fallbackChampion
+    ? `${subject.fallbackChampion} (unmatched participant)`
+    : "Unknown subject";
+}
+
+function rawParticipantId(value: unknown): number | undefined {
+  const id = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
+
+function eventInvolvedIds(event: Record<string, unknown>): number[] {
+  const ids = new Set<number>();
+  for (const key of ["participantId", "killerId", "victimId", "creatorId"]) {
+    const id = rawParticipantId(event[key]);
+    if (id) ids.add(id);
+  }
+  const assisting = event.assistingParticipantIds;
+  if (Array.isArray(assisting)) {
+    for (const id of assisting) {
+      const rawId = rawParticipantId(id);
+      if (rawId) ids.add(rawId);
+    }
+  }
+  return [...ids];
+}
+
+function eventType(item: WindowItem): string {
+  return typeof item.type === "string" ? item.type : "EVENT";
+}
+
+function isRelevantEvent(item: InternalWindowItem, subjectIds: Set<number>): boolean {
+  if (item.kind !== "event") return false;
+  if ((item.involvedRawIds ?? []).some((id) => subjectIds.has(id))) return true;
+
+  const relevantTypes = new Set([
+    "CHAMPION_KILL",
+    "CHAMPION_SPECIAL_KILL",
+    "ELITE_MONSTER_KILL",
+    "BUILDING_KILL",
+    "TURRET_PLATE_DESTROYED",
+    "WARD_PLACED",
+    "WARD_KILL",
+    "RECALL",
+    "DRAGON_SOUL_GIVEN",
+    "GAME_END",
+  ]);
+  return relevantTypes.has(eventType(item));
+}
+
+function summarizeEvent(item: InternalWindowItem): string {
+  const type = eventType(item);
+  if (type === "CHAMPION_KILL") {
+    const victim = String(item.victimId ?? "unknown victim");
+    const killer = String(item.killerId ?? "unknown killer");
+    const assists = Array.isArray(item.assistingParticipantIds)
+      ? `; assists: ${item.assistingParticipantIds.join(", ")}`
+      : "";
+    return `${item.timestamp} death: ${victim} killed by ${killer}${assists}.`;
+  }
+  if (type === "ELITE_MONSTER_KILL") {
+    return `${item.timestamp} objective: ${String(item.monsterType ?? "elite monster")} taken by ${String(
+      item.killerId ?? item.killerTeamId ?? "unknown",
+    )}.`;
+  }
+  if (type === "BUILDING_KILL" || type === "TURRET_PLATE_DESTROYED") {
+    return `${item.timestamp} structure: ${String(item.buildingType ?? type)} for ${String(
+      item.teamId ?? item.killerTeamId ?? "unknown team",
+    )}.`;
+  }
+  if (type === "WARD_PLACED" || type === "WARD_KILL") {
+    return `${item.timestamp} vision: ${type.replace("_", " ").toLowerCase()} by ${String(
+      item.creatorId ?? item.killerId ?? "unknown",
+    )}.`;
+  }
+  if (type === "RECALL") {
+    return `${item.timestamp} recall: ${String(item.participantId ?? "unknown participant")}.`;
+  }
+  return `${item.timestamp} ${type}.`;
+}
+
+function framePosition(item: InternalWindowItem): string | null {
+  const position = frameCoords(item);
+  if (!position) return null;
+  return `position (${position.x}, ${position.y})`;
+}
+
+function frameCoords(item: InternalWindowItem): { x: number; y: number } | null {
+  const frame = item.frame;
+  if (!frame || typeof frame !== "object") return null;
+  const position = (frame as Record<string, unknown>).position;
+  if (!position || typeof position !== "object") return null;
+  const x = (position as Record<string, unknown>).x;
+  const y = (position as Record<string, unknown>).y;
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  return { x, y };
+}
+
+function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function nearbySummary(
+  subject: ParticipantInfo,
+  subjectFrame: InternalWindowItem,
+  items: InternalWindowItem[],
+  participants: ParticipantInfo[],
+): string | null {
+  const subjectPosition = frameCoords(subjectFrame);
+  if (!subjectPosition) return null;
+
+  const participantById = new Map(
+    participants.map((participant) => [participant.participantId, participant]),
+  );
+  const nearby = items
+    .filter(
+      (item) =>
+        item.kind === "frame" &&
+        item.timestampMs === subjectFrame.timestampMs &&
+        item.participantRawId &&
+        item.participantRawId !== subject.participantId,
+    )
+    .map((item) => {
+      const participant = participantById.get(item.participantRawId as number);
+      const position = frameCoords(item);
+      if (!participant || !position) return null;
+      return {
+        participant,
+        distance: Math.round(distance(subjectPosition, position)),
+      };
+    })
+    .filter((entry): entry is { participant: ParticipantInfo; distance: number } => !!entry)
+    .filter((entry) => entry.distance <= 2500)
+    .sort((a, b) => a.distance - b.distance);
+
+  if (!nearby.length) return null;
+
+  const allies = nearby
+    .filter((entry) => entry.participant.teamId === subject.teamId)
+    .slice(0, 3)
+    .map((entry) => `${entry.participant.championName} (${entry.distance})`);
+  const enemies = nearby
+    .filter((entry) => entry.participant.teamId !== subject.teamId)
+    .slice(0, 3)
+    .map((entry) => `${entry.participant.championName} (${entry.distance})`);
+
+  return [
+    allies.length ? `nearby allies: ${allies.join(", ")}` : "nearby allies: none",
+    enemies.length ? `nearby enemies: ${enemies.join(", ")}` : "nearby enemies: none",
+  ].join("; ");
+}
+
+function subjectEvidence(
+  subject: SubjectInfo,
+  items: InternalWindowItem[],
+  participants: ParticipantInfo[],
+): string[] {
+  if (!subject.participant) {
+    return [`${subject.key}: Participant not matched in Riot metadata.`];
+  }
+
+  const id = subject.participant.participantId;
+  const directEvents = items.filter(
+    (item) => item.kind === "event" && (item.involvedRawIds ?? []).includes(id),
+  );
+  const frames = items.filter((item) => item.kind === "frame" && item.participantRawId === id);
+  const bullets: string[] = [];
+
+  const firstFrame = frames[0];
+  const lastFrame = frames[frames.length - 1];
+  if (firstFrame) {
+    const nearby = nearbySummary(subject.participant, firstFrame, items, participants);
+    bullets.push(
+      `${subject.key}: first observed at ${firstFrame.timestamp}${
+        framePosition(firstFrame) ? `, ${framePosition(firstFrame)}` : ""
+      }${nearby ? `; ${nearby}` : ""}.`,
+    );
+  }
+  if (lastFrame && lastFrame !== firstFrame) {
+    const nearby = nearbySummary(subject.participant, lastFrame, items, participants);
+    bullets.push(
+      `${subject.key}: last observed at ${lastFrame.timestamp}${
+        framePosition(lastFrame) ? `, ${framePosition(lastFrame)}` : ""
+      }${nearby ? `; ${nearby}` : ""}.`,
+    );
+  }
+
+  const deaths = directEvents.filter(
+    (item) =>
+      eventType(item) === "CHAMPION_KILL" && item.victimId === subject.participant?.championName,
+  );
+  const assists = directEvents.filter(
+    (item) =>
+      eventType(item) === "CHAMPION_KILL" &&
+      Array.isArray(item.assistingParticipantIds) &&
+      item.assistingParticipantIds.includes(subject.participant?.championName),
+  );
+  const kills = directEvents.filter(
+    (item) =>
+      eventType(item) === "CHAMPION_KILL" && item.killerId === subject.participant?.championName,
+  );
+  const objectiveEvents = directEvents.filter((item) =>
+    ["ELITE_MONSTER_KILL", "BUILDING_KILL", "TURRET_PLATE_DESTROYED"].includes(eventType(item)),
+  );
+
+  if (deaths.length)
+    bullets.push(`${subject.key}: death evidence: ${deaths.map(summarizeEvent).join(" ")}`);
+  if (kills.length || assists.length) {
+    bullets.push(
+      `${subject.key}: fight participation: ${[...kills, ...assists].map(summarizeEvent).join(" ")}`,
+    );
+  }
+  if (objectiveEvents.length) {
+    bullets.push(
+      `${subject.key}: objective/structure involvement: ${objectiveEvents.map(summarizeEvent).join(" ")}`,
+    );
+  }
+  if (directEvents.length === 0) {
+    bullets.push(
+      `${subject.key}: No direct kill, assist, ward, recall, or objective event involvement in this window.`,
+    );
+  }
+
+  return bullets;
+}
+
+function teamRoster(participants: ParticipantInfo[], teamId: number): string {
+  const members = participants.filter((participant) => participant.teamId === teamId);
+  if (!members.length) return "Unavailable";
+  return members
+    .map((participant) => `${roleLabel(participant.teamPosition)} ${participant.championName}`)
+    .join(", ");
+}
+
+function nearbyParticipantIds(
+  items: InternalWindowItem[],
+  participants: ParticipantInfo[],
+  subjectIds: Set<number>,
+): Set<number> {
+  const ids = new Set<number>();
+  const participantIds = new Set(participants.map((participant) => participant.participantId));
+
+  for (const subjectFrame of items) {
+    if (
+      subjectFrame.kind !== "frame" ||
+      !subjectFrame.participantRawId ||
+      !subjectIds.has(subjectFrame.participantRawId)
+    ) {
+      continue;
+    }
+    const subjectPosition = frameCoords(subjectFrame);
+    if (!subjectPosition) continue;
+
+    for (const candidate of items) {
+      if (
+        candidate.kind !== "frame" ||
+        candidate.timestampMs !== subjectFrame.timestampMs ||
+        !candidate.participantRawId ||
+        candidate.participantRawId === subjectFrame.participantRawId ||
+        !participantIds.has(candidate.participantRawId)
+      ) {
+        continue;
+      }
+      const candidatePosition = frameCoords(candidate);
+      if (candidatePosition && distance(subjectPosition, candidatePosition) <= 2500) {
+        ids.add(candidate.participantRawId);
+      }
+    }
+  }
+
+  return ids;
+}
+
+function trimEvidence(
+  items: InternalWindowItem[],
+  participants: ParticipantInfo[],
+  subjectIds: Set<number>,
+): InternalWindowItem[] {
+  if (items.length <= 40 && subjectIds.size === 0) return items;
+
+  const evidence: InternalWindowItem[] = [];
+  const add = (item: InternalWindowItem) => {
+    if (!evidence.includes(item)) evidence.push(item);
+  };
+
+  for (const item of items) {
+    if (item.kind === "event" && isRelevantEvent(item, subjectIds)) add(item);
+  }
+
+  const involved = new Set<number>(subjectIds);
+  for (const item of evidence) {
+    for (const id of item.involvedRawIds ?? []) involved.add(id);
+  }
+  for (const id of nearbyParticipantIds(items, participants, subjectIds)) involved.add(id);
+
+  for (const item of items) {
+    if (item.kind === "frame" && item.participantRawId && involved.has(item.participantRawId)) {
+      add(item);
+    }
+  }
+
+  if (evidence.length === 0) {
+    for (const item of items.slice(0, 20)) add(item);
+  }
+
+  evidence.sort((a, b) => a.timestampMs - b.timestampMs);
+  return evidence.slice(0, 80);
+}
+
+function stripInternal(items: InternalWindowItem[]): WindowItem[] {
+  return items.map(
+    ({
+      timestampMs: _timestampMs,
+      participantRawId: _participantRawId,
+      involvedRawIds: _involvedRawIds,
+      ...item
+    }) => item,
+  );
+}
+
+function buildBrief({
+  matchId,
+  routing,
+  startMs,
+  endMs,
+  participants,
+  subjects,
+  items,
+  evidence,
+}: {
+  matchId: string;
+  routing: RegionalRouting;
+  startMs: number;
+  endMs: number;
+  participants: ParticipantInfo[];
+  subjects: SubjectInfo[];
+  items: InternalWindowItem[];
+  evidence: InternalWindowItem[];
+}): string {
+  const relevantEvents = evidence.filter((item) => item.kind === "event");
+  const notes: string[] = [];
+  if (!relevantEvents.some((item) => eventType(item) === "CHAMPION_KILL")) {
+    notes.push("No champion death is present in the selected window.");
+  }
+  if (
+    !relevantEvents.some((item) =>
+      ["ELITE_MONSTER_KILL", "BUILDING_KILL", "TURRET_PLATE_DESTROYED"].includes(eventType(item)),
+    )
+  ) {
+    notes.push("No objective or structure event is present in the retained evidence.");
+  }
+  if (
+    relevantEvents.length > 0 &&
+    relevantEvents.every((item) => ["WARD_PLACED", "WARD_KILL"].includes(eventType(item)))
+  ) {
+    notes.push("Retained events are only ward/vision events.");
+  }
+  if (items.length > evidence.length) {
+    notes.push(
+      `${items.length - evidence.length} extracted low-signal items were omitted from trimmed evidence.`,
+    );
+  }
+  if (items.some((item) => item.kind === "frame" && item.timestampMs < startMs)) {
+    notes.push("Cached frame before the window is included as baseline context.");
+  }
+  if (evidence.length === 0) {
+    notes.push("No actionable timeline evidence was available for this window.");
+  }
+
+  return [
+    "STRUCTURED CONTEXT BRIEF",
+    "",
+    "Window:",
+    `- Match: ${matchId}`,
+    `- Routing region: ${routing}`,
+    `- Range: ${formatGameTime(startMs)} to ${formatGameTime(endMs)}`,
+    `- Evidence items: ${evidence.length} retained of ${items.length} extracted`,
+    "",
+    "Teams:",
+    `- Blue: ${teamRoster(participants, 100)}`,
+    `- Red: ${teamRoster(participants, 200)}`,
+    "",
+    "Subjects:",
+    `- Subject A: ${subjectLabel(subjects[0])}`,
+    `- Subject B: ${subjectLabel(subjects[1])}`,
+    "",
+    "Relevant Events:",
+    ...(relevantEvents.length
+      ? relevantEvents.map((item) => `- ${summarizeEvent(item)}`)
+      : ["- No relevant event rows retained."]),
+    "",
+    "Subject Evidence:",
+    ...subjects.flatMap((subject) =>
+      subjectEvidence(subject, evidence, participants).map((line) => `- ${line}`),
+    ),
+    "",
+    "Contextualizer Notes:",
+    ...(notes.length
+      ? notes.map((note) => `- ${note}`)
+      : ["- No caveats detected in the retained evidence."]),
+  ].join("\n");
+}
+
 function labelParticipant(value: unknown, champions: Record<number, string>): unknown {
   const id = typeof value === "number" ? value : Number(value);
   if (!Number.isInteger(id)) return value;
@@ -170,19 +671,23 @@ function frameItems(
   frame: TimelineFrame,
   timestamp: number,
   champions: Record<number, string>,
-): WindowItem[] {
+): InternalWindowItem[] {
   const pframes = frame.participantFrames;
   if (!pframes) return [];
 
   return Object.entries(pframes)
-    .map(([participantId, data]) => ({
-      kind: "frame" as const,
-      timestampMs: timestamp,
-      timestamp: formatGameTime(timestamp),
-      participantId: labelParticipant(participantId, champions),
-      frame: humanizeIds(data, champions),
-    }))
-    .sort((a, b) => Number(a.participantId) - Number(b.participantId));
+    .map(([participantId, data]) => {
+      const participantRawId = rawParticipantId(participantId);
+      return {
+        kind: "frame" as const,
+        timestampMs: timestamp,
+        timestamp: formatGameTime(timestamp),
+        participantRawId,
+        participantId: labelParticipant(participantId, champions),
+        frame: humanizeIds(data, champions),
+      };
+    })
+    .sort((a, b) => (a.participantRawId ?? 0) - (b.participantRawId ?? 0));
 }
 
 function closestPriorFrame(frames: TimelineFrame[], startMs: number): TimelineFrame | null {
@@ -202,11 +707,11 @@ function extractWindow(
   startMs: number,
   endMs: number,
   champions: Record<number, string>,
-): WindowItem[] {
+): InternalWindowItem[] {
   const frames = timeline.info?.frames;
   if (!Array.isArray(frames)) throw new Error("Riot timeline response is missing frames.");
 
-  const items: Array<WindowItem & { timestampMs: number }> = [];
+  const items: InternalWindowItem[] = [];
 
   for (const frame of frames) {
     const frameTs = toTimestamp(frame.timestamp);
@@ -220,6 +725,7 @@ function extractWindow(
       items.push({
         kind: "event",
         timestampMs: eventTs,
+        involvedRawIds: eventInvolvedIds(event),
         ...(humanizeIds(event, champions) as Record<string, unknown>),
         timestamp: formatGameTime(eventTs),
       });
@@ -237,7 +743,7 @@ function extractWindow(
     }
   }
 
-  return items.map(({ timestampMs: _timestampMs, ...item }) => item);
+  return items;
 }
 
 export const getTimelineWindow = createServerFn({ method: "POST" })
@@ -257,14 +763,46 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
       riotGet<TimelinePayload>(`${base}/timeline`),
     ]);
     const champions = buildChampionLookup(match);
+    const participants = buildParticipants(match);
+    const subjects: SubjectInfo[] = [
+      {
+        key: "Subject A",
+        participant: findSubject(participants, data.subjects?.a ?? { puuid: data.userPuuid }),
+        fallbackChampion: data.subjects?.a?.champion,
+      },
+      {
+        key: "Subject B",
+        participant: findSubject(participants, data.subjects?.b),
+        fallbackChampion: data.subjects?.b?.champion,
+      },
+    ];
+    const subjectIds = new Set(
+      subjects
+        .map((subject) => subject.participant?.participantId)
+        .filter((id): id is number => typeof id === "number"),
+    );
     const items = extractWindow(timeline, data.startMs, data.endMs, champions);
+    const evidence = trimEvidence(items, participants, subjectIds);
+    const brief = buildBrief({
+      matchId: data.matchId,
+      routing,
+      startMs: data.startMs,
+      endMs: data.endMs,
+      participants,
+      subjects,
+      items,
+      evidence,
+    });
 
     return {
       window: {
         start: formatGameTime(data.startMs),
         end: formatGameTime(data.endMs),
       },
-      count: items.length,
-      items,
+      count: evidence.length,
+      totalItems: items.length,
+      brief,
+      evidence: stripInternal(evidence),
+      items: stripInternal(items),
     };
   });

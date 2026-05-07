@@ -19,12 +19,13 @@ import type { Match, Participant } from "@/lib/match-types";
  */
 
 type WindowResponse = {
-  // Bounds are formatted `[mm:ss]` strings (game time) coming from the
-  // Python /timeline-window endpoint. Renamed from startMs/endMs so the
-  // field names reflect the new value type.
+  // Bounds are formatted `[mm:ss]` strings (game time) by the local server function.
   window: { start: string; end: string };
   count: number;
-  items: unknown[];
+  totalItems?: number;
+  brief: string;
+  evidence: unknown[];
+  items?: unknown[];
   error?: string;
 };
 
@@ -75,15 +76,12 @@ export function TimelineWindowResult({
   // The team rundown (TEAMS: ... block) is appended to the upper prompt
   // when we have both `match` and `you`, so the LLM can see the full 5v5
   // roster + roles at the top of the brief.
-  const teamRundown =
-    match && you ? buildTeamRundown(match, you) : "";
+  const teamRundown = match && you ? buildTeamRundown(match, you) : "";
   const upperPromptBase = substituteSubjects(UPPER_PROMPT, {
     subjectA: subjectAChampion ?? "",
     subjectB: subjectBChampion ?? "",
   });
-  const upperPromptBody = teamRundown
-    ? `${upperPromptBase}\n\n${teamRundown}`
-    : upperPromptBase;
+  const upperPromptBody = teamRundown ? `${upperPromptBase}\n\n${teamRundown}` : upperPromptBase;
   const upperPromptText = upperPromptBody;
   const lowerPromptText = substituteSubjects(LOWER_PROMPT, {
     subjectA: subjectAChampion ?? "",
@@ -107,6 +105,15 @@ export function TimelineWindowResult({
           ...(routingRegion ? { routingRegion } : {}),
           startMs,
           endMs,
+          subjects: {
+            a: {
+              champion: subjectAChampion,
+              puuid: you?.puuid ?? userPuuid,
+            },
+            b: {
+              champion: subjectBChampion,
+            },
+          },
         },
       });
       setDurationMs(Math.round(performance.now() - t0));
@@ -120,7 +127,7 @@ export function TimelineWindowResult({
   });
 
   /**
-   * Copy the full prompt sandwich — upper prompt + JSON timeline + lower
+   * Copy the full prompt sandwich — upper prompt + brief + evidence JSON + lower
    * prompt — as a single plaintext blob. This matches what's visually
    * rendered on screen (with SUBJECT_A / SUBJECT_B already substituted) so
    * the user can paste the exact preview into another tool / model.
@@ -135,7 +142,10 @@ export function TimelineWindowResult({
       const blob = [
         upperPromptText,
         "",
-        JSON.stringify(result, null, 2),
+        result.brief,
+        "",
+        "TRIMMED EVIDENCE JSON:",
+        JSON.stringify(result.evidence ?? result.items ?? [], null, 2),
         "",
         lowerPromptText,
       ].join("\n");
@@ -150,8 +160,8 @@ export function TimelineWindowResult({
   if (runToken === 0 && !loading && !error && !result) {
     return (
       <p className="rounded-lg border border-dashed border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
-        Pick a 1–3 minute window above and click <span className="text-gold">Run</span> to fetch the merged
-        timeline.
+        Pick a 1–3 minute window above and click <span className="text-gold">Run</span> to fetch the
+        merged timeline.
       </p>
     );
   }
@@ -167,11 +177,12 @@ export function TimelineWindowResult({
         {result && !loading && (
           <>
             <span className="rounded bg-hex-blue/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-hex-blue">
-              {result.count} items
+              {result.count} evidence items
             </span>
-            {durationMs != null && (
-              <span className="text-muted-foreground">{durationMs} ms</span>
+            {typeof result.totalItems === "number" && result.totalItems !== result.count && (
+              <span className="text-muted-foreground">{result.totalItems} extracted</span>
             )}
+            {durationMs != null && <span className="text-muted-foreground">{durationMs} ms</span>}
             <button
               onClick={() => void copyAll()}
               className="ml-auto rounded border border-border px-2 py-1 text-xs hover:border-gold"
@@ -189,22 +200,20 @@ export function TimelineWindowResult({
       )}
 
       {result && !error && (
-        // Display-only prompt sandwich: upper framing → JSON dump → lower
+        // Display-only prompt sandwich: upper framing → brief → JSON dump → lower
         // FINAL INSTRUCTION. The JSON in the middle is the real
         // /timeline-window response and keeps its own scroll container so
         // the surrounding prompt blocks stay visible above and below.
         <div className="flex flex-col gap-3">
           <PromptBlock label="Upper prompt" text={upperPromptText} tone="intro" />
 
+          <PromptBlock label="Structured context brief" text={result.brief} tone="intro" />
+
           <pre className="max-h-[400px] overflow-auto rounded border border-border bg-background p-4 font-mono text-[11px] leading-relaxed text-foreground">
-            {JSON.stringify(result, null, 2)}
+            {JSON.stringify(result.evidence ?? result.items ?? [], null, 2)}
           </pre>
 
-          <PromptBlock
-            label="Lower prompt"
-            text={lowerPromptText}
-            tone="instruction"
-          />
+          <PromptBlock label="Lower prompt" text={lowerPromptText} tone="instruction" />
         </div>
       )}
     </div>
@@ -222,6 +231,5 @@ function useEffectOnRunToken(token: number, fn: () => void | Promise<void>) {
   useEffect(() => {
     if (token <= 0) return;
     void fnRef.current();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 }
