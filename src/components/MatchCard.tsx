@@ -143,6 +143,15 @@ export function MatchCard({
             </span>
           </div>
 
+          {/* Loadout: spells | runes — sits right after the champion so
+              players read champion → spells → runes → KDA → items → stats,
+              matching the requested order. */}
+          <div className="hidden items-center gap-1.5 md:flex">
+            <SummonerSpells spells={match.spells} />
+            <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
+            <RuneIcons runes={match.runes} />
+          </div>
+
           <div className="ml-2 min-w-[110px]">
             <div className="text-lg font-bold text-foreground">
               {match.kills} <span className="text-muted-foreground">/</span>{" "}
@@ -152,20 +161,8 @@ export function MatchCard({
             <div className="text-xs text-muted-foreground">{kda} KDA</div>
           </div>
 
-          {/* Loadout column — summoner spells (2x1) on the left, then the
-              3x2 inventory grid + trinket tile on the right. The order and
-              divider style mirror the in-game HUD where summoner spells
-              sit immediately next to the inventory.
-              Hidden on small screens to keep the row from wrapping (same
-              breakpoint as the stats column to its right). */}
-          <div className="hidden items-center gap-1.5 md:flex">
-            <SummonerSpells spells={match.spells} />
-            <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
-            <RuneIcons runes={match.runes} />
-            {/* Same vertical divider used inside ItemGrid (between items
-                and trinket) so the loadout reads as four grouped sections:
-                spells | runes | items | trinket. */}
-            <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
+          {/* Items + trinket */}
+          <div className="hidden items-center md:flex">
             <ItemGrid items={match.items} trinket={match.trinket} />
           </div>
 
