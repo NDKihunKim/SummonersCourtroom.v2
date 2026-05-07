@@ -36,13 +36,13 @@ import { computeMatchStats } from "@/lib/match-stats";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Riftlog — League of Legends Match History" },
+      { title: "Summoner's Courtroom — League of Legends Match History" },
       {
         name: "description",
         content:
           "Search any League of Legends Riot ID and view recent match history, KDA, and AI judgement.",
       },
-      { property: "og:title", content: "Riftlog — League of Legends Match History" },
+      { property: "og:title", content: "Summoner's Courtroom — League of Legends Match History" },
       {
         property: "og:description",
         content: "Search any Riot ID and view recent League match history with AI judgement.",
@@ -325,11 +325,11 @@ function Index() {
             <Swords className="h-3.5 w-3.5" /> Summoner Lookup
           </div>
           <h1 className="bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-center text-5xl font-bold tracking-tight text-transparent md:text-6xl">
-            Riftlog
+            Summoner's Courtroom
           </h1>
           <p className="mt-3 max-w-md text-center text-muted-foreground">
             Enter your Riot ID to pull recent matches live from Riot, then let the AI Judge weigh in
-            on every loss.
+            on every match.
           </p>
 
           <form onSubmit={onSubmit} className="mt-10 w-full max-w-xl">
@@ -407,7 +407,7 @@ function Index() {
           </form>
 
           <p className="mt-6 text-xs text-muted-foreground">
-            Pick your shard (NA, EUW, KR, etc.).
+            Pick your region (NA, EUW, KR, etc.)
           </p>
         </div>
       </div>
