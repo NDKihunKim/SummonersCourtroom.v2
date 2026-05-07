@@ -60,6 +60,22 @@ function toParticipant(p: RiotMatchParticipant): Participant {
   };
 }
 
+/**
+ * Extract the keystone perk + secondary tree id from a participant's perks
+ * payload. Returns undefined when the match doesn't carry runes (some non-SR
+ * queues, remakes) so the UI can render empty placeholders.
+ */
+function extractRunes(p: RiotMatchParticipant): { keystoneId: number; secondaryStyleId: number } | undefined {
+  const styles = p.perks?.styles;
+  if (!styles || styles.length === 0) return undefined;
+  const primary = styles.find((s) => s.description === "primaryStyle") ?? styles[0];
+  const sub = styles.find((s) => s.description === "subStyle") ?? styles[1];
+  const keystoneId = primary?.selections?.[0]?.perk;
+  const secondaryStyleId = sub?.style;
+  if (!keystoneId || !secondaryStyleId) return undefined;
+  return { keystoneId, secondaryStyleId };
+}
+
 function normaliseMatch(
   raw: RiotMatch,
   userPuuid: string,
