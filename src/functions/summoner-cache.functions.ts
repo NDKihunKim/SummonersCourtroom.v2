@@ -487,7 +487,7 @@ const SuggestionsInputSchema = z.object({
   query: z.string().max(32),
   /** Lowercase "name#tag" keys already shown via local recents — deduped out. */
   excludeKeys: z.array(z.string().max(64)).max(50).optional(),
-  limit: z.number().int().min(1).max(10).optional(),
+  limit: z.number().int().min(1).max(25).optional(),
 });
 
 export interface IndexSuggestion {

@@ -1,57 +1,23 @@
-## Add Runes to Recent Matches
+## Fix `ZodError: limit must be ≤ 10` on suggestions
 
-Display each match's keystone (primary) rune and secondary rune tree icon between the summoner spells and the item grid in `MatchCard`.
+### Root cause
+- `src/routes/index.tsx` (line 110) calls `useSuggestions({ ..., limit: 12 })`.
+- `src/hooks/useSuggestions.ts` derives `indexLimit = limit - localItems.length` (up to 12) and passes it to the `getSuggestionsFromIndex` server function.
+- `src/functions/summoner-cache.functions.ts` line 490 validates with `z.number().int().min(1).max(10)` — anything >10 throws.
 
-### Layout
+This shipped with a recent bump from 10 → 12 on the client without updating the server schema.
 
-```text
-[Spells 2x1] | [Runes 2x1] | [Items 3x2] | [Trinket]
-  Flash         Keystone      ...
-  Teleport      SecondaryTree ...
+### Change (1 line, no feature/code touched)
+In `src/functions/summoner-cache.functions.ts` line 490:
+
+```ts
+limit: z.number().int().min(1).max(25).optional(),
 ```
 
-### Changes
+Raising to 25 (vs. exactly 12) gives headroom if the dropdown grows again, and the function's own internal default/usage already handles arbitrary small values safely.
 
-1. **`src/server/riot.ts`** — extend `RiotMatchParticipant` with the `perks` subset:
-   ```ts
-   perks?: {
-     styles: Array<{
-       description: "primaryStyle" | "subStyle";
-       style: number; // tree id (e.g. 8000 Precision)
-       selections: Array<{ perk: number; ... }>; // selections[0].perk = keystone for primary
-     }>;
-   }
-   ```
+### Verification
+- Reload `/`, type a partial Riot ID — suggestions render with no ZodError in console / server logs.
+- No other callers of `getSuggestionsFromIndex` exist (rg confirms only `useSuggestions.ts` uses it).
 
-2. **`src/lib/match-types.ts`** — add to `Match`:
-   ```ts
-   runes?: { keystoneId: number; secondaryStyleId: number };
-   ```
-   Optional for backward compat with cached rows.
-
-3. **`src/functions/match-history.functions.ts`** — in `normaliseMatch`, extract from `me.perks.styles`:
-   - keystone = primary style's `selections[0].perk`
-   - secondary = subStyle's `style`
-
-4. **`src/lib/ddragon.ts`** — add helpers using the Community Dragon CDN (Data Dragon doesn't serve individual perk PNGs cleanly; CommunityDragon does and is widely used):
-   ```ts
-   runeIconUrl(perkId)        // keystone icon
-   runeStyleIconUrl(styleId)  // tree icon (Precision, Domination, etc.)
-   ```
-   Source: `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/...`
-
-5. **New `src/components/RuneIcons.tsx`** — mirrors `SummonerSpells` shape: 2×1 stacked tiles (keystone on top, secondary tree below), same size prop, broken-image fallback to muted placeholder.
-
-6. **`src/components/MatchCard.tsx`** — insert `<RuneIcons runes={match.runes} />` and a divider between `<SummonerSpells>` and `<ItemGrid>`.
-
-### Notes
-
-- Cached matches without `runes` render empty placeholders (no crash).
-- No DB/migration changes needed.
-- The summoner-cache table likely stores serialized matches; old cached entries will simply omit runes until refreshed.
-
-### Technical details
-
-- CommunityDragon URL pattern (lowercase): `/perk-images/styles/precision/conqueror/conqueror.png` — but the simpler stable form keyed by id is `/perk-images/styles/{styleSlug}/{perkSlug}.png` which requires a lookup table. The robust id-keyed alternative used by most third-party LoL sites: `https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/{styleId}_{name}.png` is unreliable. We'll use CommunityDragon's id-resolved endpoint:
-  - Keystone: `https://raw.communitydragon.org/latest/game/assets/perks/styles/{styleId}/{perkId}/{perkId}.png` — fallback to a small id→path map for the ~13 keystones + 5 trees baked into `ddragon.ts`.
-- If you'd prefer to skip the lookup map, we can use the `cdragon` JSON manifest fetched once per session (similar to `useDDragonVersion`) — say the word and I'll go that route instead.
+No prior business logic, UI, or types are touched.
