@@ -1,23 +1,27 @@
-## Fix `ZodError: limit must be ≤ 10` on suggestions
+## Stop the suggestions dropdown from overlapping the Riot disclaimer
 
 ### Root cause
-- `src/routes/index.tsx` (line 110) calls `useSuggestions({ ..., limit: 12 })`.
-- `src/hooks/useSuggestions.ts` derives `indexLimit = limit - localItems.length` (up to 12) and passes it to the `getSuggestionsFromIndex` server function.
-- `src/functions/summoner-cache.functions.ts` line 490 validates with `z.number().int().min(1).max(10)` — anything >10 throws.
+- `src/components/SearchSuggestions.tsx` line 100 caps the dropdown at `max-h-[270px]` — roughly 6 rows of ~45px. With 7+ recent searches the list reaches its full 270px and visually extends down past the hero card, overlapping the footer disclaimer rendered by `AdFrame`.
+- The dropdown is `absolute`, so it does not actually reflow the footer — but on the current 624px viewport the bottom of the dropdown lands on top of the disclaimer text, which reads as "pushing it out awkwardly".
+- The dropdown already has `overflow-y-auto` internally, so shrinking the cap simply means the user scrolls inside the dropdown for entries 6+ instead of the dropdown spilling onto the footer.
 
-This shipped with a recent bump from 10 → 12 on the client without updating the server schema.
+### Change (1 line, in `src/components/SearchSuggestions.tsx`)
 
-### Change (1 line, no feature/code touched)
-In `src/functions/summoner-cache.functions.ts` line 490:
-
-```ts
-limit: z.number().int().min(1).max(25).optional(),
+Line 100, replace:
+```tsx
+<ul id={listboxId} role="listbox" className="max-h-[270px] overflow-y-auto">
+```
+with a viewport-aware cap that always leaves room for the footer:
+```tsx
+<ul id={listboxId} role="listbox" className="max-h-[min(270px,40vh)] overflow-y-auto">
 ```
 
-Raising to 25 (vs. exactly 12) gives headroom if the dropdown grows again, and the function's own internal default/usage already handles arbitrary small values safely.
+- On tall screens it still shows ~6 rows (270px cap wins).
+- On the demo's 624px viewport, 40vh ≈ 250px → effectively the same density, but on shorter viewports it shrinks proportionally so the dropdown never reaches the disclaimer.
+- Behavior for ≤6 recents is unchanged (list is shorter than the cap either way).
 
 ### Verification
-- Reload `/`, type a partial Riot ID — suggestions render with no ZodError in console / server logs.
-- No other callers of `getSuggestionsFromIndex` exist (rg confirms only `useSuggestions.ts` uses it).
+- Add 7+ recent searches → dropdown shows scrollable list, footer disclaimer stays fully visible.
+- Resize viewport shorter → dropdown shrinks instead of overlapping footer.
 
-No prior business logic, UI, or types are touched.
+No changes to `AdFrame`, layout structure, or any other component.
