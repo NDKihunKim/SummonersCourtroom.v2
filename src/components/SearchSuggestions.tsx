@@ -97,7 +97,7 @@ export function SearchSuggestions({
 
   return (
     <div className="animate-fade-in absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg">
-      <ul id={listboxId} role="listbox" className="max-h-[270px] overflow-y-auto">
+      <ul id={listboxId} role="listbox" className="max-h-[min(270px,40vh)] overflow-y-auto">
         {items.map((item, i) => {
           const shardInfo = getShardInfo(item.shard);
           const isActive = i === highlightedIndex;
