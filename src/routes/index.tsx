@@ -107,7 +107,7 @@ function Index() {
 
   // Composed suggestions: local recents first, then shared backend index
   // (sorted Challenger -> Iron). Debounces the server call internally.
-  const suggestions = useSuggestions({ recents, query: riotId, shard, limit: 12 });
+  const suggestions = useSuggestions({ recents, query: riotId, shard, limit: 8 });
 
   // Reset highlight whenever the visible list changes so we never point at
   // a stale index (which would otherwise read as "selected" via aria).
@@ -313,6 +313,8 @@ function Index() {
     );
   }
 
+  const hasVisibleSuggestions = isSuggestOpen && suggestions.length > 0;
+
   return (
     <AdFrame fitViewport>
       {/* h-full lets the hero fill the leftover space between the
@@ -355,7 +357,7 @@ function Index() {
                   onFocus={() => setIsSuggestOpen(true)}
                   onKeyDown={onInputKeyDown}
                   role="combobox"
-                  aria-expanded={isSuggestOpen && suggestions.length > 0}
+                  aria-expanded={hasVisibleSuggestions}
                   aria-controls={listboxId}
                   aria-autocomplete="list"
                   aria-activedescendant={
@@ -387,18 +389,21 @@ function Index() {
                 so that immediately after "Clear all history" the dropdown
                 disappears instead of lingering with backend index entries
                 that look identical to local history. */}
-            {isSuggestOpen && suggestions.length > 0 && (
-              <SearchSuggestions
-                items={suggestions}
-                highlightedIndex={highlightedIndex}
-                query={riotId}
-                listboxId={listboxId}
-                onHover={setHighlightedIndex}
-                onSelect={selectSuggestion}
-                onRemove={removeRecent}
-                recentsCount={recents.length}
-                onClearAll={handleClearAll}
-              />
+            {hasVisibleSuggestions && (
+              <>
+                <SearchSuggestions
+                  items={suggestions}
+                  highlightedIndex={highlightedIndex}
+                  query={riotId}
+                  listboxId={listboxId}
+                  onHover={setHighlightedIndex}
+                  onSelect={selectSuggestion}
+                  onRemove={removeRecent}
+                  recentsCount={recents.length}
+                  onClearAll={handleClearAll}
+                />
+                <div className="h-[min(18rem,38vh)]" aria-hidden />
+              </>
             )}
             </div>
           </form>

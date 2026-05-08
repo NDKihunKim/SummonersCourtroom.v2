@@ -24,7 +24,7 @@ function avatarSeed(name: string, tag: string): number {
 }
 
 interface Props {
-  /** Already filtered + sorted suggestions to display (≤5 in practice). */
+  /** Already filtered + sorted suggestions to display (≤8 in practice). */
   items: Suggestion[];
   /** Index of the keyboard-highlighted row, or -1 for none. */
   highlightedIndex: number;
@@ -97,7 +97,11 @@ export function SearchSuggestions({
 
   return (
     <div className="animate-fade-in absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg">
-      <ul id={listboxId} role="listbox" className="max-h-[min(270px,40vh)] overflow-y-auto">
+      <ul
+        id={listboxId}
+        role="listbox"
+        className="scrollbar-always max-h-[min(18rem,38vh)] overflow-y-auto overscroll-contain"
+      >
         {items.map((item, i) => {
           const shardInfo = getShardInfo(item.shard);
           const isActive = i === highlightedIndex;
