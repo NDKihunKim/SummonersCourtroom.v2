@@ -17,6 +17,7 @@ import { SAMPLE_SIZE_OPTIONS, type SampleSize } from "@/lib/match-stats";
 export interface SampleSizeSelectorProps {
   value: SampleSize;
   onChange: (next: SampleSize) => void;
+  options?: readonly SampleSize[];
   /** Optional wrapper class — lets the parent fine-tune spacing. */
   className?: string;
 }
@@ -24,6 +25,7 @@ export interface SampleSizeSelectorProps {
 export function SampleSizeSelector({
   value,
   onChange,
+  options = SAMPLE_SIZE_OPTIONS,
   className,
 }: SampleSizeSelectorProps) {
   // Track button refs so arrow-key navigation can move focus to the next
@@ -37,13 +39,12 @@ export function SampleSizeSelector({
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       e.preventDefault();
       const dir = e.key === "ArrowRight" ? 1 : -1;
-      const nextIdx =
-        (idx + dir + SAMPLE_SIZE_OPTIONS.length) % SAMPLE_SIZE_OPTIONS.length;
-      const nextValue = SAMPLE_SIZE_OPTIONS[nextIdx];
+      const nextIdx = (idx + dir + options.length) % options.length;
+      const nextValue = options[nextIdx];
       onChange(nextValue);
       btnRefs.current[nextIdx]?.focus();
     },
-    [onChange],
+    [onChange, options],
   );
 
   return (
@@ -57,7 +58,7 @@ export function SampleSizeSelector({
         className,
       )}
     >
-      {SAMPLE_SIZE_OPTIONS.map((opt, idx) => {
+      {options.map((opt, idx) => {
         const isActive = opt === value;
         return (
           <button

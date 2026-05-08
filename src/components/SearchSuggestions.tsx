@@ -65,9 +65,7 @@ function HighlightedName({ text, query }: { text: string; query: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <span className="font-semibold text-foreground">
-        {text.slice(idx, idx + q.length)}
-      </span>
+      <span className="font-semibold text-foreground">{text.slice(idx, idx + q.length)}</span>
       {text.slice(idx + q.length)}
     </>
   );
@@ -98,8 +96,8 @@ export function SearchSuggestions({
   if (items.length === 0 && recentsCount === 0) return null;
 
   return (
-    <div className="animate-fade-in mt-2 overflow-hidden rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg">
-      <ul id={listboxId} role="listbox">
+    <div className="animate-fade-in absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg">
+      <ul id={listboxId} role="listbox" className="max-h-[270px] overflow-y-auto">
         {items.map((item, i) => {
           const shardInfo = getShardInfo(item.shard);
           const isActive = i === highlightedIndex;
@@ -121,25 +119,23 @@ export function SearchSuggestions({
               }}
               onMouseEnter={() => onHover(i)}
               className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                isActive
-                  ? "bg-gold/10 text-foreground"
-                  : "text-muted-foreground hover:bg-muted/40"
+                isActive ? "bg-gold/10 text-foreground" : "text-muted-foreground hover:bg-muted/40"
               }`}
             >
-            {/* Real profile icon (or letter-avatar fallback) so users
+              {/* Real profile icon (or letter-avatar fallback) so users
                 visually recognise familiar players in the dropdown. */}
-            <ProfileIcon
-              iconId={item.profileIconId}
-              seed={avatarSeed(item.gameName, item.tagLine)}
-              size={24}
-              className="shrink-0"
-              alt=""
-            />
+              <ProfileIcon
+                iconId={item.profileIconId}
+                seed={avatarSeed(item.gameName, item.tagLine)}
+                size={24}
+                className="shrink-0"
+                alt=""
+              />
 
-              {/* Tier crest — only meaningful for index entries (recents
-                  don't carry tier data in v1). Render an empty spacer for
-                  recents so columns line up. */}
-              {item.source === "index" ? (
+              {/* Tier crest — available for index rows and enriched recents.
+                  Render an empty spacer when cached tier data is unavailable
+                  so columns line up. */}
+              {item.hasRankMetadata ? (
                 <TierCrest tier={item.tier} size={18} className="shrink-0" />
               ) : (
                 <span className="inline-block w-[18px] shrink-0" aria-hidden />
@@ -160,8 +156,8 @@ export function SearchSuggestions({
                 <span className="text-muted-foreground">#{item.tagLine}</span>
               </span>
 
-              {/* Tier label as muted text — only for index entries. */}
-              {item.source === "index" && (
+              {/* Tier label as muted text when cached rank data is available. */}
+              {item.hasRankMetadata && (
                 <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
                   {tierLabel({
                     tier: item.tier,

@@ -48,6 +48,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       {
+        rel: "icon",
+        type: "image/png",
+        href: "/summoners-courtroom-logo.png",
+      },
+      {
+        rel: "apple-touch-icon",
+        href: "/summoners-courtroom-logo.png",
+      },
+      {
         rel: "stylesheet",
         href: appCss,
       },

@@ -107,7 +107,7 @@ function Index() {
 
   // Composed suggestions: local recents first, then shared backend index
   // (sorted Challenger -> Iron). Debounces the server call internally.
-  const suggestions = useSuggestions({ recents, query: riotId, shard, limit: 5 });
+  const suggestions = useSuggestions({ recents, query: riotId, shard, limit: 12 });
 
   // Reset highlight whenever the visible list changes so we never point at
   // a stale index (which would otherwise read as "selected" via aria).
@@ -319,19 +319,16 @@ function Index() {
           north & south ads (AdFrame's middle row is flex-1 in fit
           mode). Padding is reduced so the form stays visible on
           shorter viewports without scrolling. */}
-      <div className="h-full rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
-        <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-6 md:py-10">
+      <div className="min-h-[calc(100vh-5rem)] rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
+        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-3xl flex-col items-center justify-center px-4 py-6 md:py-10">
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-gold">
-            <Swords className="h-3.5 w-3.5" /> Summoner Lookup
+            <Swords className="h-3.5 w-3.5" /> League of Legends AI Verdict
           </div>
-          <h1 className="bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-center text-5xl font-bold tracking-tight text-transparent md:text-6xl">
-            Summoner's Courtroom
-          </h1>
-          <p className="mt-3 max-w-md text-center text-muted-foreground">
-            Enter your Riot ID to pull recent matches live from Riot, then let the AI Judge weigh in
-            on every match.
-          </p>
-
+          <img
+            src="/summoners-courtroom-title.png"
+            alt="Summoner's Courtroom"
+            className="mt-1 h-auto max-h-28 w-full max-w-xl object-contain md:max-h-36"
+          />
           <form onSubmit={onSubmit} className="mt-10 w-full max-w-xl">
             {/* Wrapper is `relative` so the suggestions dropdown can stack
                 directly under the input row without affecting layout. */}
@@ -406,8 +403,9 @@ function Index() {
             </div>
           </form>
 
-          <p className="mt-6 text-xs text-muted-foreground">
-            Pick your region (NA, EUW, KR, etc.)
+          <p className="mt-6 max-w-md text-center text-sm text-muted-foreground">
+            Enter your Riot ID to pull recent matches live from Riot, then let the AI Judge weigh in
+            on every match.
           </p>
         </div>
       </div>
@@ -483,6 +481,16 @@ function MatchHistory({
   // persists in localStorage (see `useSampleSize`) so it sticks across
   // searches and reloads.
   const { sampleSize, setSampleSize } = useSampleSize();
+  const sampleSizeOptions = useMemo(
+    () => (matches.length > 25 ? ([10, 20, 30] as const) : ([10, 20] as const)),
+    [matches.length],
+  );
+  const showSampleSizeSelector = matches.length >= 10;
+
+  useEffect(() => {
+    if (!showSampleSizeSelector || sampleSizeOptions.includes(sampleSize)) return;
+    setSampleSize(sampleSizeOptions[sampleSizeOptions.length - 1]);
+  }, [sampleSize, sampleSizeOptions, setSampleSize, showSampleSizeSelector]);
 
   // Memoize so unrelated re-renders (e.g. RefreshButton ticking its
   // "updated Xm ago" label) don't recompute the full reduce.
@@ -582,13 +590,13 @@ function MatchHistory({
                 <Trophy className="h-4 w-4 text-gold" />
                 <span>Last {sampleUsed} matches</span>
               </div>
-              {/* 10 / 20 / 30 selector — only render when we actually
-                  have matches to slice. Avoids a dangling control on
-                  empty histories. */}
-              {matches.length > 0 ? (
+              {/* Hide the selector for tiny histories; otherwise expose only
+                  the sample sizes that make sense for the cached match count. */}
+              {showSampleSizeSelector ? (
                 <SampleSizeSelector
                   value={sampleSize}
                   onChange={setSampleSize}
+                  options={sampleSizeOptions}
                 />
               ) : null}
               <div className="flex gap-6 text-center">

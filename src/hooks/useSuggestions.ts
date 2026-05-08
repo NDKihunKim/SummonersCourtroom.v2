@@ -20,7 +20,7 @@ import type { Tier, Division } from "@/lib/tier";
 import {
   getSuggestionsFromIndex,
   type IndexSuggestion,
-  getProfileIconsForKeys,
+  getRecentMetadataForKeys,
 } from "@/functions/summoner-cache.functions";
 
 /** Source tag — UI uses this to decide whether to render a tier crest. */
@@ -35,6 +35,7 @@ export interface Suggestion {
   tier: Tier | null;
   division: Division | null;
   lp: number | null;
+  hasRankMetadata: boolean;
   /**
    * Real Riot profile icon id. Present for index entries that have been
    * backfilled; null for local "recent" entries (we don't have it locally
@@ -57,6 +58,7 @@ function recentToSuggestion(r: RecentSearch): Suggestion {
     tier: null,
     division: null,
     lp: null,
+    hasRankMetadata: false,
     profileIconId: null,
   };
 }
@@ -70,6 +72,7 @@ function indexToSuggestion(i: IndexSuggestion): Suggestion {
     tier: i.tier,
     division: i.division,
     lp: i.lp,
+    hasRankMetadata: true,
     profileIconId: i.profileIconId,
   };
 }
@@ -89,14 +92,10 @@ export function useSuggestions({ recents, query, shard, limit = 5 }: Options) {
     [recents, query, shard, limit],
   );
 
-  // Enrich local recents with their real Data Dragon profile icon ids by
-  // looking the keys up in the shared cache. Missing keys (player never
-  // searched on this shard before) gracefully fall back to the letter
-  // avatar in <ProfileIcon>. Stable cache key so the same set of recents
-  // doesn't re-trigger a network round-trip on every keystroke.
+  // Enrich local recents with cached profile/ranked metadata. Missing keys
+  // gracefully fall back to the local-only row.
   const recentKeyPairs = useMemo(
-    () =>
-      localItems.map((s) => ({ gameName: s.gameName, tagLine: s.tagLine })),
+    () => localItems.map((s) => ({ gameName: s.gameName, tagLine: s.tagLine })),
     [localItems],
   );
   const recentKeyHash = useMemo(
@@ -108,10 +107,10 @@ export function useSuggestions({ recents, query, shard, limit = 5 }: Options) {
     [recentKeyPairs],
   );
 
-  const { data: iconMap = {} } = useQuery({
-    queryKey: ["recent-icons", shard, recentKeyHash],
+  const { data: metadataMap = {} } = useQuery({
+    queryKey: ["recent-metadata", shard, recentKeyHash],
     queryFn: () =>
-      getProfileIconsForKeys({
+      getRecentMetadataForKeys({
         data: { shard, keys: recentKeyPairs },
       }),
     enabled: recentKeyPairs.length > 0,
@@ -120,13 +119,13 @@ export function useSuggestions({ recents, query, shard, limit = 5 }: Options) {
   });
 
   const enrichedLocalItems = useMemo<Suggestion[]>(() => {
-    if (Object.keys(iconMap).length === 0) return localItems;
+    if (Object.keys(metadataMap).length === 0) return localItems;
     return localItems.map((s) => {
       const k = `${s.gameName.toLowerCase()}#${s.tagLine.toLowerCase()}`;
-      const icon = iconMap[k];
-      return icon != null ? { ...s, profileIconId: icon } : s;
+      const metadata = metadataMap[k];
+      return metadata ? { ...s, ...metadata, hasRankMetadata: true } : s;
     });
-  }, [localItems, iconMap]);
+  }, [localItems, metadataMap]);
 
   // Debounce the query for the backend call only — local recents stay live.
   const [debouncedQuery, setDebouncedQuery] = useState(query);

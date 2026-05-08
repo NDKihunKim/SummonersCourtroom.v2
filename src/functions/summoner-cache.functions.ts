@@ -26,12 +26,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { Match } from "@/lib/match-types";
 import { shardToPlatform, shardToRouting } from "@/lib/regions";
-import {
-  parseDivision,
-  parseTier,
-  type Division,
-  type Tier,
-} from "@/lib/tier";
+import { parseDivision, parseTier, type Division, type Tier } from "@/lib/tier";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getLeagueEntriesByPuuid, pickSoloEntry } from "@/server/league";
 import {
@@ -59,10 +54,23 @@ import {
  * doesn't need a runtime cast. If we ever add a shard, add it both places.
  */
 const ShardSchema = z.enum([
-  "NA", "BR", "LAN", "LAS",
-  "EUW", "EUNE", "RU", "TR", "ME",
-  "KR", "JP", "TW",
-  "OCE", "SEA", "TH", "PH", "VN",
+  "NA",
+  "BR",
+  "LAN",
+  "LAS",
+  "EUW",
+  "EUNE",
+  "RU",
+  "TR",
+  "ME",
+  "KR",
+  "JP",
+  "TW",
+  "OCE",
+  "SEA",
+  "TH",
+  "PH",
+  "VN",
 ]);
 
 const RiotIdSchema = z.object({
@@ -125,7 +133,9 @@ function displayName(p: RiotMatchParticipant): string {
   return p.summonerName || "Unknown";
 }
 
-function extractRunes(p: RiotMatchParticipant): { keystoneId: number; secondaryStyleId: number } | undefined {
+function extractRunes(
+  p: RiotMatchParticipant,
+): { keystoneId: number; secondaryStyleId: number } | undefined {
   const styles = p.perks?.styles;
   if (!styles || styles.length === 0) return undefined;
   const primary = styles.find((s) => s.description === "primaryStyle") ?? styles[0];
@@ -229,9 +239,7 @@ async function fetchFreshFromRiot(
   ]);
 
   // Fetch each match in parallel; tolerate individual failures.
-  const settled = await Promise.allSettled(
-    matchIds.map((id) => fetchMatch(id, routing)),
-  );
+  const settled = await Promise.allSettled(matchIds.map((id) => fetchMatch(id, routing)));
   const matches: Match[] = [];
   for (const s of settled) {
     if (s.status !== "fulfilled") {
@@ -284,9 +292,7 @@ function rowToPayload(
   fromCache: boolean,
 ): CachedSummonerPayload {
   const tier = parseTier(row.tier);
-  const ranked = tier
-    ? { tier, division: parseDivision(row.division), lp: row.lp ?? 0 }
-    : null;
+  const ranked = tier ? { tier, division: parseDivision(row.division), lp: row.lp ?? 0 } : null;
 
   // `matches` is JSONB — could in theory be malformed if hand-edited.
   const matches = Array.isArray(row.matches) ? (row.matches as Match[]) : [];
@@ -310,11 +316,7 @@ function rowToPayload(
  * the lowercase functional index on game_name and filter by tag client-side
  * (small set, avoids a second functional index for tag).
  */
-async function findCachedByRiotId(
-  shard: string,
-  gameName: string,
-  tagLine: string,
-) {
+async function findCachedByRiotId(shard: string, gameName: string, tagLine: string) {
   const { data, error } = await supabaseAdmin
     .from("cached_summoners")
     .select(
@@ -330,9 +332,7 @@ async function findCachedByRiotId(
     return null;
   }
   const lowerTag = tagLine.toLowerCase();
-  return (
-    data?.find((row) => row.tag_line.toLowerCase() === lowerTag) ?? null
-  );
+  return data?.find((row) => row.tag_line.toLowerCase() === lowerTag) ?? null;
 }
 
 /**
@@ -459,9 +459,7 @@ export const refreshSummoner = createServerFn({ method: "POST" })
       const remaining = lastRefresh + REFRESH_COOLDOWN_MS - Date.now();
       if (remaining > 0) {
         const seconds = Math.ceil(remaining / 1000);
-        throw new Error(
-          `Refresh on cooldown — try again in ${seconds}s.`,
-        );
+        throw new Error(`Refresh on cooldown — try again in ${seconds}s.`);
       }
     }
 
@@ -570,16 +568,16 @@ export const getSuggestionsFromIndex = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
-// Profile-icon enrichment for local recents
+// Cache enrichment for local recents
 //
-// Local "recent" searches are stored in the browser only and don't carry a
-// `profile_icon_id`. To render the real Data Dragon avatar in the autocomplete
-// dropdown, we look those keys up in the shared `cached_summoners` table and
-// return any icon ids we have on file. Missing keys are simply absent from
-// the returned map → the UI falls back to the letter avatar.
+// Local "recent" searches are stored in the browser only and don't carry
+// cached profile/ranked metadata. To render the real Data Dragon avatar and
+// tier crest in the autocomplete dropdown, we look those keys up in the shared
+// `cached_summoners` table. Missing keys are simply absent from the returned
+// map → the UI falls back to the local-only row.
 // ---------------------------------------------------------------------------
 
-const ProfileIconKeysSchema = z.object({
+const RecentMetadataKeysSchema = z.object({
   shard: ShardSchema,
   keys: z
     .array(
@@ -589,15 +587,22 @@ const ProfileIconKeysSchema = z.object({
       }),
     )
     .min(1)
-    .max(10),
+    .max(20),
 });
 
-/** Map key shape: lowercased "name#tag" → profileIconId | null. */
-export type ProfileIconMap = Record<string, number | null>;
+export type RecentMetadata = {
+  tier: Tier | null;
+  division: Division | null;
+  lp: number | null;
+  profileIconId: number | null;
+};
 
-export const getProfileIconsForKeys = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => ProfileIconKeysSchema.parse(input))
-  .handler(async ({ data }): Promise<ProfileIconMap> => {
+/** Map key shape: lowercased "name#tag" → cached metadata. */
+export type RecentMetadataMap = Record<string, RecentMetadata>;
+
+export const getRecentMetadataForKeys = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => RecentMetadataKeysSchema.parse(input))
+  .handler(async ({ data }): Promise<RecentMetadataMap> => {
     // Build a lookup of requested keys (lowercased) for O(1) filtering of
     // the rows we get back. Postgres `ilike` is case-insensitive so the IN
     // list below uses the original-cased names; we de-dupe by lowercased key
@@ -611,7 +616,7 @@ export const getProfileIconsForKeys = createServerFn({ method: "POST" })
 
     const { data: rows, error } = await supabaseAdmin
       .from("cached_summoners")
-      .select("game_name, tag_line, profile_icon_id")
+      .select("game_name, tag_line, tier, division, lp, profile_icon_id")
       .eq("shard", data.shard)
       .in("game_name", Array.from(names))
       // Belt-and-suspenders: cap result size in case of casing collisions
@@ -619,17 +624,22 @@ export const getProfileIconsForKeys = createServerFn({ method: "POST" })
       .limit(50);
 
     if (error) {
-      console.error("[summoner-cache] icon lookup failed:", error);
+      console.error("[summoner-cache] recent metadata lookup failed:", error);
       return {};
     }
 
-    const out: ProfileIconMap = {};
+    const out: RecentMetadataMap = {};
     for (const row of rows ?? []) {
       const key = indexKey(row.game_name, row.tag_line);
       // Only return keys the caller actually asked about — avoids leaking
       // unrelated rows that happen to share a game_name (case variants etc).
       if (!requested.has(key)) continue;
-      out[key] = row.profile_icon_id;
+      out[key] = {
+        tier: parseTier(row.tier),
+        division: parseDivision(row.division),
+        lp: row.lp,
+        profileIconId: row.profile_icon_id,
+      };
     }
     return out;
   });
