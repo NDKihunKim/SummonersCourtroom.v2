@@ -8,6 +8,7 @@ import {
 } from "./TimeRangePicker";
 import { TimelineWindowResult } from "./TimelineWindowResult";
 import type { Match, Participant } from "@/lib/match-types";
+import type { TranslationKey } from "@/i18n";
 
 /**
  * Specify-Time scope panel. Composes:
@@ -66,6 +67,7 @@ export function ScopeSpecifyTime({
   match,
   you,
   onRun,
+  t,
 }: {
   matchId: string;
   userPuuid: string;
@@ -97,6 +99,7 @@ export function ScopeSpecifyTime({
    * preview is rendered as before.
    */
   onRun?: (range: TimeRange) => void;
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   const gameDurationMs = useMemo(() => parseDurationToMs(durationStr), [durationStr]);
 
@@ -120,9 +123,11 @@ export function ScopeSpecifyTime({
           onClick={onBack}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="h-3 w-3" /> Back to scope
+          <ArrowLeft className="h-3 w-3" /> {t?.("backToScope") ?? "Back to scope"}
         </button>
-        <span className="text-xs uppercase tracking-wider text-gold">Specify Time</span>
+        <span className="text-xs uppercase tracking-wider text-gold">
+          {t?.("specifyTime") ?? "Specify Time"}
+        </span>
       </div>
 
       <div className="flex flex-col items-center gap-4">
@@ -130,6 +135,7 @@ export function ScopeSpecifyTime({
           gameDurationMs={gameDurationMs}
           value={range}
           onChange={setRange}
+          t={t}
         />
 
         <button
@@ -140,7 +146,7 @@ export function ScopeSpecifyTime({
           disabled={!validSpan}
           className="rounded-lg border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Verdict
+          {t?.("verdict") ?? "Verdict"}
         </button>
 
         {!onRun && (

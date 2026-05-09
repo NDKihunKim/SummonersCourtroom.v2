@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { filterRecents, type RecentSearch } from "@/lib/recent-searches";
+import { filterSavedPlayers, type SavedPlayer } from "@/lib/saved-players";
 import type { Shard } from "@/lib/regions";
 import type { Tier, Division } from "@/lib/tier";
 import {
@@ -23,8 +24,8 @@ import {
   getRecentMetadataForKeys,
 } from "@/functions/summoner-cache.functions";
 
-/** Source tag — UI uses this to decide whether to render a tier crest. */
-export type SuggestionSource = "recent" | "index";
+/** Source tag — UI uses this to decide which row actions are available. */
+export type SuggestionSource = "saved" | "recent" | "index";
 
 export interface Suggestion {
   source: SuggestionSource;
@@ -63,6 +64,20 @@ function recentToSuggestion(r: RecentSearch): Suggestion {
   };
 }
 
+function savedToSuggestion(s: SavedPlayer): Suggestion {
+  return {
+    source: "saved",
+    gameName: s.gameName,
+    tagLine: s.tagLine,
+    shard: s.shard,
+    tier: s.tier,
+    division: s.division,
+    lp: s.lp,
+    hasRankMetadata: s.tier !== null,
+    profileIconId: s.profileIconId,
+  };
+}
+
 function indexToSuggestion(i: IndexSuggestion): Suggestion {
   return {
     source: "index",
@@ -78,6 +93,7 @@ function indexToSuggestion(i: IndexSuggestion): Suggestion {
 }
 
 interface Options {
+  savedPlayers: SavedPlayer[];
   recents: RecentSearch[];
   query: string;
   shard: Shard;
@@ -85,11 +101,32 @@ interface Options {
   limit?: number;
 }
 
-export function useSuggestions({ recents, query, shard, limit = 5 }: Options) {
+export function useSuggestions({ savedPlayers, recents, query, shard, limit = 5 }: Options) {
+  const savedItems = useMemo(
+    () => filterSavedPlayers(savedPlayers, query, shard, limit).map(savedToSuggestion),
+    [savedPlayers, query, shard, limit],
+  );
+
   // Local recents — instant, no network. Already filtered + shard-scoped.
-  const localItems = useMemo(
+  const recentItems = useMemo(
     () => filterRecents(recents, query, shard, limit).map(recentToSuggestion),
     [recents, query, shard, limit],
+  );
+
+  const localItems = useMemo(
+    () => {
+      const seen = new Set(savedItems.map((s) => dedupeKey(s.gameName, s.tagLine)));
+      return [
+        ...savedItems,
+        ...recentItems.filter((s) => {
+          const k = dedupeKey(s.gameName, s.tagLine);
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        }),
+      ].slice(0, limit);
+    },
+    [savedItems, recentItems, limit],
   );
 
   // Enrich local recents with cached profile/ranked metadata. Missing keys

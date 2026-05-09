@@ -9,7 +9,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ArrowLeft, Loader2, Search, Swords, Trophy } from "lucide-react";
+import { ArrowLeft, Loader2, Search, Star, Swords, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { MatchCard } from "@/components/MatchCard";
 import { AdFrame } from "@/components/AdFrame";
@@ -23,6 +23,7 @@ import {
 } from "@/functions/summoner-cache.functions";
 import { SearchSuggestions } from "@/components/SearchSuggestions";
 import { useRecentSearches } from "@/hooks/useRecentSearches";
+import { useSavedPlayers } from "@/hooks/useSavedPlayers";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { RefreshButton } from "@/components/RefreshButton";
 import { TierEmblem } from "@/components/TierEmblem";
@@ -32,6 +33,7 @@ import type { Participant } from "@/lib/match-types";
 import { SampleSizeSelector } from "@/components/SampleSizeSelector";
 import { useSampleSize } from "@/hooks/useSampleSize";
 import { computeMatchStats } from "@/lib/match-stats";
+import { useLocale, type Locale, type TranslationKey } from "@/i18n";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -89,6 +91,7 @@ function buildPlayerSearchUrl(riotId: string, shard: Shard): string {
 }
 
 function Index() {
+  const { locale, setLocale, t } = useLocale();
   const [riotId, setRiotId] = useState("");
   // Per-shard selection (e.g. "NA", "EUW", "KR"). The hook auto-detects from
   // the visitor's IANA timezone on first visit, then persists their choice
@@ -96,18 +99,22 @@ function Index() {
   // to the routing cluster the backend expects (handled inside the cache fn).
   const { shard, setShard } = useShard();
   const [data, setData] = useState<CachedSummonerPayload | null>(null);
+  const [viewedShard, setViewedShard] = useState<Shard | null>(null);
 
   // ─── Autocomplete (recent searches) ────────────────────────────────────
   // Owned here so the form's submit + keyboard handlers can drive it.
   const { recents, addRecent, removeRecent, clearAll } = useRecentSearches();
+  const { savedPlayers, addSavedPlayer, removeSavedPlayer, isSaved } = useSavedPlayers();
   const [isSuggestOpen, setIsSuggestOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const listboxId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const [suggestionsHeight, setSuggestionsHeight] = useState(0);
 
   // Composed suggestions: local recents first, then shared backend index
   // (sorted Challenger -> Iron). Debounces the server call internally.
-  const suggestions = useSuggestions({ recents, query: riotId, shard, limit: 8 });
+  const suggestions = useSuggestions({ savedPlayers, recents, query: riotId, shard, limit: 20 });
 
   // Reset highlight whenever the visible list changes so we never point at
   // a stale index (which would otherwise read as "selected" via aria).
@@ -137,25 +144,27 @@ function Index() {
     mutationFn: async (vars: { gameName: string; tagLine: string; shard: Shard }) => {
       return getOrFetchMatchHistory({ data: vars });
     },
-    onSuccess: (result) => {
+    onSuccess: (result, vars) => {
       setData(result);
+      setViewedShard(vars.shard);
+      setShard(vars.shard);
       // Persist this successful lookup for future autocomplete suggestions.
       // Source the canonical name/tag from the server response so casing
       // matches Riot's record (the user may have typed it differently).
       addRecent({
         gameName: result.account.gameName,
         tagLine: result.account.tagLine,
-        shard,
+        shard: vars.shard,
       });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to load matches"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("failedToLoadMatches")),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const parsed = parseRiotId(riotId);
     if (!parsed) {
-      toast.error("Enter your Riot ID as Name#TAG (e.g. Faker#KR1).");
+      toast.error(t("invalidRiotId"));
       return;
     }
     // Close the dropdown on submit so it doesn't linger over the result view.
@@ -175,7 +184,7 @@ function Index() {
     mutation.mutate({
       gameName: item.gameName,
       tagLine: item.tagLine,
-      shard,
+      shard: item.shard,
     });
   }
 
@@ -183,7 +192,7 @@ function Index() {
   function handleClearAll() {
     const cleared = clearAll();
     if (cleared > 0) {
-      toast.success(`Cleared ${cleared} recent search${cleared === 1 ? "" : "es"}.`);
+      toast.success(t("clearedRecentSearches", { count: cleared, plural: cleared === 1 ? "" : "es" }));
     }
   }
 
@@ -215,11 +224,11 @@ function Index() {
     if (!parsed) {
       // Should be unreachable from the roster (every Riot ID has a tag) but
       // we surface a friendly toast instead of silently failing.
-      toast.error(`Couldn't parse "${rawRiotId}" — expected Name#TAG.`);
+      toast.error(t("couldntParse", { riotId: rawRiotId }));
       return;
     }
     if (typeof window === "undefined") return; // SSR safety
-    const url = buildPlayerSearchUrl(rawRiotId, shard);
+    const url = buildPlayerSearchUrl(rawRiotId, viewedShard ?? shard);
     // `noopener,noreferrer` — see security note above.
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -236,9 +245,19 @@ function Index() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+    const shardParam = params.get("shard");
+    if (shardParam && isKnownShard(shardParam) && shardParam !== shard) {
+      setShard(shardParam);
+    }
+
     const rawRiotId = params.get("riotId");
     const auto = params.get("autosearch");
-    if (!rawRiotId || auto !== "1") return;
+    if (!rawRiotId || auto !== "1") {
+      if (shardParam && isKnownShard(shardParam)) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+      return;
+    }
 
     const parsed = parseRiotId(rawRiotId);
     if (!parsed) {
@@ -249,12 +268,8 @@ function Index() {
 
     // Optional shard override from the URL. Falls back to the user's stored
     // shard preference (already loaded by `useShard`) when missing or unknown.
-    const shardParam = params.get("shard");
     const effectiveShard: Shard =
       shardParam && isKnownShard(shardParam) ? shardParam : shard;
-    if (shardParam && isKnownShard(shardParam) && shardParam !== shard) {
-      setShard(shardParam);
-    }
 
     // Mirror the form's submit behavior so caching / recent searches /
     // toasts all behave identically to a manual lookup.
@@ -296,42 +311,90 @@ function Index() {
     }
   }
 
+  const hasVisibleSuggestions = isSuggestOpen && suggestions.length > 0;
+
+  useEffect(() => {
+    if (!hasVisibleSuggestions) {
+      setSuggestionsHeight(0);
+      return;
+    }
+
+    const measure = () => {
+      const element = suggestionsRef.current;
+      if (!element) return;
+      const maxHeight = Math.min(18 * 16, window.innerHeight * 0.38);
+      setSuggestionsHeight(Math.min(element.offsetHeight, maxHeight));
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [hasVisibleSuggestions, suggestions.length, recents.length]);
+
   if (data) {
+    const resultShard = viewedShard ?? shard;
+
     return (
-      <AdFrame>
+      <AdFrame homeHref={`/?shard=${resultShard}`} locale={locale} t={t}>
         <MatchHistory
           result={data}
-          shard={shard}
+          shard={resultShard}
+          isSaved={isSaved({
+            gameName: data.account.gameName,
+            tagLine: data.account.tagLine,
+            shard: resultShard,
+          })}
+          onToggleSaved={() => {
+            const player = {
+              gameName: data.account.gameName,
+              tagLine: data.account.tagLine,
+              shard: resultShard,
+            };
+            if (isSaved(player)) {
+              removeSavedPlayer(`${resultShard}|${data.account.gameName.toLowerCase()}#${data.account.tagLine.toLowerCase()}`);
+              toast.success(t("unsavedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }));
+            } else {
+              addSavedPlayer({
+                ...player,
+                profileIconId: data.profileIconId ?? null,
+                tier: data.ranked?.tier ?? null,
+                division: data.ranked?.division ?? null,
+                lp: data.ranked?.lp ?? null,
+              });
+              toast.success(t("savedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }));
+            }
+          }}
           onRefreshed={(fresh) => setData(fresh)}
           onBack={() => {
             setData(null);
+            setViewedShard(null);
             mutation.reset();
           }}
           onSearchPlayer={searchPlayerById}
+          locale={locale}
+          t={t}
         />
       </AdFrame>
     );
   }
 
-  const hasVisibleSuggestions = isSuggestOpen && suggestions.length > 0;
-
   return (
-    <AdFrame fitViewport>
+    <AdFrame fitViewport locale={locale} onLocaleChange={setLocale} t={t}>
       {/* h-full lets the hero fill the leftover space between the
           north & south ads (AdFrame's middle row is flex-1 in fit
           mode). Padding is reduced so the form stays visible on
           shorter viewports without scrolling. */}
-      <div className="min-h-[calc(100vh-5rem)] rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
-        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-3xl flex-col items-center justify-center px-4 py-6 md:py-10">
-          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-gold">
-            <Swords className="h-3.5 w-3.5" /> League of Legends AI Verdict
+      <div className="min-h-[calc(100dvh-4rem)] rounded-xl sm:min-h-[calc(100dvh-5rem)] sm:rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
+        <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-3xl flex-col items-center justify-center px-3 py-16 sm:min-h-[calc(100dvh-5rem)] sm:px-4 sm:py-8 md:py-10">
+          <div className="mb-3 flex items-center gap-2 text-center text-[10px] font-semibold uppercase tracking-[0.22em] text-gold sm:text-xs sm:tracking-[0.3em]">
+            <Swords className="h-3.5 w-3.5" /> {t("heroLabel")}
           </div>
           <img
             src="/summoners-courtroom-title.png"
             alt="Summoner's Courtroom"
-            className="mt-1 h-auto max-h-28 w-full max-w-xl object-contain md:max-h-36"
+            className="mt-1 h-auto max-h-24 w-full max-w-xl object-contain sm:max-h-28 md:max-h-36"
           />
-          <form onSubmit={onSubmit} className="mt-10 w-full max-w-xl">
+          <form onSubmit={onSubmit} className="mt-8 w-full max-w-xl sm:mt-10">
             {/* Wrapper is `relative` so the suggestions dropdown can stack
                 directly under the input row without affecting layout. */}
             <div ref={wrapperRef} className="relative">
@@ -340,10 +403,10 @@ function Index() {
               style={{ boxShadow: "var(--shadow-elegant)" }}
             >
               {/* Shard picker sits on the LEFT, separated by a subtle divider */}
-              <div className="flex items-center sm:border-r sm:border-border sm:pr-1">
-                <RegionPicker value={shard} onChange={setShard} />
+              <div className="flex items-center border-b border-border pb-1 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-1">
+                <RegionPicker value={shard} onChange={setShard} t={t} />
               </div>
-              <div className="flex flex-1 items-center">
+              <div className="flex min-w-0 flex-1 items-center">
                 <Search className="ml-3 h-5 w-5 shrink-0 text-muted-foreground" />
                 <input
                   type="text"
@@ -363,22 +426,22 @@ function Index() {
                   aria-activedescendant={
                     highlightedIndex >= 0 ? `recent-option-${highlightedIndex}` : undefined
                   }
-                  placeholder="Riot ID (e.g. Faker#KR1)"
+                  placeholder={t("riotIdPlaceholder")}
                   autoComplete="off"
-                  className="w-full bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  className="min-w-0 w-full bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
                 />
               </div>
               <button
                 type="submit"
                 disabled={mutation.isPending}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
               >
                 {mutation.isPending ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                    <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
                   </>
                 ) : (
-                  "Search"
+                  t("search")
                 )}
               </button>
             </div>
@@ -390,27 +453,31 @@ function Index() {
                 disappears instead of lingering with backend index entries
                 that look identical to local history. */}
             {hasVisibleSuggestions && (
-              <>
-                <SearchSuggestions
-                  items={suggestions}
-                  highlightedIndex={highlightedIndex}
-                  query={riotId}
-                  listboxId={listboxId}
-                  onHover={setHighlightedIndex}
-                  onSelect={selectSuggestion}
-                  onRemove={removeRecent}
-                  recentsCount={recents.length}
-                  onClearAll={handleClearAll}
-                />
-                <div className="h-[min(18rem,38vh)]" aria-hidden />
-              </>
+              <SearchSuggestions
+                items={suggestions}
+                highlightedIndex={highlightedIndex}
+                query={riotId}
+                listboxId={listboxId}
+                onHover={setHighlightedIndex}
+                onSelect={selectSuggestion}
+                onRemove={removeRecent}
+                onUnsave={removeSavedPlayer}
+                recentsCount={recents.length}
+                onClearAll={handleClearAll}
+                contentRef={suggestionsRef}
+                t={t}
+              />
             )}
             </div>
+            <div
+              className="overflow-hidden transition-[height] duration-300 ease-out"
+              style={{ height: suggestionsHeight }}
+              aria-hidden
+            />
           </form>
 
-          <p className="mt-6 max-w-md text-center text-sm text-muted-foreground">
-            Enter your Riot ID to pull recent matches live from Riot, then let the AI Judge weigh in
-            on every match.
+          <p className="mt-6 w-full max-w-2xl text-center text-sm text-muted-foreground">
+            {t("heroHelper")}
           </p>
         </div>
       </div>
@@ -421,16 +488,24 @@ function Index() {
 function MatchHistory({
   result,
   shard,
+  isSaved,
+  onToggleSaved,
   onRefreshed,
   onBack,
   onSearchPlayer,
+  locale,
+  t,
 }: {
   result: CachedSummonerPayload;
   shard: Shard;
+  isSaved: boolean;
+  onToggleSaved: () => void;
   onRefreshed: (fresh: CachedSummonerPayload) => void;
   onBack: () => void;
   /** Called when a roster row is clicked — searches that player same-tab. */
   onSearchPlayer: (rawRiotId: string) => void;
+  locale: Locale;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   const { account, matches, ranked, cachedAt, refreshAvailableAt, profileIconId } = result;
   // ─── Stats vs. visible split ─────────────────────────────────────────
@@ -511,12 +586,12 @@ function MatchHistory({
 
   return (
     <div className="rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
-      <div className="mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 pb-8 pt-16 sm:pt-20">
         <button
           onClick={onBack}
           className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-gold"
         >
-          <ArrowLeft className="h-4 w-4" /> New search
+          <ArrowLeft className="h-4 w-4" /> {t("newSearch")}
         </button>
 
         <div
@@ -544,10 +619,25 @@ function MatchHistory({
                 alt={`${account.gameName}#${account.tagLine} profile icon`}
               />
               <div>
-                <h1 className="text-3xl font-bold text-foreground">
-                  {account.gameName}
-                  <span className="text-muted-foreground">#{account.tagLine}</span>
-                </h1>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-3xl font-bold text-foreground">
+                    {account.gameName}
+                    <span className="text-muted-foreground">#{account.tagLine}</span>
+                  </h1>
+                  <button
+                    type="button"
+                    onClick={onToggleSaved}
+                    aria-pressed={isSaved}
+                    aria-label={`${t(isSaved ? "unsavePlayer" : "savePlayer")} ${account.gameName}#${account.tagLine}`}
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
+                      isSaved
+                        ? "border-gold bg-gold/15 text-gold hover:bg-gold/25"
+                        : "border-border bg-background/40 text-muted-foreground hover:border-gold hover:text-gold"
+                    }`}
+                  >
+                    <Star className={`h-5 w-5 ${isSaved ? "fill-current" : ""}`} />
+                  </button>
+                </div>
                 {/* Refresh control + "Updated Xm ago" — sits directly under
                     the Riot ID per the new layout. */}
                 <div className="mt-2">
@@ -558,6 +648,7 @@ function MatchHistory({
                     cachedAt={cachedAt}
                     refreshAvailableAt={refreshAvailableAt}
                     onRefreshed={onRefreshed}
+                    t={t}
                   />
                 </div>
               </div>
@@ -593,7 +684,7 @@ function MatchHistory({
                   "Last 17 matches" instead of lying about it. */}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Trophy className="h-4 w-4 text-gold" />
-                <span>Last {sampleUsed} matches</span>
+                <span>{t("lastMatches", { count: sampleUsed })}</span>
               </div>
               {/* Hide the selector for tiny histories; otherwise expose only
                   the sample sizes that make sense for the cached match count. */}
@@ -602,23 +693,24 @@ function MatchHistory({
                   value={sampleSize}
                   onChange={setSampleSize}
                   options={sampleSizeOptions}
+                  t={t}
                 />
               ) : null}
               <div className="flex gap-6 text-center">
-                <Stat label="Win Rate" value={`${wr}%`} accent />
-                <Stat label="W / L" value={`${wins}W ${losses}L`} />
-                <Stat label="Avg KDA" value={avgKda} />
+                <Stat label={t("winRate")} value={`${wr}%`} accent />
+                <Stat label={t("winLoss")} value={`${wins}W ${losses}L`} />
+                <Stat label={t("avgKda")} value={avgKda} />
               </div>
             </div>
           </div>
         </div>
 
         <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Recent Matches
+          {t("recentMatches")}
         </h2>
         {visibleMatches.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-            No recent matches found for this account.
+            {t("noRecentMatches")}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -668,6 +760,8 @@ function MatchHistory({
                     match={m}
                     you={you}
                     onPlayerClick={onSearchPlayer}
+                    locale={locale}
+                    t={t}
                   />
                 </div>
               );
@@ -678,6 +772,7 @@ function MatchHistory({
             {remainingCount > 0 ? (
               <ShowMoreMatchesButton
                 remainingCount={remainingCount}
+                t={t}
                 onClick={() => {
                   // Mark intent BEFORE flipping state so the post-render
                   // effect knows this transition was user-driven (vs.

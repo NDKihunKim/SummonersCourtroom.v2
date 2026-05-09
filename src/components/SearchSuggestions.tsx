@@ -5,12 +5,14 @@
 // list of items in. This keeps the component trivially testable and easy
 // to swap (e.g. when we later add a shared backend index).
 
-import { Trash2, X } from "lucide-react";
+import { Star, Trash2, X } from "lucide-react";
+import type { Ref } from "react";
 import { getShardInfo } from "@/lib/regions";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import { TierCrest } from "@/components/TierCrest";
 import { tierLabel } from "@/lib/tier";
 import { ProfileIcon } from "@/components/ProfileIcon";
+import type { TranslationKey } from "@/i18n";
 
 /**
  * Stable, cheap hash → small int seed for the letter-avatar fallback so the
@@ -24,7 +26,7 @@ function avatarSeed(name: string, tag: string): number {
 }
 
 interface Props {
-  /** Already filtered + sorted suggestions to display (≤8 in practice). */
+  /** Already filtered + sorted suggestions to display. */
   items: Suggestion[];
   /** Index of the keyboard-highlighted row, or -1 for none. */
   highlightedIndex: number;
@@ -37,10 +39,11 @@ interface Props {
   /** User picked a suggestion (click or Enter on highlighted row). */
   onSelect: (item: Suggestion) => void;
   /**
-   * User clicked the ✕ on a "recent" row. Only emitted for `source==="recent"`
-   * — index entries cannot be removed locally.
+   * User clicked the ✕ on a "recent" row. Only emitted for `source==="recent"`.
    */
   onRemove: (key: string) => void;
+  /** User clicked the star action on a saved row. */
+  onUnsave: (key: string) => void;
   /**
    * Number of locally-stored recent searches (across ALL shards). Drives
    * whether the "Clear all history" footer is rendered. Footer hides when 0
@@ -49,6 +52,8 @@ interface Props {
   recentsCount: number;
   /** User clicked "Clear all history". */
   onClearAll: () => void;
+  contentRef?: Ref<HTMLDivElement>;
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }
 
 /**
@@ -87,8 +92,11 @@ export function SearchSuggestions({
   onHover,
   onSelect,
   onRemove,
+  onUnsave,
   recentsCount,
   onClearAll,
+  contentRef,
+  t,
 }: Props) {
   // Empty list AND no recents to clear → nothing to show.
   // (If items is empty but the user has recents on OTHER shards, we still
@@ -96,7 +104,10 @@ export function SearchSuggestions({
   if (items.length === 0 && recentsCount === 0) return null;
 
   return (
-    <div className="animate-fade-in absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg">
+    <div
+      ref={contentRef}
+      className="animate-fade-in absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg"
+    >
       <ul
         id={listboxId}
         role="listbox"
@@ -126,6 +137,11 @@ export function SearchSuggestions({
                 isActive ? "bg-gold/10 text-foreground" : "text-muted-foreground hover:bg-muted/40"
               }`}
             >
+              {/* Saved marker — shows why this row is pinned above history. */}
+              {item.source === "saved" && (
+                <Star className="h-3.5 w-3.5 shrink-0 fill-gold text-gold" aria-hidden />
+              )}
+
               {/* Real profile icon (or letter-avatar fallback) so users
                 visually recognise familiar players in the dropdown. */}
               <ProfileIcon
@@ -171,16 +187,35 @@ export function SearchSuggestions({
                 </span>
               )}
 
-              {/* Remove ✕ — only for local recents. Index entries can't be
-                  removed by a single user (they're shared). */}
+              {/* Row action — saved rows can be unpinned, recent rows can be
+                  removed from local history, index rows have no local action. */}
               {item.source === "recent" ? (
                 <button
                   type="button"
-                  aria-label={`Remove ${item.gameName}#${item.tagLine} from recent searches`}
+                  aria-label={
+                    t?.("removeRecent", { riotId: `${item.gameName}#${item.tagLine}` }) ??
+                    `Remove ${item.gameName}#${item.tagLine} from recent searches`
+                  }
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     onRemove(recentRemoveKey(item));
+                  }}
+                  className="rounded p-1 text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : item.source === "saved" ? (
+                <button
+                  type="button"
+                  aria-label={
+                    t?.("unsaveRiotId", { riotId: `${item.gameName}#${item.tagLine}` }) ??
+                    `Unsave ${item.gameName}#${item.tagLine}`
+                  }
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onUnsave(recentRemoveKey(item));
                   }}
                   className="rounded p-1 text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100"
                 >
@@ -208,7 +243,7 @@ export function SearchSuggestions({
             className="flex w-full items-center justify-center gap-2 px-4 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Clear all history ({recentsCount})
+            {t?.("clearAllHistory", { count: recentsCount }) ?? `Clear all history (${recentsCount})`}
           </button>
         </div>
       )}

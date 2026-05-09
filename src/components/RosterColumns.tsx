@@ -48,9 +48,16 @@ interface ColumnProps {
    * (preserves keyboard tab order on screens that don't need search).
    */
   onPlayerClick?: (summoner: string) => void;
+  formatChampionName?: (champion: string) => string;
 }
 
-function RosterColumn({ label, players, accent, onPlayerClick }: ColumnProps) {
+function RosterColumn({
+  label,
+  players,
+  accent,
+  onPlayerClick,
+  formatChampionName = (champion) => champion,
+}: ColumnProps) {
   // Cap the rendered list defensively. Riot can technically return weird
   // participant counts in custom games; never render more than MAX_ROWS so
   // the column height stays predictable.
@@ -129,7 +136,7 @@ function RosterColumn({ label, players, accent, onPlayerClick }: ColumnProps) {
               )}
             </TooltipTrigger>
             <TooltipContent side="left" className="text-xs">
-              <span className="font-medium">{p.champion}</span>
+              <span className="font-medium">{formatChampionName(p.champion)}</span>
               <span className="mx-1.5 text-muted-foreground">·</span>
               <span>{p.summoner}</span>
             </TooltipContent>
@@ -156,9 +163,16 @@ interface Props {
    * non-interactive and preserve the previous behavior.
    */
   onPlayerClick?: (summoner: string) => void;
+  formatChampionName?: (champion: string) => string;
 }
 
-export function RosterColumns({ allies, enemies, you, onPlayerClick }: Props) {
+export function RosterColumns({
+  allies,
+  enemies,
+  you,
+  onPlayerClick,
+  formatChampionName = (champion) => champion,
+}: Props) {
   // Merge "you" into the Allies column so the visual roster is symmetrical
   // (5 vs 5). We do NOT mutate the caller's `allies` array; a shallow copy
   // keeps this side-effect-free and React-safe.
@@ -203,12 +217,14 @@ export function RosterColumns({ allies, enemies, you, onPlayerClick }: Props) {
           players={sortedAllies}
           accent="text-hex-blue"
           onPlayerClick={onPlayerClick}
+          formatChampionName={formatChampionName}
         />
         <RosterColumn
           label="Enemies"
           players={sortedEnemies}
           accent="text-destructive"
           onPlayerClick={onPlayerClick}
+          formatChampionName={formatChampionName}
         />
       </div>
     </TooltipProvider>

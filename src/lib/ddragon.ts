@@ -14,6 +14,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import type { Locale } from "@/i18n";
 
 /**
  * Fallback patch used when the versions manifest fetch fails (offline,
@@ -79,6 +80,45 @@ export function championFilename(championName: string): string {
 export function championIconUrl(championName: string, version: string): string {
   const file = championFilename(championName);
   return `${CDN_ROOT}/${version}/img/champion/${file}.png`;
+}
+
+type DDragonChampionData = {
+  id: string;
+  name: string;
+};
+
+type DDragonChampionResponse = {
+  data: Record<string, DDragonChampionData>;
+};
+
+function ddragonLanguage(locale: Locale): string {
+  return locale === "ko" ? "ko_KR" : "en_US";
+}
+
+async function fetchChampionNameMap(version: string, locale: Locale): Promise<Record<string, string>> {
+  if (locale === "en") return {};
+
+  const language = ddragonLanguage(locale);
+  const res = await fetch(`${CDN_ROOT}/${version}/data/${language}/champion.json`);
+  if (!res.ok) return {};
+
+  const json = (await res.json()) as DDragonChampionResponse;
+  return Object.fromEntries(
+    Object.values(json.data ?? {}).map((champion) => [champion.id, champion.name]),
+  );
+}
+
+export function useChampionNameFormatter(locale: Locale): (championName: string) => string {
+  const version = useDDragonVersion();
+  const { data } = useQuery({
+    queryKey: ["ddragon-champion-names", version, locale],
+    queryFn: () => fetchChampionNameMap(version, locale),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
+  return (championName: string) => data?.[championFilename(championName)] ?? championName;
 }
 
 /** Build the summoner profile icon URL for a given patch. */

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as SliderPrimitive from "@radix-ui/react-slider";
+import type { TranslationKey } from "@/i18n";
 
 /**
  * Dual-handle range picker for the "Specify Time" Judge scope.
@@ -29,6 +30,14 @@ export function formatMs(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function formatKoreanLength(ms: number): { minutes: number; seconds: number } {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return {
+    minutes: Math.floor(total / 60),
+    seconds: total % 60,
+  };
+}
+
 /** Parse "m:ss" or "mm:ss" or plain "seconds". Returns null on garbage. */
 function parseMmSs(input: string): number | null {
   const trimmed = input.trim();
@@ -52,17 +61,20 @@ export function TimeRangePicker({
   gameDurationMs,
   value,
   onChange,
+  t,
 }: {
   /** Total match length in ms; the slider's hard upper bound. */
   gameDurationMs: number;
   value: TimeRange;
   onChange: (next: TimeRange) => void;
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   // Local string state for the inputs so the user can type "1:" mid-edit
   // without us snapping it back to a clamped numeric value on every keystroke.
   // We commit on blur / Enter.
   const [startStr, setStartStr] = useState(formatMs(value[0]));
   const [endStr, setEndStr] = useState(formatMs(value[1]));
+  const windowLength = formatKoreanLength(value[1] - value[0]);
 
   // Keep the input strings in sync when the parent updates `value`
   // (e.g. via slider drag, or when reopening the panel).
@@ -148,13 +160,15 @@ export function TimeRangePicker({
     <div className="w-full max-w-2xl">
       <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
         <span>
-          Time:{" "}
+          {t?.("timeSelection") ?? "Time:"}{" "}
           <span className="font-mono text-foreground">
             {formatMs(value[0])} – {formatMs(value[1])}
           </span>{" "}
-          ({formatMs(value[1] - value[0])} long)
+          ({t?.("selectedWindowLength", windowLength) ?? `${formatMs(value[1] - value[0])} long`})
         </span>
-        <span className="font-mono">Game: {formatMs(gameDurationMs)}</span>
+        <span className="font-mono">
+          {t?.("gameTime") ?? "Game:"} {formatMs(gameDurationMs)}
+        </span>
       </div>
 
       <SliderPrimitive.Root
@@ -199,7 +213,7 @@ export function TimeRangePicker({
 
       <div className="mt-3 flex items-center gap-3 text-xs">
         <label className="flex items-center gap-1.5 text-muted-foreground">
-          Start
+          {t?.("startTime") ?? "Start"}
           <input
             type="text"
             inputMode="numeric"
@@ -217,7 +231,7 @@ export function TimeRangePicker({
           />
         </label>
         <label className="flex items-center gap-1.5 text-muted-foreground">
-          End
+          {t?.("endTime") ?? "End"}
           <input
             type="text"
             inputMode="numeric"
@@ -235,7 +249,7 @@ export function TimeRangePicker({
           />
         </label>
         <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">
-          Min 1:00 · Max 3:00
+          {t?.("minMaxWindow") ?? "Min 1:00 · Max 3:00"}
         </span>
       </div>
     </div>

@@ -7,14 +7,38 @@ import {
 } from "@/components/ui/select";
 import {
   DEFAULT_SHARD,
-  SHARDS,
   getShardInfo,
+  type ShardInfo,
   type Shard,
 } from "@/lib/regions";
+import type { TranslationKey } from "@/i18n";
 
 interface RegionPickerProps {
   value: Shard;
   onChange: (shard: Shard) => void;
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
+}
+
+const REGIONAL_SHARD_ORDER: Shard[] = ["EUW", "NA", "EUNE", "LAN", "LAS", "SEA", "OCE", "ME"];
+const COUNTRY_SHARD_ORDER: Shard[] = ["KR", "VN", "BR", "TR", "TW", "PH", "RU", "JP", "TH"];
+const REGIONAL_SHARDS = new Set<Shard>(REGIONAL_SHARD_ORDER);
+
+function isRegionalShard(shard: Shard): boolean {
+  return REGIONAL_SHARDS.has(shard);
+}
+
+function ShardRow({ shard }: { shard: ShardInfo }) {
+  const showEmoji = !isRegionalShard(shard.code);
+
+  return (
+    <span className="flex w-full items-center gap-2">
+      {showEmoji && <span aria-hidden="true">{shard.emoji}</span>}
+      <span className="font-semibold">{shard.label}</span>
+      <span className="ml-auto truncate text-xs text-muted-foreground">
+        {shard.fullName}
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -24,20 +48,22 @@ interface RegionPickerProps {
  * Designed to sit inline on the left side of the search bar — the trigger
  * is borderless so it visually belongs to the parent container.
  */
-export function RegionPicker({ value, onChange }: RegionPickerProps) {
+export function RegionPicker({ value, onChange, t }: RegionPickerProps) {
   // Defensive: render the default shard's visuals if value is somehow unknown.
   const current = getShardInfo(value);
+  const regionalShards = REGIONAL_SHARD_ORDER.map(getShardInfo);
+  const countryShards = COUNTRY_SHARD_ORDER.map(getShardInfo);
 
   return (
     <Select value={current.code} onValueChange={(v) => onChange(v as Shard)}>
       <SelectTrigger
         // Borderless pill that lives inside the search-bar container.
         className="w-auto min-w-[88px] gap-1.5 border-0 bg-transparent px-3 font-semibold text-foreground shadow-none focus:ring-0 focus:ring-offset-0"
-        aria-label="Select region / shard"
+        aria-label={t?.("selectRegion") ?? "Select region / shard"}
       >
         <SelectValue>
           <span className="flex items-center gap-1.5">
-            <span aria-hidden="true">{current.emoji}</span>
+            {!isRegionalShard(current.code) && <span aria-hidden="true">{current.emoji}</span>}
             <span>{current.label}</span>
           </span>
         </SelectValue>
@@ -70,15 +96,15 @@ export function RegionPicker({ value, onChange }: RegionPickerProps) {
             className="scrollbar-always max-h-[60vh] min-w-[var(--radix-select-trigger-width)] overflow-y-auto p-1"
             style={{ maxHeight: "min(60vh, var(--radix-select-content-available-height))" }}
           >
-            {SHARDS.map((s) => (
+            {countryShards.map((s) => (
               <SelectItem key={s.code} value={s.code} className="pr-8">
-                <span className="flex w-full items-center gap-2">
-                  <span aria-hidden="true">{s.emoji}</span>
-                  <span className="font-semibold">{s.label}</span>
-                  <span className="ml-auto truncate text-xs text-muted-foreground">
-                    {s.fullName}
-                  </span>
-                </span>
+                <ShardRow shard={s} />
+              </SelectItem>
+            ))}
+            <SelectPrimitive.Separator className="my-1 h-px bg-border" />
+            {regionalShards.map((s) => (
+              <SelectItem key={s.code} value={s.code} className="pr-8">
+                <ShardRow shard={s} />
               </SelectItem>
             ))}
           </SelectPrimitive.Viewport>

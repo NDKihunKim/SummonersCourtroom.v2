@@ -1,12 +1,14 @@
 /**
  * useShard — owns the user's selected League shard with a 3-tier resolution:
  *
- *   1. localStorage (`riftlog:shard`) — if present, the user has either
+ *   1. URL query (`?shard=KR`) — used by home/deep links to carry the
+ *      currently viewed region across a page load.
+ *   2. localStorage (`riftlog:shard`) — if present, the user has either
  *      explicitly picked a shard before, or accepted the auto-detected
  *      one on a prior visit. Either way, respect it.
- *   2. Auto-detection from the browser's IANA timezone + locale
+ *   3. Auto-detection from the browser's IANA timezone + locale
  *      (`detectShard()`). Runs ONCE on mount, post-hydration.
- *   3. `DEFAULT_SHARD` as the absolute fallback.
+ *   4. `DEFAULT_SHARD` as the absolute fallback.
  *
  * SSR safety: the initial render returns `DEFAULT_SHARD` so the server-
  * rendered HTML and the first client paint match (no hydration warning).
@@ -14,8 +16,8 @@
  * after, which the user perceives as instant.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { DEFAULT_SHARD, type Shard } from "@/lib/regions";
+import { useEffect, useState } from "react";
+import { DEFAULT_SHARD, SHARDS, type Shard } from "@/lib/regions";
 import { detectShard } from "@/lib/region-detect";
 
 /** localStorage key — namespaced to avoid colliding with other apps. */
@@ -27,6 +29,21 @@ function readStored(): Shard | null {
     if (typeof window === "undefined") return null;
     const v = window.localStorage.getItem(STORAGE_KEY);
     return v ? (v as Shard) : null;
+  } catch {
+    return null;
+  }
+}
+
+function isKnownShard(value: string): value is Shard {
+  return SHARDS.some((s) => s.code === value);
+}
+
+/** URL shard wins over storage so home/deep links cannot be reset by defaults. */
+function readUrlShard(): Shard | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const value = new URLSearchParams(window.location.search).get("shard");
+    return value && isKnownShard(value) ? value : null;
   } catch {
     return null;
   }
@@ -62,14 +79,19 @@ export function useShard(): UseShardResult {
   // SSR-safe initial value — must match server render.
   const [shard, setShardState] = useState<Shard>(DEFAULT_SHARD);
   const [isAutoDetected, setIsAutoDetected] = useState(false);
-  // Track whether the very first effect-driven resolve has run, so the
-  // localStorage-persistence effect doesn't fire on that initial sync.
-  const initialisedRef = useRef(false);
 
   // Resolve the real shard once on mount. We split this from the setter
   // effect below so user-driven `setShard` calls always persist, while
   // the initial detection only persists when it's truly the first visit.
   useEffect(() => {
+    const urlShard = readUrlShard();
+    if (urlShard) {
+      setShardState(urlShard);
+      setIsAutoDetected(false);
+      writeStored(urlShard);
+      return;
+    }
+
     const stored = readStored();
     if (stored) {
       // Returning visitor — honour their previous choice.
@@ -82,7 +104,6 @@ export function useShard(): UseShardResult {
       setIsAutoDetected(true);
       writeStored(detected);
     }
-    initialisedRef.current = true;
   }, []);
 
   /**

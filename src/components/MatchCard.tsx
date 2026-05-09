@@ -9,15 +9,69 @@ import { RuneIcons } from "./RuneIcons";
 import { RosterColumns } from "./RosterColumns";
 import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
+import { useChampionNameFormatter } from "@/lib/ddragon";
+import type { Locale, TranslationKey } from "@/i18n";
 
 type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "verdict";
 type PipelineStep = "contextualize" | "judge" | "parse";
 type Scope = "full" | "window";
+type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
+
+const defaultT: Translate = (key, vars) => {
+  const text = String(key);
+  if (!vars) return text;
+  return Object.entries(vars).reduce(
+    (acc, [name, value]) => acc.replaceAll(`{${name}}`, String(value)),
+    text,
+  );
+};
+
+const QUEUE_KEYS: Array<[RegExp, TranslationKey]> = [
+  [/ranked\s+solo/i, "queueRankedSolo"],
+  [/ranked\s+flex/i, "queueRankedFlex"],
+  [/normal\s+draft|swiftplay|queue\s+480/i, "queueNormalGame"],
+  [/normal\s+blind/i, "queueNormalBlind"],
+  [/\baram\b/i, "queueAram"],
+  [/\barena\b/i, "queueArena"],
+  [/quickplay/i, "queueQuickplay"],
+];
+
+function formatQueue(queue: string, locale: Locale, t: Translate): string {
+  const key = QUEUE_KEYS.find(([pattern]) => pattern.test(queue))?.[1];
+  if (key && (locale === "ko" || /^queue\s+\d+$/i.test(queue))) return t(key);
+  return queue;
+}
+
+function formatDuration(duration: string, locale: Locale, t: Translate): string {
+  if (locale !== "ko") return duration;
+  const match = duration.match(/^(?:(\d+)m\s*)?(?:(\d+)s)?$/i);
+  if (!match) return duration;
+  const minutes = match[1] ? Number(match[1]) : 0;
+  const seconds = match[2] ? Number(match[2]) : 0;
+  if (minutes > 0 && seconds > 0) return t("durationMinutesSeconds", { minutes, seconds });
+  if (minutes > 0) return t("durationMinutes", { minutes });
+  return t("durationSeconds", { seconds });
+}
+
+function formatPlayedAt(playedAt: string, locale: Locale, t: Translate): string {
+  if (locale !== "ko") return playedAt;
+  if (playedAt.toLowerCase() === "just now") return t("justNow");
+  const match = playedAt.match(/^(\d+)\s*([smhd])\s+ago$/i);
+  if (!match) return playedAt;
+  const count = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  if (unit === "s") return t("relativeSecondsAgo", { count });
+  if (unit === "m") return t("relativeMinutesAgo", { count });
+  if (unit === "h") return t("relativeHoursAgo", { count });
+  return t("relativeDaysAgo", { count });
+}
 
 export function MatchCard({
   match,
   you,
   onPlayerClick,
+  locale = "en",
+  t = defaultT,
 }: {
   match: Match;
   /**
@@ -31,9 +85,17 @@ export function MatchCard({
    * raw Riot ID string. Optional — when omitted roster rows are read-only.
    */
   onPlayerClick?: (summoner: string) => void;
+  locale?: Locale;
+  t?: Translate;
 }) {
   const win = match.result === "Victory";
   const kda = ((match.kills + match.assists) / Math.max(1, match.deaths)).toFixed(2);
+  const formatChampionName = useChampionNameFormatter(locale);
+  const resultLabel = win ? t("victory") : t("defeat");
+  const queueLabel = formatQueue(match.queue, locale, t);
+  const durationLabel = formatDuration(match.duration, locale, t);
+  const playedAtLabel = formatPlayedAt(match.playedAt, locale, t);
+  const championLabel = formatChampionName(match.champion);
 
   const [stage, setStage] = useState<Stage>("closed");
   const [pickedAlly, setPickedAlly] = useState<Participant | null>(null);
@@ -90,11 +152,20 @@ export function MatchCard({
       scope === "window" && windowRange
         ? `In the ${fmt(windowRange[0])}–${fmt(windowRange[1])} window, `
         : "";
+    const koreanWindowPrefix =
+      scope === "window" && windowRange
+        ? `${fmt(windowRange[0])}–${fmt(windowRange[1])} 구간에서 `
+        : "";
     const sampleReasoning =
-      `Verdict: ${windowPrefix}${allyName} is more at fault.\n\n` +
-      `1. At 12:30 ${allyName} overextended past the enemy mid turret with no vision while down two summoner spells, giving up first blood and a 400g shutdown that snowballed mid lane.\n` +
-      `2. At 18:10 ${allyName} was farming the enemy top jungle while the team contested Dragon — the resulting 4v5 cost the objective and a follow-up tower.\n` +
-      `3. At 24:45 ${allyName} face-checked the Baron pit bush without wards, starting a fight her team lost 0-for-4 and conceding Baron.`;
+      locale === "ko"
+        ? `판결: ${koreanWindowPrefix}${allyName}에게 더 큰 잘못이 있습니다.\n\n` +
+          `1. 12:30에 ${allyName}은 시야가 없는 상태에서 적 미드 포탑 너머로 과하게 전진했고, 소환사 주문 2개가 빠진 상황에서 첫 킬과 400골드 제압 골드를 내주며 미드 라인 격차를 키웠습니다.\n` +
+          `2. 18:10에 팀이 드래곤을 두고 교전하는 동안 ${allyName}은 적 탑 정글을 파밍하고 있었고, 그 결과 4대5 교전으로 오브젝트와 이어지는 포탑을 잃었습니다.\n` +
+          `3. 24:45에 ${allyName}은 와드 없이 바론 둥지 부쉬를 확인하다가 교전을 시작하게 만들었고, 팀은 0대4로 패하며 바론까지 내줬습니다.`
+        : `Verdict: ${windowPrefix}${allyName} is more at fault.\n\n` +
+          `1. At 12:30 ${allyName} overextended past the enemy mid turret with no vision while down two summoner spells, giving up first blood and a 400g shutdown that snowballed mid lane.\n` +
+          `2. At 18:10 ${allyName} was farming the enemy top jungle while the team contested Dragon — the resulting 4v5 cost the objective and a follow-up tower.\n` +
+          `3. At 24:45 ${allyName} face-checked the Baron pit bush without wards, starting a fight her team lost 0-for-4 and conceding Baron.`;
     setReasoning(sampleReasoning);
     setCompleted((s) => new Set(s).add("judge"));
     setActiveStep("parse");
@@ -119,11 +190,11 @@ export function MatchCard({
         <div className="flex items-center gap-4">
           <div className="w-24 shrink-0">
             <div className={`text-sm font-bold ${win ? "text-hex-blue" : "text-destructive"}`}>
-              {match.result}
+              {resultLabel}
             </div>
-            <div className="text-xs text-muted-foreground">{match.queue}</div>
-            <div className="mt-1 text-xs text-muted-foreground">{match.duration}</div>
-            <div className="text-xs text-muted-foreground">{match.playedAt}</div>
+            <div className="text-xs text-muted-foreground">{queueLabel}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{durationLabel}</div>
+            <div className="text-xs text-muted-foreground">{playedAtLabel}</div>
           </div>
 
           {/* Champion identity column — icon stacked above the name so the
@@ -137,9 +208,9 @@ export function MatchCard({
             <ChampionIcon champion={match.champion} size={52} />
             <span
               className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground"
-              title={match.champion}
+              title={championLabel}
             >
-              {match.champion}
+              {championLabel}
             </span>
           </div>
 
@@ -187,6 +258,7 @@ export function MatchCard({
               enemies={match.enemies}
               you={you}
               onPlayerClick={onPlayerClick}
+              formatChampionName={formatChampionName}
             />
           </div>
 
@@ -218,18 +290,18 @@ export function MatchCard({
             <PickAlly
               you={{
                 champion: match.champion,
+                summoner: you?.summoner,
                 kills: match.kills,
                 deaths: match.deaths,
                 assists: match.assists,
               }}
               allies={match.team}
               onCancel={reset}
+              t={t}
+              formatChampionName={formatChampionName}
               onPick={(a) => {
                 setPickedAlly(a);
-                // For Victory matches, skip the scope picker entirely —
-                // Full-game judging is Defeat-only, so Specify Time is the
-                // only available path. Jump straight there.
-                setStage(win && match.riotMatchId && match.userPuuid ? "specifyTime" : "pickScope");
+                setStage("pickScope");
               }}
             />
           )}
@@ -238,6 +310,7 @@ export function MatchCard({
             <PickScope
               you={{
                 champion: match.champion,
+                summoner: you?.summoner,
                 kills: match.kills,
                 deaths: match.deaths,
                 assists: match.assists,
@@ -247,6 +320,8 @@ export function MatchCard({
               onCancel={reset}
               onFullGame={() => runJudge("full")}
               isWin={win}
+              t={t}
+              formatChampionName={formatChampionName}
               onSpecifyTime={
                 match.riotMatchId && match.userPuuid
                   ? () => setStage("specifyTime")
@@ -261,9 +336,7 @@ export function MatchCard({
               userPuuid={match.userPuuid}
               routingRegion={match.routingRegion}
               durationStr={match.duration}
-              // Wins skip the scope picker, so "back" returns to the ally
-              // picker. Losses still go back to the scope picker.
-              onBack={() => setStage(win ? "pickAlly" : "pickScope")}
+              onBack={() => setStage("pickScope")}
               // SUBJECT_A = the viewer's champion on this match
               // SUBJECT_B = the ally the user picked in the previous step
               subjectAChampion={match.champion}
@@ -272,6 +345,7 @@ export function MatchCard({
               // per-team champion+role rundown injected into the upper prompt.
               match={match}
               you={you}
+              t={t}
               onRun={(range) => void runJudge("window", range)}
             />
           )}
@@ -286,14 +360,16 @@ export function MatchCard({
                 <MatchupHeader
                   you={{
                     champion: match.champion,
+                    summoner: you?.summoner,
                     kills: match.kills,
                     deaths: match.deaths,
                     assists: match.assists,
                   }}
                   ally={pickedAlly}
+                  formatChampionName={formatChampionName}
                 />
               )}
-              <JudgeLoading active={activeStep} completed={completed} />
+              <JudgeLoading active={activeStep} completed={completed} t={t} />
             </>
           )}
 
@@ -306,11 +382,13 @@ export function MatchCard({
                 <MatchupHeader
                   you={{
                     champion: match.champion,
+                    summoner: you?.summoner,
                     kills: match.kills,
                     deaths: match.deaths,
                     assists: match.assists,
                   }}
                   ally={pickedAlly}
+                  formatChampionName={formatChampionName}
                 />
               )}
               <Verdict
@@ -332,6 +410,7 @@ export function MatchCard({
                   const id = match.riotMatchId ?? "unknown";
                   window.open(`/dev/context/${id}?${params.toString()}`, "_blank");
                 }}
+                t={t}
               />
             </>
           )}
@@ -350,30 +429,35 @@ function PickAlly({
   allies,
   onPick,
   onCancel,
+  t,
+  formatChampionName,
 }: {
-  you: { champion: string; kills: number; deaths: number; assists: number };
+  you: { champion: string; summoner?: string; kills: number; deaths: number; assists: number };
   allies: Participant[];
   onPick: (a: Participant) => void;
   onCancel: () => void;
+  t: Translate;
+  formatChampionName: (champion: string) => string;
 }) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
-          <Gavel className="mr-1 inline h-3.5 w-3.5" /> Who's the bigger fault?
+          <Gavel className="mr-1 inline h-3.5 w-3.5" /> {t("biggerFaultQuestion")}
         </h3>
         <button
           onClick={onCancel}
           className="text-xs text-muted-foreground hover:text-foreground"
         >
-          Cancel
+          {t("cancel")}
         </button>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <PlayerTile
           highlighted
-          name="You"
+          name={you.summoner ?? "You"}
           champion={you.champion}
+          championLabel={formatChampionName(you.champion)}
           kda={`${you.kills}/${you.deaths}/${you.assists}`}
         />
         <span className="text-xl font-bold text-muted-foreground">vs</span>
@@ -383,6 +467,7 @@ function PickAlly({
               <PlayerTile
                 name={a.summoner}
                 champion={a.champion}
+                championLabel={formatChampionName(a.champion)}
                 kda={`${a.kills}/${a.deaths}/${a.assists}`}
               />
             </button>
@@ -396,11 +481,13 @@ function PickAlly({
 function PlayerTile({
   name,
   champion,
+  championLabel = champion,
   kda,
   highlighted,
 }: {
   name: string;
   champion: string;
+  championLabel?: string;
   kda: string;
   highlighted?: boolean;
 }) {
@@ -420,8 +507,8 @@ function PlayerTile({
           column with `items-center`. Without an explicit width, the span
           shrinks to fit its content and overflows the tile. The `title`
           attribute keeps the full name accessible on hover. */}
-      <span className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground" title={champion}>
-        {champion}
+      <span className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground" title={championLabel}>
+        {championLabel}
       </span>
       <span className="block w-full min-w-0 truncate text-center text-[10px] text-muted-foreground" title={name}>
         {name}
@@ -439,8 +526,10 @@ function PickScope({
   onFullGame,
   onSpecifyTime,
   isWin,
+  t,
+  formatChampionName,
 }: {
-  you: { champion: string; kills: number; deaths: number; assists: number };
+  you: { champion: string; summoner?: string; kills: number; deaths: number; assists: number };
   ally: Participant;
   onBack: () => void;
   onCancel: () => void;
@@ -458,6 +547,8 @@ function PickScope({
    * can still be analyzed via the Specify-Time scope, which is neutral.
    */
   isWin: boolean;
+  t: Translate;
+  formatChampionName: (champion: string) => string;
 }) {
   return (
     <div>
@@ -466,31 +557,35 @@ function PickScope({
           onClick={onBack}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="h-3 w-3" /> Pick again
+          <ArrowLeft className="h-3 w-3" /> {t("pickAgain")}
         </button>
         <button
           onClick={onCancel}
           className="text-xs text-muted-foreground hover:text-foreground"
         >
-          Cancel
+          {t("cancel")}
         </button>
       </div>
       {/* Visual matchup card — replaces the prior text-only "Judging You vs X"
           line so the user sees both subjects (champion icon + name + KDA)
           before confirming the scope. Same component used on the loading
           and verdict stages for consistency across the pipeline. */}
-      <MatchupHeader you={you} ally={ally} />
+      <MatchupHeader you={you} ally={ally} formatChampionName={formatChampionName} />
       <div className="flex flex-wrap justify-center gap-3">
-        {/* Full-game scope is Defeat-only — the prompt is built around
-            assigning fault for a loss, so we don't surface it on wins. */}
-        {!isWin && (
-          <button
-            onClick={onFullGame}
-            className="rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
-          >
-            Full game
-          </button>
-        )}
+        {/* Full-game scope is Defeat-only. Victory rows still show the
+            option disabled so users understand the feature boundary. */}
+        <button
+          onClick={isWin ? undefined : onFullGame}
+          disabled={isWin}
+          title={isWin ? t("fullGameVictoryUnavailable") : undefined}
+          className={
+            isWin
+              ? "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
+              : "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
+          }
+        >
+          {t("fullGame")}
+        </button>
         <button
           onClick={onSpecifyTime}
           disabled={!onSpecifyTime}
@@ -501,7 +596,7 @@ function PickScope({
           }
           title={onSpecifyTime ? "Pick a 1–3 min slice of the game" : "Match metadata unavailable"}
         >
-          Specify Time
+          {t("specifyTime")}
         </button>
       </div>
     </div>
@@ -511,19 +606,21 @@ function PickScope({
 function JudgeLoading({
   active,
   completed,
+  t,
 }: {
   active: PipelineStep;
   completed: Set<PipelineStep>;
+  t: Translate;
 }) {
   const steps: { id: PipelineStep; label: string; sub: string }[] = [
-    { id: "contextualize", label: "Contextualize", sub: "Translating raw stats into human language" },
-    { id: "judge", label: "Judge", sub: "AI is weighing the evidence" },
-    { id: "parse", label: "Verdict", sub: "Extracting the final ruling" },
+    { id: "contextualize", label: t("contextualizeStep"), sub: t("contextualizeStepSub") },
+    { id: "judge", label: t("judgeStep"), sub: t("judgeStepSub") },
+    { id: "parse", label: t("verdictStep"), sub: t("verdictStepSub") },
   ];
   return (
     <div className="flex flex-col items-center gap-5 py-6">
       <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gold">
-        The Judge is deliberating
+        {t("judgeDeliberating")}
       </p>
       <ol className="flex w-full max-w-2xl items-start justify-between gap-2">
         {steps.map((s, i) => {
@@ -576,31 +673,33 @@ function Verdict({
   onClose,
   onAgain,
   onViewContext,
+  t,
 }: {
   verdictName: string | null;
   reasoning: string;
   onClose: () => void;
   onAgain: () => void;
   onViewContext: () => void;
+  t: Translate;
 }) {
   return (
     <div>
       <div className="mb-3 flex items-center gap-2">
         <Gavel className="h-4 w-4 text-gold" />
         <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
-          The Verdict
+          {t("verdictTitle")}
         </h3>
       </div>
       {/* Preview-only warning — the Full Game flow currently renders a
           hardcoded sample verdict instead of calling the AI pipeline,
           so we make that explicit here to avoid confusing the viewer. */}
       <div className="mb-3 rounded-lg border border-destructive/60 bg-destructive/10 p-3 text-center text-xs font-medium text-destructive">
-        Preview only — this is an example of how the verdict will be displayed. No AI was used to generate this output.
+        {t("previewOnlyWarning")}
       </div>
       {verdictName && (
         <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
           <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
-            More at fault
+            {t("moreAtFault")}
           </div>
           <div className="mt-1 text-xl font-bold text-gold">{verdictName}</div>
         </div>
@@ -619,13 +718,13 @@ function Verdict({
           onClick={onAgain}
           className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
-          Judge another
+          {t("judgeAnother")}
         </button>
         <button
           onClick={onClose}
           className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20"
         >
-          Close
+          {t("close")}
         </button>
       </div>
     </div>

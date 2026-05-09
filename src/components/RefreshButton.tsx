@@ -19,6 +19,7 @@ import {
   refreshSummoner,
   type CachedSummonerPayload,
 } from "@/functions/summoner-cache.functions";
+import type { TranslationKey } from "@/i18n";
 
 interface Props {
   shard: Shard;
@@ -30,6 +31,7 @@ interface Props {
   refreshAvailableAt: number;
   /** Called with the fresh payload on success. */
   onRefreshed: (payload: CachedSummonerPayload) => void;
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }
 
 /**
@@ -37,16 +39,20 @@ interface Props {
  * server-side `relativeTime` helper but works on numbers we already have
  * client-side without an extra import dance.
  */
-function formatAgo(epochMs: number, now: number): string {
+function formatAgo(
+  epochMs: number,
+  now: number,
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+): string {
   const diff = Math.max(0, now - epochMs);
-  if (diff < 30_000) return "just now";
+  if (diff < 30_000) return t?.("justNow") ?? "just now";
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return `${Math.floor(diff / 1000)}s ago`;
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return `${Math.floor(diff / 1000)}${t?.("secondsAgo") ?? "s ago"}`;
+  if (mins < 60) return `${mins}${t?.("minutesAgo") ?? "m ago"}`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours}${t?.("hoursAgo") ?? "h ago"}`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days}${t?.("daysAgo") ?? "d ago"}`;
 }
 
 export function RefreshButton({
@@ -56,6 +62,7 @@ export function RefreshButton({
   cachedAt,
   refreshAvailableAt,
   onRefreshed,
+  t,
 }: Props) {
   // Re-render every second while the cooldown is active OR the timestamp is
   // fresh enough that "Xm ago" might roll over visibly. Cleared otherwise.
@@ -70,12 +77,12 @@ export function RefreshButton({
       refreshSummoner({ data: { shard, gameName, tagLine } }),
     onSuccess: (payload) => {
       onRefreshed(payload);
-      toast.success("Match history refreshed.");
+      toast.success(t?.("matchHistoryRefreshed") ?? "Match history refreshed.");
     },
     onError: (err) => {
       // Cooldown errors come through as plain Error messages from the
       // server function — surface them directly.
-      toast.error(err instanceof Error ? err.message : "Refresh failed.");
+      toast.error(err instanceof Error ? err.message : (t?.("refreshFailed") ?? "Refresh failed."));
     },
   });
 
@@ -94,11 +101,11 @@ export function RefreshButton({
         type="button"
         onClick={() => mutation.mutate()}
         disabled={disabled}
-        aria-label="Refresh match history"
+        aria-label={t?.("refreshMatchHistory") ?? "Refresh match history"}
         title={
           onCooldown
-            ? `Available in ${Math.ceil(cooldownRemainingMs / 1000)}s`
-            : "Refresh match history"
+            ? `${t?.("availableIn") ?? "Available in"} ${Math.ceil(cooldownRemainingMs / 1000)}s`
+            : t?.("refreshMatchHistory") ?? "Refresh match history"
         }
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
       >
@@ -112,8 +119,8 @@ export function RefreshButton({
         className={`text-xs ${stale ? "text-gold" : "text-muted-foreground"}`}
       >
         {onCooldown
-          ? `Available in ${Math.ceil(cooldownRemainingMs / 1000)}s`
-          : `Updated ${formatAgo(cachedAt, now)}`}
+          ? `${t?.("availableIn") ?? "Available in"} ${Math.ceil(cooldownRemainingMs / 1000)}s`
+          : `${t?.("updated") ?? "Updated"} ${formatAgo(cachedAt, now, t)}`}
       </span>
     </div>
   );

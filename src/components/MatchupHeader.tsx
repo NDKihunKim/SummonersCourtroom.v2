@@ -33,11 +33,13 @@ function safeNum(n: number | undefined | null): number {
 function Tile({
   name,
   champion,
+  championLabel = champion,
   kda,
   highlighted,
 }: {
   name: string;
   champion: string;
+  championLabel?: string;
   kda: string;
   highlighted?: boolean;
 }) {
@@ -59,7 +61,7 @@ function Tile({
           `min-w-0` resets the flex default that would otherwise let the
           child grow to fit content. */}
       <span className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground">
-        {champion}
+        {championLabel}
       </span>
       <span
         className="block w-full min-w-0 truncate text-center text-[10px] text-muted-foreground"
@@ -74,12 +76,13 @@ function Tile({
 
 export interface MatchupHeaderProps {
   /** The searched player ("You") — already known from the parent Match. */
-  you: { champion: string; kills: number; deaths: number; assists: number };
+  you: { champion: string; kills: number; deaths: number; assists: number; summoner?: string };
   /** The ally chosen on the PickAlly screen. */
   ally: Participant;
+  formatChampionName?: (champion: string) => string;
 }
 
-export function MatchupHeader({ you, ally }: MatchupHeaderProps) {
+export function MatchupHeader({ you, ally, formatChampionName = (champion) => champion }: MatchupHeaderProps) {
   // Format KDA defensively — the contextualizer pipeline can in theory
   // hand back a participant with missing stats; we never want to render
   // "undefined/undefined/undefined" inside the header.
@@ -88,9 +91,20 @@ export function MatchupHeader({ you, ally }: MatchupHeaderProps) {
 
   return (
     <div className="mb-4 flex items-center justify-center gap-3">
-      <Tile highlighted name="You" champion={you.champion} kda={youKda} />
+      <Tile
+        highlighted
+        name={you.summoner ?? "You"}
+        champion={you.champion}
+        championLabel={formatChampionName(you.champion)}
+        kda={youKda}
+      />
       <span className="text-lg font-bold text-muted-foreground">vs</span>
-      <Tile name={ally.summoner} champion={ally.champion} kda={allyKda} />
+      <Tile
+        name={ally.summoner}
+        champion={ally.champion}
+        championLabel={formatChampionName(ally.champion)}
+        kda={allyKda}
+      />
     </div>
   );
 }

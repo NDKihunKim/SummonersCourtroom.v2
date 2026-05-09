@@ -13,6 +13,7 @@
 import { useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { SAMPLE_SIZE_OPTIONS, type SampleSize } from "@/lib/match-stats";
+import type { TranslationKey } from "@/i18n";
 
 export interface SampleSizeSelectorProps {
   value: SampleSize;
@@ -20,6 +21,7 @@ export interface SampleSizeSelectorProps {
   options?: readonly SampleSize[];
   /** Optional wrapper class — lets the parent fine-tune spacing. */
   className?: string;
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }
 
 export function SampleSizeSelector({
@@ -27,6 +29,7 @@ export function SampleSizeSelector({
   onChange,
   options = SAMPLE_SIZE_OPTIONS,
   className,
+  t,
 }: SampleSizeSelectorProps) {
   // Track button refs so arrow-key navigation can move focus to the next
   // option. Index-aligned with SAMPLE_SIZE_OPTIONS.
@@ -50,7 +53,7 @@ export function SampleSizeSelector({
   return (
     <div
       role="radiogroup"
-      aria-label="Number of recent matches to use for performance stats"
+      aria-label={t?.("sampleSizeLabel") ?? "Number of recent matches to use for performance stats"}
       className={cn(
         // Compact pill group — borrows the same border/radius vocabulary as
         // the surrounding card so it feels native to the header.
