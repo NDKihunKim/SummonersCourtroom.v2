@@ -41,12 +41,13 @@ export async function getLeagueEntriesByPuuid(
   if (!res.ok) {
     // 404 from this endpoint is unusual but treat as "no entries" defensively.
     if (res.status === 404) return [];
-    const text = await res.text().catch(() => "");
     if (res.status === 401 || res.status === 403) {
-      throw new Error(`Riot ${res.status}: API key rejected (expired or invalid).`);
+      throw new Error("Riot API access is currently unavailable. Please try again later.");
     }
-    if (res.status === 429) throw new Error("Riot rate limit hit. Try again in a minute.");
-    throw new Error(`Riot ${res.status}: ${text || res.statusText}`);
+    if (res.status === 429) {
+      throw new Error("Riot rate limit reached. Please wait a minute and try again.");
+    }
+    throw new Error("Riot service error. Please try again later.");
   }
   const data = (await res.json()) as LeagueEntry[];
   return Array.isArray(data) ? data : [];

@@ -29,6 +29,7 @@ import { shardToPlatform, shardToRouting } from "@/lib/regions";
 import { parseDivision, parseTier, type Division, type Tier } from "@/lib/tier";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getLeagueEntriesByPuuid, pickSoloEntry } from "@/server/league";
+import { assertRateLimit } from "@/server/request-rate-limit";
 import {
   fetchMatch,
   formatDuration,
@@ -101,6 +102,7 @@ export interface CachedSummonerPayload {
 
 /** Per-player cooldown enforced server-side. Keep in one place. */
 const REFRESH_COOLDOWN_MS = 30_000;
+const ONE_MINUTE_MS = 60_000;
 /**
  * How many matches we fetch + cache per player.
  *
@@ -419,6 +421,13 @@ async function bumpSearchCount(shard: string, puuid: string) {
 export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RiotIdSchema.parse(input))
   .handler(async ({ data }): Promise<CachedSummonerPayload> => {
+    assertRateLimit({
+      scope: "summoner-search",
+      limit: 30,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many search requests. Please wait a minute and try again.",
+    });
+
     // 1. Try the cache.
     const row = await findCachedByRiotId(data.shard, data.gameName, data.tagLine);
     if (row && Array.isArray(row.matches) && row.matches.length > 0) {
@@ -430,6 +439,12 @@ export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
     }
 
     // 2. Cache miss (or empty matches) → fetch fresh from Riot.
+    assertRateLimit({
+      scope: "summoner-cache-miss",
+      limit: 6,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many uncached searches. Please wait a minute and try again.",
+    });
     const fresh = await fetchFreshFromRiot(data.shard, data.gameName, data.tagLine);
     const cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ false);
 
@@ -452,6 +467,13 @@ export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
 export const refreshSummoner = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RiotIdSchema.parse(input))
   .handler(async ({ data }): Promise<CachedSummonerPayload> => {
+    assertRateLimit({
+      scope: "summoner-refresh",
+      limit: 10,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many refresh requests. Please wait a minute and try again.",
+    });
+
     // Read existing row to enforce cooldown without doing a Riot call first.
     const row = await findCachedByRiotId(data.shard, data.gameName, data.tagLine);
     if (row) {

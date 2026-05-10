@@ -48,8 +48,8 @@ export function AdFrame({
 }) {
   const outer = fitViewport ? "flex min-h-dvh flex-col" : "min-h-dvh";
   const contentCol = fitViewport
-    ? "min-w-0 min-h-0 flex-1 px-2 py-2 sm:px-3 sm:py-3"
-    : "min-w-0 flex-1 px-2 py-2 sm:px-3 sm:py-3";
+    ? "min-w-0 min-h-0 flex-1 px-0 py-0"
+    : "min-w-0 flex-1 px-0 py-0";
 
   return (
     <div className={outer}>

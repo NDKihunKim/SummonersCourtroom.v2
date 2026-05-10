@@ -45,13 +45,16 @@ async function riotGet<T>(url: string): Promise<T> {
     headers: { "X-Riot-Token": apiKey() },
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    if (res.status === 404) throw new Error(`Riot 404: ${url} — ${text || "not found"}`);
-    if (res.status === 401 || res.status === 403) {
-      throw new Error(`Riot ${res.status}: API key rejected (expired or invalid).`);
+    if (res.status === 404) {
+      throw new Error("Riot data not found. Check the Riot ID, tag, region, or match id.");
     }
-    if (res.status === 429) throw new Error("Riot rate limit hit. Try again in a minute.");
-    throw new Error(`Riot ${res.status}: ${text || res.statusText}`);
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Riot API access is currently unavailable. Please try again later.");
+    }
+    if (res.status === 429) {
+      throw new Error("Riot rate limit reached. Please wait a minute and try again.");
+    }
+    throw new Error("Riot service error. Please try again later.");
   }
   return (await res.json()) as T;
 }

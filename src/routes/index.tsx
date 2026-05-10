@@ -384,7 +384,7 @@ function Index() {
           north & south ads (AdFrame's middle row is flex-1 in fit
           mode). Padding is reduced so the form stays visible on
           shorter viewports without scrolling. */}
-      <div className="min-h-[calc(100dvh-4rem)] rounded-xl sm:min-h-[calc(100dvh-5rem)] sm:rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
+      <div className="min-h-[calc(100dvh-4rem)] sm:min-h-[calc(100dvh-5rem)]" style={{ background: "var(--gradient-hero)" }}>
         <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-3xl flex-col items-center justify-center px-3 py-16 sm:min-h-[calc(100dvh-5rem)] sm:px-4 sm:py-8 md:py-10">
           <div className="mb-3 flex items-center gap-2 text-center text-[10px] font-semibold uppercase tracking-[0.22em] text-gold sm:text-xs sm:tracking-[0.3em]">
             <Swords className="h-3.5 w-3.5" /> {t("heroLabel")}
@@ -585,7 +585,7 @@ function MatchHistory({
   // Already guarded by `% 100` above — kept as-is.
 
   return (
-    <div className="rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
+    <div style={{ background: "var(--gradient-hero)" }}>
       <div className="mx-auto max-w-5xl px-4 pb-8 pt-16 sm:pt-20">
         <button
           onClick={onBack}

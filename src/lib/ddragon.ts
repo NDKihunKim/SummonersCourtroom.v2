@@ -91,6 +91,30 @@ type DDragonChampionResponse = {
   data: Record<string, DDragonChampionData>;
 };
 
+type DDragonItemResponse = {
+  data: Record<string, { name: string }>;
+};
+
+type DDragonSummonerSpellResponse = {
+  data: Record<string, { name: string; image?: { full?: string } }>;
+};
+
+type DDragonRuneStyle = {
+  id: number;
+  name: string;
+  slots?: Array<{
+    runes?: Array<{
+      id: number;
+      name: string;
+    }>;
+  }>;
+};
+
+type RuneNameMaps = {
+  perks: Record<number, string>;
+  styles: Record<number, string>;
+};
+
 function ddragonLanguage(locale: Locale): string {
   return locale === "ko" ? "ko_KR" : "en_US";
 }
@@ -119,6 +143,30 @@ export function useChampionNameFormatter(locale: Locale): (championName: string)
   });
 
   return (championName: string) => data?.[championFilename(championName)] ?? championName;
+}
+
+async function fetchItemNameMap(version: string, locale: Locale): Promise<Record<number, string>> {
+  const language = ddragonLanguage(locale);
+  const res = await fetch(`${CDN_ROOT}/${version}/data/${language}/item.json`);
+  if (!res.ok) return {};
+
+  const json = (await res.json()) as DDragonItemResponse;
+  return Object.fromEntries(
+    Object.entries(json.data ?? {}).map(([id, item]) => [Number(id), item.name]),
+  );
+}
+
+export function useItemNameFormatter(locale: Locale): (itemId: number) => string | undefined {
+  const version = useDDragonVersion();
+  const { data } = useQuery({
+    queryKey: ["ddragon-item-names", version, locale],
+    queryFn: () => fetchItemNameMap(version, locale),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
+  return (itemId: number) => data?.[itemId];
 }
 
 /** Build the summoner profile icon URL for a given patch. */
@@ -168,6 +216,41 @@ export function summonerSpellIconUrl(spellName: string, version: string): string
   const file = SUMMONER_SPELL_FILENAMES[spellName];
   if (!file) return null;
   return `${CDN_ROOT}/${version}/img/spell/${file}.png`;
+}
+
+async function fetchSummonerSpellNameMap(
+  version: string,
+  locale: Locale,
+): Promise<Record<string, string>> {
+  const language = ddragonLanguage(locale);
+  const res = await fetch(`${CDN_ROOT}/${version}/data/${language}/summoner.json`);
+  if (!res.ok) return {};
+
+  const json = (await res.json()) as DDragonSummonerSpellResponse;
+  return Object.fromEntries(
+    Object.values(json.data ?? {})
+      .map((spell) => {
+        const file = spell.image?.full?.replace(/\.png$/i, "");
+        return file ? [file, spell.name] : null;
+      })
+      .filter((entry): entry is [string, string] => entry != null),
+  );
+}
+
+export function useSummonerSpellNameFormatter(locale: Locale): (spellName: string) => string {
+  const version = useDDragonVersion();
+  const { data } = useQuery({
+    queryKey: ["ddragon-summoner-spell-names", version, locale],
+    queryFn: () => fetchSummonerSpellNameMap(version, locale),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
+  return (spellName: string) => {
+    const file = SUMMONER_SPELL_FILENAMES[spellName];
+    return file ? data?.[file] ?? spellName : spellName;
+  };
 }
 
 /**
@@ -226,6 +309,45 @@ export function runeIconUrl(perkId: number): string | null {
 export function runeStyleIconUrl(styleId: number): string | null {
   const path = STYLE_PATHS[styleId];
   return path ? `${PERK_ROOT}/${path}` : null;
+}
+
+async function fetchRuneNameMaps(version: string, locale: Locale): Promise<RuneNameMaps> {
+  const language = ddragonLanguage(locale);
+  const res = await fetch(`${CDN_ROOT}/${version}/data/${language}/runesReforged.json`);
+  if (!res.ok) return { perks: {}, styles: {} };
+
+  const styles = (await res.json()) as DDragonRuneStyle[];
+  const maps: RuneNameMaps = { perks: {}, styles: {} };
+
+  for (const style of styles) {
+    maps.styles[style.id] = style.name;
+    for (const slot of style.slots ?? []) {
+      for (const rune of slot.runes ?? []) {
+        maps.perks[rune.id] = rune.name;
+      }
+    }
+  }
+
+  return maps;
+}
+
+export function useRuneNameFormatter(locale: Locale): {
+  perkName: (perkId: number) => string | undefined;
+  styleName: (styleId: number) => string | undefined;
+} {
+  const version = useDDragonVersion();
+  const { data } = useQuery({
+    queryKey: ["ddragon-rune-names", version, locale],
+    queryFn: () => fetchRuneNameMaps(version, locale),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
+  return {
+    perkName: (perkId: number) => data?.perks[perkId],
+    styleName: (styleId: number) => data?.styles[styleId],
+  };
 }
 
 /**

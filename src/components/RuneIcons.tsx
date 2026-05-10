@@ -8,23 +8,31 @@
  */
 
 import { useState } from "react";
-import { runeIconUrl, runeStyleIconUrl } from "@/lib/ddragon";
+import { runeIconUrl, runeStyleIconUrl, useRuneNameFormatter } from "@/lib/ddragon";
+import type { Locale } from "@/i18n";
 
 type RuneIconsProps = {
   /** Keystone perk + secondary tree ids. Undefined renders empty tiles. */
   runes?: { keystoneId: number; secondaryStyleId: number };
   /** Per-cell size in px. Matches SummonerSpells default. */
   size?: number;
+  locale?: Locale;
 };
 
-export function RuneIcons({ runes, size = 22 }: RuneIconsProps) {
+export function RuneIcons({ runes, size = 22, locale = "en" }: RuneIconsProps) {
+  const { perkName, styleName } = useRuneNameFormatter(locale);
+
   return (
     <div className="grid gap-0.5" style={{ gridTemplateColumns: `${size}px` }}>
-      <RuneCell url={runes ? runeIconUrl(runes.keystoneId) : null} size={size} title="Keystone" />
+      <RuneCell
+        url={runes ? runeIconUrl(runes.keystoneId) : null}
+        size={size}
+        title={runes ? perkName(runes.keystoneId) ?? "Keystone" : undefined}
+      />
       <RuneCell
         url={runes ? runeStyleIconUrl(runes.secondaryStyleId) : null}
         size={size}
-        title="Secondary tree"
+        title={runes ? styleName(runes.secondaryStyleId) ?? "Secondary tree" : undefined}
         // Tree icons are smaller PNGs with transparent backgrounds — use
         // contain so they don't get cropped to a square fill.
         contain
@@ -41,7 +49,7 @@ function RuneCell({
 }: {
   url: string | null;
   size: number;
-  title: string;
+  title?: string;
   contain?: boolean;
 }) {
   const [broken, setBroken] = useState(false);
@@ -57,7 +65,7 @@ function RuneCell({
       {!isEmpty && url && (
         <img
           src={url}
-          alt=""
+          alt={title ?? ""}
           loading="lazy"
           decoding="async"
           width={size}

@@ -11,7 +11,12 @@
  */
 
 import { useState } from "react";
-import { summonerSpellIconUrl, useDDragonVersion } from "@/lib/ddragon";
+import {
+  summonerSpellIconUrl,
+  useDDragonVersion,
+  useSummonerSpellNameFormatter,
+} from "@/lib/ddragon";
+import type { Locale } from "@/i18n";
 
 type SummonerSpellsProps = {
   /** Tuple of the two summoner-spell display names (e.g. ["Flash", "Teleport"]). */
@@ -22,10 +27,13 @@ type SummonerSpellsProps = {
    * (22 * 2 + 2 = 46 ≈ 22 * 2 + 2).
    */
   size?: number;
+  locale?: Locale;
 };
 
-export function SummonerSpells({ spells, size = 22 }: SummonerSpellsProps) {
+export function SummonerSpells({ spells, size = 22, locale = "en" }: SummonerSpellsProps) {
   const version = useDDragonVersion();
+  const spellLabel = useSummonerSpellNameFormatter(locale);
+
   return (
     <div
       className="grid gap-0.5"
@@ -33,8 +41,8 @@ export function SummonerSpells({ spells, size = 22 }: SummonerSpellsProps) {
       // regardless of Tailwind's grid-cols defaults.
       style={{ gridTemplateColumns: `${size}px` }}
     >
-      <SpellCell name={spells[0]} size={size} version={version} />
-      <SpellCell name={spells[1]} size={size} version={version} />
+      <SpellCell name={spells[0]} label={spellLabel(spells[0])} size={size} version={version} />
+      <SpellCell name={spells[1]} label={spellLabel(spells[1])} size={size} version={version} />
     </div>
   );
 }
@@ -46,10 +54,12 @@ export function SummonerSpells({ spells, size = 22 }: SummonerSpellsProps) {
  */
 function SpellCell({
   name,
+  label,
   size,
   version,
 }: {
   name: string;
+  label: string;
   size: number;
   version: string;
 }) {
@@ -63,12 +73,12 @@ function SpellCell({
         isEmpty ? "bg-muted/40" : "bg-muted"
       }`}
       style={{ width: size, height: size }}
-      title={name}
+      title={label}
     >
       {!isEmpty && url && (
         <img
           src={url}
-          alt=""
+          alt={label}
           loading="lazy"
           decoding="async"
           width={size}

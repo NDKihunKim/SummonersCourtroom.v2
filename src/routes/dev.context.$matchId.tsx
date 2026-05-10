@@ -19,7 +19,12 @@ type Search = {
   endMs?: number;
 };
 
+const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
+
 export const Route = createFileRoute("/dev/context/$matchId")({
+  head: () => ({
+    meta: [{ name: "robots", content: "noindex,nofollow" }],
+  }),
   validateSearch: (raw: Record<string, unknown>): Search => ({
     scope: raw.scope === "window" ? "window" : raw.scope === "full" ? "full" : undefined,
     puuid: typeof raw.puuid === "string" ? raw.puuid : undefined,
@@ -38,6 +43,25 @@ export const Route = createFileRoute("/dev/context/$matchId")({
 function DevContextPage() {
   const { matchId } = Route.useParams();
   const search = useSearch({ from: "/dev/context/$matchId" }) as Search;
+
+  if (!SHOW_DEV_CONTEXT) {
+    return (
+      <div className="min-h-screen bg-background px-6 py-8">
+        <div className="mx-auto max-w-2xl rounded-lg border border-border bg-card p-6 text-center">
+          <h1 className="text-xl font-bold text-foreground">Context view disabled</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Prompt and evidence inspection is available only in development.
+          </p>
+          <Link
+            to="/"
+            className="mt-4 inline-flex rounded-md border border-gold bg-gold/10 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/20"
+          >
+            Back home
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background px-6 py-8">

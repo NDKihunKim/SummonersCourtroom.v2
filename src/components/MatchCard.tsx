@@ -17,6 +17,8 @@ type PipelineStep = "contextualize" | "judge" | "parse";
 type Scope = "full" | "window";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 
+const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
+
 const defaultT: Translate = (key, vars) => {
   const text = String(key);
   if (!vars) return text;
@@ -216,11 +218,11 @@ export function MatchCard({
 
           {/* Loadout: spells | runes — sits right after the champion so
               players read champion → spells → runes → KDA → items → stats,
-              matching the requested order. */}
+          matching the requested order. */}
           <div className="hidden items-center gap-1.5 md:flex">
-            <SummonerSpells spells={match.spells} />
+            <SummonerSpells spells={match.spells} locale={locale} />
             <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
-            <RuneIcons runes={match.runes} />
+            <RuneIcons runes={match.runes} locale={locale} />
           </div>
 
           <div className="ml-2 min-w-[110px]">
@@ -234,7 +236,7 @@ export function MatchCard({
 
           {/* Items + trinket */}
           <div className="hidden items-center md:flex">
-            <ItemGrid items={match.items} trinket={match.trinket} />
+            <ItemGrid items={match.items} trinket={match.trinket} locale={locale} />
           </div>
 
           {/* Stats */}
@@ -708,12 +710,14 @@ function Verdict({
         {reasoning}
       </p>
       <div className="mt-3 flex justify-end gap-2">
-        <button
-          onClick={onViewContext}
-          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          View context
-        </button>
+        {SHOW_DEV_CONTEXT && (
+          <button
+            onClick={onViewContext}
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            View context
+          </button>
+        )}
         <button
           onClick={onAgain}
           className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"

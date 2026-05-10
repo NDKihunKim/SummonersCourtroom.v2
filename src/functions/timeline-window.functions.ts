@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import type { RegionalRouting } from "@/server/riot";
+import { assertRateLimit } from "@/server/request-rate-limit";
 
 type WindowItem = Record<string, unknown> & {
   kind: "frame" | "event";
@@ -96,6 +98,18 @@ const PLATFORM_TO_REGIONAL: Record<string, RegionalRouting> = {
 
 const MIN_WINDOW_MS = 60_000;
 const MAX_WINDOW_MS = 5 * 60_000;
+const ONE_MINUTE_MS = 60_000;
+
+function assertContextInspectionAllowed() {
+  if (import.meta.env.DEV) return;
+
+  const expectedToken = process.env.ADMIN_CONTEXT_TOKEN;
+  const request = getRequest();
+  const providedToken = request.headers.get("x-admin-context-token");
+
+  if (expectedToken && providedToken === expectedToken) return;
+  throw new Error("Context inspection is not available in production.");
+}
 
 function apiKey(): string {
   const key = process.env.RIOT_API_KEY;
@@ -123,12 +137,12 @@ async function riotGet<T>(url: string): Promise<T> {
       throw new Error("Riot match not found. Check match id and region.");
     }
     if (res.status === 401 || res.status === 403) {
-      throw new Error("Riot API key rejected. Check RIOT_API_KEY.");
+      throw new Error("Riot API access is currently unavailable. Please try again later.");
     }
     if (res.status === 429) {
-      throw new Error("Riot rate limit hit. Try again later.");
+      throw new Error("Riot rate limit reached. Please wait a minute and try again.");
     }
-    throw new Error(`Riot HTTP ${res.status}`);
+    throw new Error("Riot service error. Please try again later.");
   }
 
   return (await res.json()) as T;
@@ -749,6 +763,14 @@ function extractWindow(
 export const getTimelineWindow = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TimelineWindowInputSchema.parse(input))
   .handler(async ({ data }) => {
+    assertContextInspectionAllowed();
+    assertRateLimit({
+      scope: "timeline-window",
+      limit: 10,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many context requests. Please wait a minute and try again.",
+    });
+
     const span = data.endMs - data.startMs;
     if (span < MIN_WINDOW_MS) throw new Error("Window must be at least 60 seconds.");
     if (span > MAX_WINDOW_MS) throw new Error("Window must be at most 5 minutes.");

@@ -11,7 +11,8 @@
  */
 
 import { useState } from "react";
-import { itemIconUrl, useDDragonVersion } from "@/lib/ddragon";
+import { itemIconUrl, useDDragonVersion, useItemNameFormatter } from "@/lib/ddragon";
+import type { Locale } from "@/i18n";
 
 type ItemGridProps = {
   /** 6 main inventory slots (item0..item5). 0 = empty slot. */
@@ -23,10 +24,12 @@ type ItemGridProps = {
    * as the KDA column so match rows don't grow taller.
    */
   size?: number;
+  locale?: Locale;
 };
 
-export function ItemGrid({ items, trinket, size = 22 }: ItemGridProps) {
+export function ItemGrid({ items, trinket, size = 22, locale = "en" }: ItemGridProps) {
   const version = useDDragonVersion();
+  const itemName = useItemNameFormatter(locale);
 
   // Pad/trim to exactly 6 cells so the 3x2 grid never collapses, even if
   // upstream data ever sends a shorter array (defensive — Riot always
@@ -41,13 +44,24 @@ export function ItemGrid({ items, trinket, size = 22 }: ItemGridProps) {
         style={{ gridTemplateColumns: `repeat(3, ${size}px)` }}
       >
         {mainSix.map((id, i) => (
-          <ItemCell key={i} id={id} size={size} version={version} />
+          <ItemCell
+            key={i}
+            id={id}
+            size={size}
+            version={version}
+            name={id > 0 ? itemName(id) : undefined}
+          />
         ))}
       </div>
       {/* Trinket — visually separated from the main grid by a thin divider
           so it reads as a distinct slot, mirroring the in-game HUD. */}
       <div className="h-full w-px bg-border/60" style={{ height: size * 2 + 2 }} />
-      <ItemCell id={trinket} size={size} version={version} />
+      <ItemCell
+        id={trinket}
+        size={size}
+        version={version}
+        name={trinket > 0 ? itemName(trinket) : undefined}
+      />
     </div>
   );
 }
@@ -62,13 +76,16 @@ function ItemCell({
   id,
   size,
   version,
+  name,
 }: {
   id: number;
   size: number;
   version: string;
+  name?: string;
 }) {
   const [broken, setBroken] = useState(false);
   const isEmpty = id <= 0 || broken;
+  const label = !isEmpty ? name ?? `Item ${id}` : undefined;
 
   return (
     <div
@@ -76,11 +93,12 @@ function ItemCell({
         isEmpty ? "bg-muted/40" : "bg-muted"
       }`}
       style={{ width: size, height: size }}
+      title={label}
     >
       {!isEmpty && (
         <img
           src={itemIconUrl(id, version)}
-          alt=""
+          alt={label ?? ""}
           loading="lazy"
           decoding="async"
           width={size}

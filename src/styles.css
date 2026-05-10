@@ -177,7 +177,8 @@
   display: block;
 }
 .scrollbar-always::-webkit-scrollbar-track {
-  background: transparent;
+  background: color-mix(in oklch, var(--color-border) 22%, transparent);
+  border-radius: 4px;
 }
 .scrollbar-always::-webkit-scrollbar-thumb {
   background-color: var(--color-border);
