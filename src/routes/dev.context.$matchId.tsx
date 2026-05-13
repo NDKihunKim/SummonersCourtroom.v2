@@ -5,8 +5,7 @@ import { TimelineWindowResult } from "@/components/TimelineWindowResult";
  * Standalone "View context" page opened in a new tab from the Verdict
  * panel. Shows what would have been sent to the AI for this judged
  * match — either the timeline-window prompt sandwich (Specify Time
- * scope) or a placeholder for Full Game (mocked, no real contextualizer
- * output yet).
+ * scope) or the temporary full-game contextualizer output.
  */
 
 type Search = {
@@ -98,17 +97,31 @@ function DevContextPage() {
             routingRegion={search.region}
             startMs={search.startMs}
             endMs={search.endMs}
+            scope="window"
             // Auto-fetch on mount so the user immediately sees the
             // prompt sandwich without an extra Run click.
             runToken={1}
             subjectAChampion={search.subjectA}
             subjectBChampion={search.subjectB}
           />
+        ) : search.scope === "full" && search.puuid ? (
+          <TimelineWindowResult
+            matchId={matchId}
+            userPuuid={search.puuid}
+            routingRegion={search.region}
+            startMs={0}
+            endMs={0}
+            scope="full"
+            // Auto-fetch on mount so the user immediately sees the
+            // full-game prompt sandwich without an extra Run click.
+            runToken={1}
+            subjectAChampion={search.subjectA}
+            subjectBChampion={search.subjectB}
+          />
         ) : (
           <div className="rounded-lg border border-dashed border-border bg-card/40 p-6 text-center text-sm text-muted-foreground">
-            Full-game context pipeline is not wired up yet — this is where
-            the contextualizer output will appear once the real pipeline
-            is reconnected.
+            Missing context parameters. Return to the match page and open
+            context from a verdict preview.
           </div>
         )}
       </div>

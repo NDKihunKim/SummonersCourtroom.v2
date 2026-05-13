@@ -78,6 +78,11 @@ const TimelineWindowInputSchema = z.object({
     .optional(),
 });
 
+const TimelineFullGameInputSchema = TimelineWindowInputSchema.omit({
+  startMs: true,
+  endMs: true,
+});
+
 const PLATFORM_TO_REGIONAL: Record<string, RegionalRouting> = {
   br1: "americas",
   la1: "americas",
@@ -667,6 +672,7 @@ function compactEventOutput(event: Record<string, unknown>): OutputWindowItem {
       type,
       timestamp,
       team: stringValue(event, "teamId"),
+      killer: stringValue(event, "killerId"),
       assistingParticipantIds: assistsValue(event),
       buildingType: stringValue(event, "buildingType"),
       towerType: stringValue(event, "towerType"),
@@ -694,6 +700,9 @@ function shouldOmitOutputEvent(event: Record<string, unknown>): boolean {
     "SKILL_LEVEL_UP",
     "ITEM_DESTROYED",
     "ITEM_PURCHASED",
+    "ITEM_UNDO",
+    "ITEM_SOLD",
+    "CHAMPION_SPECIAL_KILL",
   ].includes(stringValue(event, "type") ?? "");
 }
 
@@ -743,29 +752,146 @@ function stripInternal(
   return out;
 }
 
-function buildBrief({
-  participants,
-  subjects,
-  evidence,
-}: {
-  participants: ParticipantInfo[];
-  subjects: SubjectInfo[];
-  evidence: InternalWindowItem[];
-}): string {
-  const relevantEvents = evidence.filter((item) => item.kind === "event");
+function outputItemType(item: OutputWindowItem): string {
+  return typeof item.type === "string" ? item.type : "EVENT";
+}
+
+function outputTimestamp(item: OutputWindowItem): string {
+  return typeof item.timestamp === "string" ? item.timestamp : "[unknown time]";
+}
+
+function outputParticipants(item: OutputWindowItem): {
+  blue?: unknown[];
+  red?: unknown[];
+} {
+  const participants = asRecord(item.participants);
+  return {
+    blue: Array.isArray(participants.blue) ? participants.blue : undefined,
+    red: Array.isArray(participants.red) ? participants.red : undefined,
+  };
+}
+
+function firstOutputFrame(items: OutputWindowItem[]): OutputWindowItem | undefined {
+  return items.find((item) => outputItemType(item) === "frame");
+}
+
+function championRoleLabel(value: unknown): string {
+  const participant = asRecord(value);
+  const championName = stringValue(participant, "championName") ?? "Unknown champion";
+  const role = stringValue(participant, "role");
+  return role ? `${role} ${championName}` : championName;
+}
+
+function teamLineFromOutput(frame: OutputWindowItem | undefined, team: "blue" | "red"): string {
+  if (!frame) return "Unavailable";
+  const participants = outputParticipants(frame)[team] ?? [];
+  if (!participants.length) return "Unavailable";
+  return participants.map(championRoleLabel).join(", ");
+}
+
+function numericOutput(record: Record<string, unknown>, key: string, label: string): string | null {
+  const value = numberValue(record, key);
+  return value == null ? null : `${label} ${value}`;
+}
+
+function positionOutput(record: Record<string, unknown>): string | null {
+  const position = positionValue(record);
+  return position ? `pos (${position.x}, ${position.y})` : null;
+}
+
+function participantFrameSummary(value: unknown): string {
+  const participant = asRecord(value);
+  const details = [
+    stringValue(participant, "role"),
+    numericOutput(participant, "level", "level"),
+    numericOutput(participant, "currentGold", "current gold"),
+    numericOutput(participant, "totalGold", "total gold"),
+    numericOutput(participant, "minionsKilled", "CS"),
+    numericOutput(participant, "jungleMinionsKilled", "jungle CS"),
+    numericOutput(participant, "xp", "XP"),
+    numericOutput(participant, "health", "health"),
+    numericOutput(participant, "healthMax", "max health"),
+    numericOutput(participant, "timeEnemySpentControlled", "enemy CC time"),
+    numericOutput(participant, "totalDamageDoneToChampions", "champion damage"),
+    positionOutput(participant),
+  ].filter((part): part is string => !!part);
+  const championName = stringValue(participant, "championName") ?? "Unknown champion";
+  return details.length ? `${championName} (${details.join(", ")})` : championName;
+}
+
+function frameSummary(item: OutputWindowItem): string {
+  const participants = outputParticipants(item);
+  const blue = (participants.blue ?? []).map(participantFrameSummary);
+  const red = (participants.red ?? []).map(participantFrameSummary);
+  return `${outputTimestamp(item)} Blue: ${blue.length ? blue.join("; ") : "none"} | Red: ${
+    red.length ? red.join("; ") : "none"
+  }`;
+}
+
+function listOutput(value: unknown): string {
+  return Array.isArray(value) && value.length ? value.map(String).join(", ") : "none";
+}
+
+function outputEventSummary(item: OutputWindowItem): string {
+  const type = outputItemType(item);
+  const timestamp = outputTimestamp(item);
+
+  if (type === "CHAMPION_KILL") {
+    return `${timestamp} CHAMPION_KILL: killer ${String(
+      item.killer ?? "unknown",
+    )}; victim ${String(item.victim ?? "unknown")}; assists ${listOutput(
+      item.assistingParticipantIds,
+    )}; bounty ${String(item.bounty ?? "unknown")}.`;
+  }
+
+  if (type === "ELITE_MONSTER_KILL") {
+    return `${timestamp} ELITE_MONSTER_KILL: killer ${String(
+      item.killer ?? "unknown",
+    )}; assists ${listOutput(item.assistingParticipantIds)}; monster ${String(
+      item.monsterType ?? "unknown",
+    )}.`;
+  }
+
+  if (type === "BUILDING_KILL") {
+    return `${timestamp} BUILDING_KILL: team ${String(item.team ?? "unknown")}; assists ${listOutput(
+      item.assistingParticipantIds,
+    )}; killer ${String(item.killer ?? "unknown")}; building ${String(
+      item.buildingType ?? "unknown",
+    )}; tower ${String(
+      item.towerType ?? "unknown",
+    )}; lane ${String(item.laneType ?? "unknown")}.`;
+  }
+
+  if (type === "TURRET_PLATE_DESTROYED") {
+    const position = positionValue(item);
+    return `${timestamp} TURRET_PLATE_DESTROYED: team ${String(
+      item.team ?? "unknown",
+    )}; killer ${String(item.killer ?? "unknown")}; position ${
+      position ? `(${position.x}, ${position.y})` : "unknown"
+    }.`;
+  }
+
+  return `${timestamp} ${type}: ${JSON.stringify(item)}.`;
+}
+
+function buildBriefFromOutput(evidence: OutputWindowItem[]): string {
+  const firstFrame = firstOutputFrame(evidence);
+  const frames = evidence.filter((item) => outputItemType(item) === "frame");
+  const events = evidence.filter((item) => outputItemType(item) !== "frame");
 
   return [
     "Teams:",
-    `- Blue: ${teamRoster(participants, 100)}`,
-    `- Red: ${teamRoster(participants, 200)}`,
+    `- Blue: ${teamLineFromOutput(firstFrame, "blue")}`,
+    `- Red: ${teamLineFromOutput(firstFrame, "red")}`,
     "",
-    "Subjects:",
-    `- Subject A: ${subjectLabel(subjects[0])}`,
-    `- Subject B: ${subjectLabel(subjects[1])}`,
+    "Frame Snapshots:",
+    ...(frames.length
+      ? frames.map((item) => `- ${frameSummary(item)}`)
+      : ["- No frame rows retained."]),
     "",
     "Relevant Events:",
-    ...(relevantEvents.length
-      ? relevantEvents.map((item) => `- ${summarizeEvent(item)}`)
+    ...(events.length
+      ? events.map((item) => `- ${outputEventSummary(item)}`)
       : ["- No relevant event rows retained."]),
   ].join("\n");
 }
@@ -889,6 +1015,77 @@ function extractWindow(
   return items;
 }
 
+function timelineEndMs(timeline: TimelinePayload): number {
+  const frames = timeline.info?.frames;
+  if (!Array.isArray(frames)) throw new Error("Riot timeline response is missing frames.");
+
+  let endMs = 0;
+  for (const frame of frames) {
+    const frameTs = toTimestamp(frame.timestamp);
+    if (frameTs != null) endMs = Math.max(endMs, frameTs);
+    for (const event of frame.events ?? []) {
+      const eventTs = toTimestamp(event.timestamp);
+      if (eventTs != null) endMs = Math.max(endMs, eventTs);
+    }
+  }
+  return endMs;
+}
+
+function buildWindowResponse({
+  startMs,
+  endMs,
+  match,
+  timeline,
+  userPuuid,
+  subjects: inputSubjects,
+  trimToRelevantEvidence = true,
+}: {
+  startMs: number;
+  endMs: number;
+  match: MatchPayload;
+  timeline: TimelinePayload;
+  userPuuid: string;
+  subjects?: z.infer<typeof TimelineWindowInputSchema>["subjects"];
+  trimToRelevantEvidence?: boolean;
+}) {
+  const champions = buildChampionLookup(match);
+  const participants = buildParticipants(match);
+  const subjects: SubjectInfo[] = [
+    {
+      key: "Subject A",
+      participant: findSubject(participants, inputSubjects?.a ?? { puuid: userPuuid }),
+      fallbackChampion: inputSubjects?.a?.champion,
+    },
+    {
+      key: "Subject B",
+      participant: findSubject(participants, inputSubjects?.b),
+      fallbackChampion: inputSubjects?.b?.champion,
+    },
+  ];
+  const subjectIds = new Set(
+    subjects
+      .map((subject) => subject.participant?.participantId)
+      .filter((id): id is number => typeof id === "number"),
+  );
+  const items = extractWindow(timeline, startMs, endMs, champions);
+  const evidence = trimToRelevantEvidence ? trimEvidence(items, participants, subjectIds) : items;
+  const outputEvidence = stripInternal(evidence, participants, items);
+  const outputItems = stripInternal(items, participants);
+  const brief = buildBriefFromOutput(outputEvidence);
+
+  return {
+    window: {
+      start: formatGameTime(startMs),
+      end: formatGameTime(endMs),
+    },
+    count: evidence.length,
+    totalItems: items.length,
+    brief,
+    evidence: outputEvidence,
+    items: outputItems,
+  };
+}
+
 export const getTimelineWindow = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TimelineWindowInputSchema.parse(input))
   .handler(async ({ data }) => {
@@ -913,42 +1110,46 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
       riotGet<MatchPayload>(base),
       riotGet<TimelinePayload>(`${base}/timeline`),
     ]);
-    const champions = buildChampionLookup(match);
-    const participants = buildParticipants(match);
-    const subjects: SubjectInfo[] = [
-      {
-        key: "Subject A",
-        participant: findSubject(participants, data.subjects?.a ?? { puuid: data.userPuuid }),
-        fallbackChampion: data.subjects?.a?.champion,
-      },
-      {
-        key: "Subject B",
-        participant: findSubject(participants, data.subjects?.b),
-        fallbackChampion: data.subjects?.b?.champion,
-      },
-    ];
-    const subjectIds = new Set(
-      subjects
-        .map((subject) => subject.participant?.participantId)
-        .filter((id): id is number => typeof id === "number"),
-    );
-    const items = extractWindow(timeline, data.startMs, data.endMs, champions);
-    const evidence = trimEvidence(items, participants, subjectIds);
-    const brief = buildBrief({
-      participants,
-      subjects,
-      evidence,
+
+    return buildWindowResponse({
+      startMs: data.startMs,
+      endMs: data.endMs,
+      match,
+      timeline,
+      userPuuid: data.userPuuid,
+      subjects: data.subjects,
+    });
+  });
+
+export const getTimelineFullGame = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => TimelineFullGameInputSchema.parse(input))
+  .handler(async ({ data }) => {
+    assertContextInspectionAllowed();
+    assertRateLimit({
+      scope: "timeline-full-game",
+      limit: 4,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many full-game context requests. Please wait a minute and try again.",
     });
 
-    return {
-      window: {
-        start: formatGameTime(data.startMs),
-        end: formatGameTime(data.endMs),
-      },
-      count: evidence.length,
-      totalItems: items.length,
-      brief,
-      evidence: stripInternal(evidence, participants, items),
-      items: stripInternal(items, participants),
-    };
+    const routing = inferRouting(data.matchId, data.routingRegion);
+    const base = `https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(
+      data.matchId,
+    )}`;
+
+    const [match, timeline] = await Promise.all([
+      riotGet<MatchPayload>(base),
+      riotGet<TimelinePayload>(`${base}/timeline`),
+    ]);
+    const endMs = timelineEndMs(timeline);
+
+    return buildWindowResponse({
+      startMs: 0,
+      endMs,
+      match,
+      timeline,
+      userPuuid: data.userPuuid,
+      subjects: data.subjects,
+      trimToRelevantEvidence: false,
+    });
   });

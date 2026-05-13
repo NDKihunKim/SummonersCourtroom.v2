@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { getTimelineWindow } from "@/functions/timeline-window.functions";
+import { getTimelineFullGame, getTimelineWindow } from "@/functions/timeline-window.functions";
 import { PromptBlock } from "./judge-prompts/PromptBlock";
 import { UPPER_PROMPT, LOWER_PROMPT } from "./judge-prompts/promptText";
 import { substituteSubjects } from "./judge-prompts/substituteSubjects";
@@ -35,6 +35,7 @@ export function TimelineWindowResult({
   routingRegion,
   startMs,
   endMs,
+  scope = "window",
   /** When this token changes, re-fetch. Parent bumps it on "Run" click. */
   runToken,
   subjectAChampion,
@@ -47,6 +48,7 @@ export function TimelineWindowResult({
   routingRegion?: "americas" | "europe" | "asia" | "sea";
   startMs: number;
   endMs: number;
+  scope?: "window" | "full";
   runToken: number;
   /**
    * Champion names used to substitute SUBJECT_A / SUBJECT_B placeholders in
@@ -98,24 +100,42 @@ export function TimelineWindowResult({
     setDurationMs(null);
     const t0 = performance.now();
     try {
-      const data = await getTimelineWindow({
-        data: {
-          matchId,
-          userPuuid,
-          ...(routingRegion ? { routingRegion } : {}),
-          startMs,
-          endMs,
-          subjects: {
-            a: {
-              champion: subjectAChampion,
-              puuid: you?.puuid ?? userPuuid,
-            },
-            b: {
-              champion: subjectBChampion,
-            },
-          },
-        },
-      });
+      const data =
+        scope === "full"
+          ? await getTimelineFullGame({
+              data: {
+                matchId,
+                userPuuid,
+                ...(routingRegion ? { routingRegion } : {}),
+                subjects: {
+                  a: {
+                    champion: subjectAChampion,
+                    puuid: you?.puuid ?? userPuuid,
+                  },
+                  b: {
+                    champion: subjectBChampion,
+                  },
+                },
+              },
+            })
+          : await getTimelineWindow({
+              data: {
+                matchId,
+                userPuuid,
+                ...(routingRegion ? { routingRegion } : {}),
+                startMs,
+                endMs,
+                subjects: {
+                  a: {
+                    champion: subjectAChampion,
+                    puuid: you?.puuid ?? userPuuid,
+                  },
+                  b: {
+                    champion: subjectBChampion,
+                  },
+                },
+              },
+            });
       setDurationMs(Math.round(performance.now() - t0));
       if (data.error) throw new Error(data.error);
       setResult(data);
@@ -127,10 +147,9 @@ export function TimelineWindowResult({
   });
 
   /**
-   * Copy the full prompt sandwich — upper prompt + brief + evidence JSON + lower
-   * prompt — as a single plaintext blob. This matches what's visually
-   * rendered on screen (with SUBJECT_A / SUBJECT_B already substituted) so
-   * the user can paste the exact preview into another tool / model.
+   * Copy the prompt sandwich — upper prompt + brief + lower prompt — as a
+   * single plaintext blob. The JSON remains visible for development review,
+   * but is intentionally excluded from the copied Judge payload.
    *
    * Defensive try/catch: clipboard access can throw on insecure contexts
    * or when the user denies permission; we surface that as the inline
@@ -143,9 +162,6 @@ export function TimelineWindowResult({
         upperPromptText,
         "",
         result.brief,
-        "",
-        "TRIMMED EVIDENCE JSON:",
-        JSON.stringify(result.evidence ?? result.items ?? [], null, 2),
         "",
         lowerPromptText,
       ].join("\n");
