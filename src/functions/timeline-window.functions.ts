@@ -9,6 +9,8 @@ type WindowItem = Record<string, unknown> & {
   timestamp: string;
 };
 
+type OutputWindowItem = Record<string, unknown>;
+
 type InternalWindowItem = WindowItem & {
   timestampMs: number;
   participantRawId?: number;
@@ -547,75 +549,212 @@ function trimEvidence(
   return evidence.slice(0, 80);
 }
 
-function stripInternal(items: InternalWindowItem[]): WindowItem[] {
-  return items.map(
-    ({
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function positionValue(record: Record<string, unknown>): { x: number; y: number } | null {
+  const position = asRecord(record.position);
+  const x = numberValue(position, "x");
+  const y = numberValue(position, "y");
+  return x == null || y == null ? null : { x, y };
+}
+
+function participantSnapshot(
+  item: InternalWindowItem,
+  participantById: Map<number, ParticipantInfo>,
+) {
+  const participant =
+    item.participantRawId != null ? participantById.get(item.participantRawId) : undefined;
+  const frame = asRecord(item.frame);
+  const championStats = asRecord(frame.championStats);
+  const damageStats = asRecord(frame.damageStats);
+
+  return {
+    championName: participant?.championName ?? String(item.participantId ?? "Unknown"),
+    role: roleLabel(participant?.teamPosition),
+    position: positionValue(frame),
+    currentGold: numberValue(frame, "currentGold"),
+    totalGold: numberValue(frame, "totalGold"),
+    minionsKilled: numberValue(frame, "minionsKilled"),
+    jungleMinionsKilled: numberValue(frame, "jungleMinionsKilled"),
+    level: numberValue(frame, "level"),
+    xp: numberValue(frame, "xp"),
+    health: numberValue(championStats, "health"),
+    healthMax: numberValue(championStats, "healthMax"),
+    timeEnemySpentControlled: numberValue(frame, "timeEnemySpentControlled"),
+    totalDamageDoneToChampions: numberValue(damageStats, "totalDamageDoneToChampions"),
+  };
+}
+
+function groupedFrameOutput(
+  timestamp: string,
+  frames: InternalWindowItem[],
+  participantById: Map<number, ParticipantInfo>,
+): OutputWindowItem {
+  const grouped = {
+    blue: [] as ReturnType<typeof participantSnapshot>[],
+    red: [] as ReturnType<typeof participantSnapshot>[],
+  };
+
+  for (const item of frames) {
+    if (item.kind !== "frame") continue;
+    const participant =
+      item.participantRawId != null ? participantById.get(item.participantRawId) : undefined;
+    const snapshot = participantSnapshot(item, participantById);
+    if (participant?.teamId === 200) grouped.red.push(snapshot);
+    else grouped.blue.push(snapshot);
+  }
+
+  return {
+    type: "frame",
+    timestamp,
+    participants: grouped,
+  };
+}
+
+function stringValue(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" ? value : null;
+}
+
+function assistsValue(record: Record<string, unknown>): string[] {
+  const value = record.assistingParticipantIds;
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function eventPositionValue(record: Record<string, unknown>): { x: number; y: number } | null {
+  const position = asRecord(record.position);
+  const x = numberValue(position, "x");
+  const y = numberValue(position, "y");
+  return x == null || y == null ? null : { x, y };
+}
+
+function compactEventOutput(event: Record<string, unknown>): OutputWindowItem {
+  const type = stringValue(event, "type") ?? "EVENT";
+  const timestamp = stringValue(event, "timestamp") ?? "";
+
+  if (type === "CHAMPION_KILL") {
+    return {
+      type,
+      timestamp,
+      killer: stringValue(event, "killerId"),
+      victim: stringValue(event, "victimId"),
+      assistingParticipantIds: assistsValue(event),
+      bounty: numberValue(event, "bounty"),
+    };
+  }
+
+  if (type === "ELITE_MONSTER_KILL") {
+    return {
+      type,
+      timestamp,
+      killer: stringValue(event, "killerId"),
+      assistingParticipantIds: assistsValue(event),
+      monsterType: stringValue(event, "monsterType"),
+    };
+  }
+
+  if (type === "BUILDING_KILL") {
+    return {
+      type,
+      timestamp,
+      team: stringValue(event, "teamId"),
+      assistingParticipantIds: assistsValue(event),
+      buildingType: stringValue(event, "buildingType"),
+      towerType: stringValue(event, "towerType"),
+      laneType: stringValue(event, "laneType"),
+    };
+  }
+
+  if (type === "TURRET_PLATE_DESTROYED") {
+    return {
+      type,
+      timestamp,
+      position: eventPositionValue(event),
+      team: stringValue(event, "teamId"),
+      killer: stringValue(event, "killerId"),
+    };
+  }
+
+  return event;
+}
+
+function shouldOmitOutputEvent(event: Record<string, unknown>): boolean {
+  return [
+    "WARD_PLACED",
+    "WARD_KILL",
+    "SKILL_LEVEL_UP",
+    "ITEM_DESTROYED",
+    "ITEM_PURCHASED",
+  ].includes(stringValue(event, "type") ?? "");
+}
+
+function stripInternal(
+  items: InternalWindowItem[],
+  participants: ParticipantInfo[],
+  allItems: InternalWindowItem[] = items,
+): OutputWindowItem[] {
+  const participantById = new Map(
+    participants.map((participant) => [participant.participantId, participant]),
+  );
+  const framesByTimestamp = new Map<number, InternalWindowItem[]>();
+  for (const item of allItems) {
+    if (item.kind !== "frame") continue;
+    const frames = framesByTimestamp.get(item.timestampMs) ?? [];
+    frames.push(item);
+    framesByTimestamp.set(item.timestampMs, frames);
+  }
+
+  const emittedFrameTimestamps = new Set<number>();
+  const out: OutputWindowItem[] = [];
+
+  for (const item of items) {
+    if (item.kind === "frame") {
+      if (emittedFrameTimestamps.has(item.timestampMs)) continue;
+      emittedFrameTimestamps.add(item.timestampMs);
+      out.push(
+        groupedFrameOutput(
+          item.timestamp,
+          framesByTimestamp.get(item.timestampMs) ?? [item],
+          participantById,
+        ),
+      );
+      continue;
+    }
+
+    const {
       timestampMs: _timestampMs,
       participantRawId: _participantRawId,
       involvedRawIds: _involvedRawIds,
-      ...item
-    }) => item,
-  );
+      ...event
+    } = item;
+    if (shouldOmitOutputEvent(event)) continue;
+    out.push(compactEventOutput(event));
+  }
+
+  return out;
 }
 
 function buildBrief({
-  matchId,
-  routing,
-  startMs,
-  endMs,
   participants,
   subjects,
-  items,
   evidence,
 }: {
-  matchId: string;
-  routing: RegionalRouting;
-  startMs: number;
-  endMs: number;
   participants: ParticipantInfo[];
   subjects: SubjectInfo[];
-  items: InternalWindowItem[];
   evidence: InternalWindowItem[];
 }): string {
   const relevantEvents = evidence.filter((item) => item.kind === "event");
-  const notes: string[] = [];
-  if (!relevantEvents.some((item) => eventType(item) === "CHAMPION_KILL")) {
-    notes.push("No champion death is present in the selected window.");
-  }
-  if (
-    !relevantEvents.some((item) =>
-      ["ELITE_MONSTER_KILL", "BUILDING_KILL", "TURRET_PLATE_DESTROYED"].includes(eventType(item)),
-    )
-  ) {
-    notes.push("No objective or structure event is present in the retained evidence.");
-  }
-  if (
-    relevantEvents.length > 0 &&
-    relevantEvents.every((item) => ["WARD_PLACED", "WARD_KILL"].includes(eventType(item)))
-  ) {
-    notes.push("Retained events are only ward/vision events.");
-  }
-  if (items.length > evidence.length) {
-    notes.push(
-      `${items.length - evidence.length} extracted low-signal items were omitted from trimmed evidence.`,
-    );
-  }
-  if (items.some((item) => item.kind === "frame" && item.timestampMs < startMs)) {
-    notes.push("Cached frame before the window is included as baseline context.");
-  }
-  if (evidence.length === 0) {
-    notes.push("No actionable timeline evidence was available for this window.");
-  }
 
   return [
-    "STRUCTURED CONTEXT BRIEF",
-    "",
-    "Window:",
-    `- Match: ${matchId}`,
-    `- Routing region: ${routing}`,
-    `- Range: ${formatGameTime(startMs)} to ${formatGameTime(endMs)}`,
-    `- Evidence items: ${evidence.length} retained of ${items.length} extracted`,
-    "",
     "Teams:",
     `- Blue: ${teamRoster(participants, 100)}`,
     `- Red: ${teamRoster(participants, 200)}`,
@@ -628,16 +767,6 @@ function buildBrief({
     ...(relevantEvents.length
       ? relevantEvents.map((item) => `- ${summarizeEvent(item)}`)
       : ["- No relevant event rows retained."]),
-    "",
-    "Subject Evidence:",
-    ...subjects.flatMap((subject) =>
-      subjectEvidence(subject, evidence, participants).map((line) => `- ${line}`),
-    ),
-    "",
-    "Contextualizer Notes:",
-    ...(notes.length
-      ? notes.map((note) => `- ${note}`)
-      : ["- No caveats detected in the retained evidence."]),
   ].join("\n");
 }
 
@@ -806,13 +935,8 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
     const items = extractWindow(timeline, data.startMs, data.endMs, champions);
     const evidence = trimEvidence(items, participants, subjectIds);
     const brief = buildBrief({
-      matchId: data.matchId,
-      routing,
-      startMs: data.startMs,
-      endMs: data.endMs,
       participants,
       subjects,
-      items,
       evidence,
     });
 
@@ -824,7 +948,7 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
       count: evidence.length,
       totalItems: items.length,
       brief,
-      evidence: stripInternal(evidence),
-      items: stripInternal(items),
+      evidence: stripInternal(evidence, participants, items),
+      items: stripInternal(items, participants),
     };
   });
