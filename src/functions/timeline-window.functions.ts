@@ -653,6 +653,7 @@ function compactEventOutput(event: Record<string, unknown>): OutputWindowItem {
       killer: stringValue(event, "killerId"),
       victim: stringValue(event, "victimId"),
       assistingParticipantIds: assistsValue(event),
+      position: eventPositionValue(event),
       bounty: numberValue(event, "bounty"),
     };
   }
@@ -661,6 +662,7 @@ function compactEventOutput(event: Record<string, unknown>): OutputWindowItem {
     return {
       type,
       timestamp,
+      team: stringValue(event, "killerTeamId"),
       killer: stringValue(event, "killerId"),
       assistingParticipantIds: assistsValue(event),
       monsterType: stringValue(event, "monsterType"),
@@ -674,6 +676,7 @@ function compactEventOutput(event: Record<string, unknown>): OutputWindowItem {
       team: stringValue(event, "teamId"),
       killer: stringValue(event, "killerId"),
       assistingParticipantIds: assistsValue(event),
+      position: eventPositionValue(event),
       buildingType: stringValue(event, "buildingType"),
       towerType: stringValue(event, "towerType"),
       laneType: stringValue(event, "laneType"),
@@ -693,7 +696,10 @@ function compactEventOutput(event: Record<string, unknown>): OutputWindowItem {
   return event;
 }
 
-function shouldOmitOutputEvent(event: Record<string, unknown>): boolean {
+function shouldOmitOutputEvent(
+  event: Record<string, unknown>,
+  extraOmittedEventTypes: readonly string[] = [],
+): boolean {
   return [
     "WARD_PLACED",
     "WARD_KILL",
@@ -703,6 +709,9 @@ function shouldOmitOutputEvent(event: Record<string, unknown>): boolean {
     "ITEM_UNDO",
     "ITEM_SOLD",
     "CHAMPION_SPECIAL_KILL",
+    "OBJECTIVE_BOUNTY_PRESTART",
+    "DRAGON_SOUL_GIVEN",
+    ...extraOmittedEventTypes,
   ].includes(stringValue(event, "type") ?? "");
 }
 
@@ -710,6 +719,7 @@ function stripInternal(
   items: InternalWindowItem[],
   participants: ParticipantInfo[],
   allItems: InternalWindowItem[] = items,
+  extraOmittedEventTypes: readonly string[] = [],
 ): OutputWindowItem[] {
   const participantById = new Map(
     participants.map((participant) => [participant.participantId, participant]),
@@ -745,7 +755,7 @@ function stripInternal(
       involvedRawIds: _involvedRawIds,
       ...event
     } = item;
-    if (shouldOmitOutputEvent(event)) continue;
+    if (shouldOmitOutputEvent(event, extraOmittedEventTypes)) continue;
     out.push(compactEventOutput(event));
   }
 
@@ -789,6 +799,38 @@ function teamLineFromOutput(frame: OutputWindowItem | undefined, team: "blue" | 
   return participants.map(championRoleLabel).join(", ");
 }
 
+type ChampionTeamLookup = Map<string, "Blue" | "Red">;
+
+function normalizedChampionName(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+}
+
+function buildChampionTeamLookup(items: OutputWindowItem[]): ChampionTeamLookup {
+  const lookup: ChampionTeamLookup = new Map();
+  for (const item of items) {
+    if (outputItemType(item) !== "frame") continue;
+    const participants = outputParticipants(item);
+    for (const participant of participants.blue ?? []) {
+      const championName = stringValue(asRecord(participant), "championName");
+      if (championName) lookup.set(normalizedChampionName(championName), "Blue");
+    }
+    for (const participant of participants.red ?? []) {
+      const championName = stringValue(asRecord(participant), "championName");
+      if (championName) lookup.set(normalizedChampionName(championName), "Red");
+    }
+  }
+  return lookup;
+}
+
+function teamForChampion(
+  championName: unknown,
+  championTeams: ChampionTeamLookup,
+): "Blue" | "Red" | null {
+  return championTeams.get(normalizedChampionName(championName)) ?? null;
+}
+
 function numericOutput(record: Record<string, unknown>, key: string, label: string): string | null {
   const value = numberValue(record, key);
   return value == null ? null : `${label} ${value}`;
@@ -828,47 +870,204 @@ function frameSummary(item: OutputWindowItem): string {
   }`;
 }
 
-function listOutput(value: unknown): string {
-  return Array.isArray(value) && value.length ? value.map(String).join(", ") : "none";
+type StructurePoint = {
+  ownerTeam: "Blue" | "Red";
+  lane: "Top" | "Mid" | "Bot" | "Nexus";
+  name: string;
+  x: number;
+  y: number;
+};
+
+const STRUCTURE_COORDINATE_TOLERANCE = 10;
+
+const STRUCTURE_POINTS: StructurePoint[] = [
+  { ownerTeam: "Blue", lane: "Top", name: "Top Outer Turret", x: 981, y: 10441 },
+  { ownerTeam: "Blue", lane: "Top", name: "Top Inner Turret", x: 1512, y: 6699 },
+  { ownerTeam: "Blue", lane: "Top", name: "Top Inhibitor Turret", x: 1169, y: 4287 },
+  { ownerTeam: "Blue", lane: "Top", name: "Top Inhibitor", x: 1172, y: 3583 },
+  { ownerTeam: "Blue", lane: "Mid", name: "Mid Outer Turret", x: 5846, y: 6396 },
+  { ownerTeam: "Blue", lane: "Mid", name: "Mid Inner Turret", x: 5048, y: 4812 },
+  { ownerTeam: "Blue", lane: "Mid", name: "Mid Inhibitor Turret", x: 3651, y: 3696 },
+  { ownerTeam: "Blue", lane: "Mid", name: "Mid Inhibitor", x: 3210, y: 3217 },
+  { ownerTeam: "Blue", lane: "Bot", name: "Bot Outer Turret", x: 10504, y: 1029 },
+  { ownerTeam: "Blue", lane: "Bot", name: "Bot Inner Turret", x: 6919, y: 1483 },
+  { ownerTeam: "Blue", lane: "Bot", name: "Bot Inhibitor Turret", x: 4281, y: 1253 },
+  { ownerTeam: "Blue", lane: "Bot", name: "Bot Inhibitor", x: 3468, y: 1230 },
+  { ownerTeam: "Blue", lane: "Nexus", name: "Nexus Turret 1", x: 2177, y: 1807 },
+  { ownerTeam: "Blue", lane: "Nexus", name: "Nexus Turret 2", x: 1748, y: 2270 },
+  { ownerTeam: "Red", lane: "Top", name: "Top Outer Turret", x: 4318, y: 13875 },
+  { ownerTeam: "Red", lane: "Top", name: "Top Inner Turret", x: 7943, y: 13411 },
+  { ownerTeam: "Red", lane: "Top", name: "Top Inhibitor Turret", x: 10481, y: 13650 },
+  { ownerTeam: "Red", lane: "Top", name: "Top Inhibitor", x: 11275, y: 13657 },
+  { ownerTeam: "Red", lane: "Mid", name: "Mid Outer Turret", x: 8955, y: 8510 },
+  { ownerTeam: "Red", lane: "Mid", name: "Mid Inner Turret", x: 9767, y: 10113 },
+  { ownerTeam: "Red", lane: "Mid", name: "Mid Inhibitor Turret", x: 11134, y: 11207 },
+  { ownerTeam: "Red", lane: "Mid", name: "Mid Inhibitor", x: 11593, y: 11669 },
+  { ownerTeam: "Red", lane: "Bot", name: "Bot Outer Turret", x: 13866, y: 4505 },
+  { ownerTeam: "Red", lane: "Bot", name: "Bot Inner Turret", x: 13327, y: 8226 },
+  { ownerTeam: "Red", lane: "Bot", name: "Bot Inhibitor Turret", x: 13624, y: 10572 },
+  { ownerTeam: "Red", lane: "Bot", name: "Bot Inhibitor", x: 13599, y: 11319 },
+  { ownerTeam: "Red", lane: "Nexus", name: "Nexus Turret 1", x: 13052, y: 12612 },
+  { ownerTeam: "Red", lane: "Nexus", name: "Nexus Turret 2", x: 12611, y: 13084 },
+];
+
+function structureAtPosition(position: { x: number; y: number } | null): StructurePoint | null {
+  if (!position) return null;
+  let best: { structure: StructurePoint; distance: number } | null = null;
+  for (const structure of STRUCTURE_POINTS) {
+    const dx = Math.abs(position.x - structure.x);
+    const dy = Math.abs(position.y - structure.y);
+    if (dx > STRUCTURE_COORDINATE_TOLERANCE || dy > STRUCTURE_COORDINATE_TOLERANCE) continue;
+    const distance = Math.hypot(dx, dy);
+    if (!best || distance < best.distance) best = { structure, distance };
+  }
+  return best?.structure ?? null;
 }
 
-function outputEventSummary(item: OutputWindowItem): string {
+function formatPosition(position: { x: number; y: number } | null): string {
+  return position ? `(${position.x}, ${position.y})` : "(unknown position)";
+}
+
+function normalizedTeam(value: unknown): "Blue" | "Red" | "Unknown" {
+  if (value === "Blue" || value === "Red") return value;
+  return "Unknown";
+}
+
+function oppositeTeam(team: "Blue" | "Red" | "Unknown"): "Blue" | "Red" | "Unknown" {
+  if (team === "Blue") return "Red";
+  if (team === "Red") return "Blue";
+  return "Unknown";
+}
+
+function fallbackLane(value: unknown): "Top" | "Mid" | "Bot" | "Nexus" {
+  const lane = String(value ?? "").toUpperCase();
+  if (lane.includes("TOP")) return "Top";
+  if (lane.includes("MID")) return "Mid";
+  if (lane.includes("BOT")) return "Bot";
+  return "Nexus";
+}
+
+function fallbackStructureName(item: OutputWindowItem): string {
+  const lane = fallbackLane(item.laneType);
+  const towerType = String(item.towerType ?? "");
+  const buildingType = String(item.buildingType ?? "");
+  if (towerType === "OUTER_TURRET") return `${lane} Outer Turret`;
+  if (towerType === "INNER_TURRET") return `${lane} Inner Turret`;
+  if (towerType === "BASE_TURRET") return `${lane} Inhibitor Turret`;
+  if (towerType === "NEXUS_TURRET") return "Nexus Turret";
+  if (buildingType === "INHIBITOR_BUILDING") return `${lane} Inhibitor`;
+  return buildingType || towerType || "Unknown Structure";
+}
+
+function isUnknownKiller(value: unknown): boolean {
+  if (value == null) return true;
+  const normalized = String(value).trim().toLowerCase();
+  return !normalized || normalized === "unknown" || normalized === "0";
+}
+
+function assistNames(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function readableMonsterName(value: unknown): string {
+  const normalized = String(value ?? "objective").toLowerCase();
+  if (normalized === "riftherald") return "Riftherald";
+  if (normalized === "dragon") return "Dragon";
+  if (normalized === "baron_nashor") return "Baron Nashor";
+  if (normalized === "horde") return "Voidgrub";
+  return normalized
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function outputEventSummary(item: OutputWindowItem, championTeams: ChampionTeamLookup): string {
   const type = outputItemType(item);
   const timestamp = outputTimestamp(item);
 
+  if (type === "LEVEL_UP") {
+    return `${timestamp}: ${String(item.participantId ?? "Unknown champion")} level up to ${String(
+      item.level ?? "unknown",
+    )}`;
+  }
+
   if (type === "CHAMPION_KILL") {
-    return `${timestamp} CHAMPION_KILL: killer ${String(
-      item.killer ?? "unknown",
-    )}; victim ${String(item.victim ?? "unknown")}; assists ${listOutput(
-      item.assistingParticipantIds,
-    )}; bounty ${String(item.bounty ?? "unknown")}.`;
+    const killer = String(item.killer ?? "unknown");
+    const victim = String(item.victim ?? "unknown");
+    const assists = assistNames(item.assistingParticipantIds);
+    const position = positionValue(item);
+    if (assists.length) {
+      return `${timestamp}: ${killer} has killed ${victim} with assists from ${assists.join(
+        ", ",
+      )} ${formatPosition(position)}`;
+    }
+    return `${timestamp}: ${killer} has solo-killed ${victim} ${formatPosition(position)}`;
   }
 
   if (type === "ELITE_MONSTER_KILL") {
-    return `${timestamp} ELITE_MONSTER_KILL: killer ${String(
-      item.killer ?? "unknown",
-    )}; assists ${listOutput(item.assistingParticipantIds)}; monster ${String(
-      item.monsterType ?? "unknown",
-    )}.`;
+    const killer = String(item.killer ?? "unknown");
+    const actorTeam = teamForChampion(killer, championTeams) ?? normalizedTeam(item.team);
+    const monster = readableMonsterName(item.monsterType);
+    const assists = assistNames(item.assistingParticipantIds);
+    if (assists.length) {
+      return `${timestamp}: ${actorTeam} team's ${killer} has taken the ${monster} with assist of ${assists.join(
+        ", ",
+      )}`;
+    }
+    return `${timestamp}: ${actorTeam} team's ${killer} has taken the ${monster}`;
   }
 
   if (type === "BUILDING_KILL") {
-    return `${timestamp} BUILDING_KILL: team ${String(item.team ?? "unknown")}; assists ${listOutput(
-      item.assistingParticipantIds,
-    )}; killer ${String(item.killer ?? "unknown")}; building ${String(
-      item.buildingType ?? "unknown",
-    )}; tower ${String(
-      item.towerType ?? "unknown",
-    )}; lane ${String(item.laneType ?? "unknown")}.`;
+    const position = positionValue(item);
+    const structure = structureAtPosition(position);
+    const killer = item.killer;
+    const actorTeam = isUnknownKiller(killer)
+      ? normalizedTeam(item.team)
+      : teamForChampion(killer, championTeams) ?? normalizedTeam(item.team);
+    const destroyedTeam = structure?.ownerTeam ?? oppositeTeam(actorTeam);
+    const lane = structure?.lane ?? fallbackLane(item.laneType);
+    const structureName = structure?.name ?? fallbackStructureName(item);
+    const assists = assistNames(item.assistingParticipantIds);
+
+    if (isUnknownKiller(killer)) {
+      const wave = `${actorTeam} team's ${lane} wave`;
+      const contributors = assists.length ? `${wave} and ${assists.join(", ")}` : wave;
+      return `${timestamp}: ${contributors} has destroyed ${destroyedTeam} team's ${structureName} ${formatPosition(
+        position,
+      )}`;
+    }
+
+    const killerName = String(killer);
+    const contributors = assists.length ? [killerName, ...assists].join(", ") : killerName;
+    return `${timestamp}: ${actorTeam} team's ${contributors} has destroyed ${destroyedTeam} team's ${structureName} ${formatPosition(
+      position,
+    )}`;
   }
 
   if (type === "TURRET_PLATE_DESTROYED") {
     const position = positionValue(item);
-    return `${timestamp} TURRET_PLATE_DESTROYED: team ${String(
-      item.team ?? "unknown",
-    )}; killer ${String(item.killer ?? "unknown")}; position ${
-      position ? `(${position.x}, ${position.y})` : "unknown"
-    }.`;
+    const structure = structureAtPosition(position);
+    const actorTeam = isUnknownKiller(item.killer)
+      ? normalizedTeam(item.team)
+      : teamForChampion(item.killer, championTeams) ?? normalizedTeam(item.team);
+    const lane = structure?.lane ?? "Unknown";
+    const structureName = structure?.name ?? "Unknown Turret";
+
+    if (isUnknownKiller(item.killer)) {
+      return `${timestamp}: ${actorTeam} team's ${lane} wave has taken turret plate of ${structureName} ${formatPosition(
+        position,
+      )}`;
+    }
+
+    return `${timestamp}: ${actorTeam} team's ${String(
+      item.killer,
+    )} has taken turret plate of ${structureName} ${formatPosition(position)}`;
+  }
+
+  if (type === "GAME_END") {
+    const winner = normalizedTeam(item.winningTeam);
+    return `${timestamp}: GAME END- Winner ${winner} Team!`;
   }
 
   return `${timestamp} ${type}: ${JSON.stringify(item)}.`;
@@ -878,6 +1077,7 @@ function buildBriefFromOutput(evidence: OutputWindowItem[]): string {
   const firstFrame = firstOutputFrame(evidence);
   const frames = evidence.filter((item) => outputItemType(item) === "frame");
   const events = evidence.filter((item) => outputItemType(item) !== "frame");
+  const championTeams = buildChampionTeamLookup(evidence);
 
   return [
     "Teams:",
@@ -891,7 +1091,7 @@ function buildBriefFromOutput(evidence: OutputWindowItem[]): string {
     "",
     "Relevant Events:",
     ...(events.length
-      ? events.map((item) => `- ${outputEventSummary(item)}`)
+      ? events.map((item) => `- ${outputEventSummary(item, championTeams)}`)
       : ["- No relevant event rows retained."]),
   ].join("\n");
 }
@@ -924,7 +1124,12 @@ function humanizeIds(node: unknown, champions: Record<number, string>): unknown 
       out[key] = labelParticipant(value, champions);
     } else if (key === "assistingParticipantIds" && Array.isArray(value)) {
       out[key] = value.map((id) => labelParticipant(id, champions));
-    } else if (key === "teamId" || key === "killerTeamId" || key === "victimTeamId") {
+    } else if (
+      key === "teamId" ||
+      key === "killerTeamId" ||
+      key === "victimTeamId" ||
+      key === "winningTeam"
+    ) {
       out[key] = labelTeam(value);
     } else if (key === "timestamp") {
       const ts = toTimestamp(value);
@@ -1039,6 +1244,7 @@ function buildWindowResponse({
   userPuuid,
   subjects: inputSubjects,
   trimToRelevantEvidence = true,
+  extraOmittedEventTypes = [],
 }: {
   startMs: number;
   endMs: number;
@@ -1047,6 +1253,7 @@ function buildWindowResponse({
   userPuuid: string;
   subjects?: z.infer<typeof TimelineWindowInputSchema>["subjects"];
   trimToRelevantEvidence?: boolean;
+  extraOmittedEventTypes?: readonly string[];
 }) {
   const champions = buildChampionLookup(match);
   const participants = buildParticipants(match);
@@ -1069,8 +1276,8 @@ function buildWindowResponse({
   );
   const items = extractWindow(timeline, startMs, endMs, champions);
   const evidence = trimToRelevantEvidence ? trimEvidence(items, participants, subjectIds) : items;
-  const outputEvidence = stripInternal(evidence, participants, items);
-  const outputItems = stripInternal(items, participants);
+  const outputEvidence = stripInternal(evidence, participants, items, extraOmittedEventTypes);
+  const outputItems = stripInternal(items, participants, items, extraOmittedEventTypes);
   const brief = buildBriefFromOutput(outputEvidence);
 
   return {
@@ -1078,6 +1285,7 @@ function buildWindowResponse({
       start: formatGameTime(startMs),
       end: formatGameTime(endMs),
     },
+    gameLength: formatGameTime(timelineEndMs(timeline)),
     count: evidence.length,
     totalItems: items.length,
     brief,
@@ -1151,5 +1359,6 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
       userPuuid: data.userPuuid,
       subjects: data.subjects,
       trimToRelevantEvidence: false,
+      extraOmittedEventTypes: ["PAUSE_END"],
     });
   });

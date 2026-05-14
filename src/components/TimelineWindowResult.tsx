@@ -21,6 +21,7 @@ import type { Match, Participant } from "@/lib/match-types";
 type WindowResponse = {
   // Bounds are formatted `[mm:ss]` strings (game time) by the local server function.
   window: { start: string; end: string };
+  gameLength?: string;
   count: number;
   totalItems?: number;
   brief: string;
@@ -42,6 +43,7 @@ export function TimelineWindowResult({
   subjectBChampion,
   match,
   you,
+  onGameLengthChange,
 }: {
   matchId: string;
   userPuuid: string;
@@ -66,6 +68,7 @@ export function TimelineWindowResult({
    */
   match?: Match;
   you?: Participant;
+  onGameLengthChange?: (gameLength: string | null) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +101,7 @@ export function TimelineWindowResult({
     setError(null);
     setResult(null);
     setDurationMs(null);
+    onGameLengthChange?.(null);
     const t0 = performance.now();
     try {
       const data =
@@ -138,6 +142,7 @@ export function TimelineWindowResult({
             });
       setDurationMs(Math.round(performance.now() - t0));
       if (data.error) throw new Error(data.error);
+      onGameLengthChange?.(data.gameLength ?? null);
       setResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed");

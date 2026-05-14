@@ -1,5 +1,5 @@
 /**
- * Hardcoded prompt text shown around the timeline-window JSON dump in the
+ * Hardcoded prompt text shown around the timeline-window context preview in the
  * Specify Time result panel.
  *
  * IMPORTANT: This is a DISPLAY-ONLY preview right now. These strings are
@@ -17,12 +17,12 @@
  * we wire this up to an actual LLM call.
  */
 
-/** Upper prompt — role/background framing rendered ABOVE the JSON dump. */
+/** Upper prompt — role/background framing rendered ABOVE the structured context brief. */
 export const UPPER_PROMPT = `You are an expert League of Legends coach/analyst. Your job is to give a verdict on who is more at fault for bringing the game to a loss between the two given subjects (SUBJECT_A and SUBJECT_B).
 
-Use the merged participantFrames + events JSON below as the only source of truth for the selected time window. Treat it as objective process evidence — positions, gold/CS, kills, deaths, objectives, and same-window map changes — not as a story.`;
+Use the structured context brief below as the only source of truth for the selected time window. Treat it as objective process evidence — positions, gold/CS, kills, deaths, objectives, and same-window map changes — not as a story.`;
 
-/** Lower prompt — strict FINAL INSTRUCTION + OUTPUT FORMAT rendered BELOW the JSON dump. */
+/** Lower prompt — strict FINAL INSTRUCTION + OUTPUT FORMAT rendered BELOW the structured context brief. */
 export const LOWER_PROMPT = `--- FINAL INSTRUCTION ---
 
 **EARLY WINDOW CHECK (pre‑3:00):**
@@ -45,11 +45,11 @@ Ward placements or kills alone do NOT count as actionable events.
 
 **TIE CONDITION:**
 
-If no actionable events exist for either subject, output: 'Verdict: Tie — [One sentence explaining why the window had no actionable events for <SUBJECT_A name> or <SUBJECT_B name>].' and STOP. Do not proceed to the verdict or reasons.
+If no actionable events exist for either subject, output: 'Verdict: Tie — The selected window contains not enough events to verdict.' and STOP. Do not proceed to the verdict or reasons.
 
 **PROCESS VERDICT (only if non‑tie):**
 
-Determine who is MORE at fault using ONLY process evidence from the JSON:
+Determine who is MORE at fault using ONLY process evidence from the structured context brief:
 
 1. **Positioning vs. role expectations:**
 
@@ -63,7 +63,7 @@ Determine who is MORE at fault using ONLY process evidence from the JSON:
 
    - Proximity to tower or safe zone.
 
-   - Summoner spell availability (if present in JSON).
+   - Summoner spell availability (if present in the structured context brief).
 
    - Trade value: Did the death secure an objective? Did it trade 1-for-1 but give shutdown gold?
 
@@ -81,7 +81,7 @@ Determine who is MORE at fault using ONLY process evidence from the JSON:
 
 **NO COUNTERFACTUALS:**
 
-Never use "if they had" or "they should have" except when comparing to standard role expectations. Do not imagine alternate outcomes. Only describe what actually occurred in the JSON and whether it deviates from reasonable expectations for that champion/role/game time.
+Never use "if they had" or "they should have" except when comparing to standard role expectations. Do not imagine alternate outcomes. Only describe what actually occurred in the structured context brief and whether it deviates from reasonable expectations for that champion/role/game time.
 
 **OUTPUT FORMAT (strict):**
 
@@ -89,7 +89,11 @@ Never use "if they had" or "they should have" except when comparing to standard 
 
 - Then list **1 to 3 reasons** (exactly as many as the evidence supports – never 0, never more than 3). Do not pad with weak or imaginary reasons. If only one distinct process mistake exists, list only that one reason.
 
-- Each reason must be numbered (1., 2., 3.) and be a single sentence that cites concrete evidence: a **timestamp** and a **qualitative description of position/event** (e.g., "near dragon pit", "in bot lane while team was at Baron", "under their own tower", "inside the enemy jungle"). Do **not** use raw coordinate numbers (x,y). Use gold/CS values and damage numbers only if they are meaningful (e.g., "3k gold lead", "5% team damage").
+- Each reason must be numbered (1., 2., 3.) and describe a broader fault pattern, such as poor positioning, missed objective setup, unsafe pathing, bad fight timing, or a low-value map decision.
+
+- Each reason must include example evidence using wording like "for example, ..." and should cite a timestamp when available. The reason should explain what the example shows, not merely restate a raw event log.
+
+- Use qualitative map/event descriptions (e.g., "near dragon pit", "in bot lane while team was at Baron", "under their own tower", "inside the enemy jungle"). Do **not** use raw coordinate numbers (x,y). Use gold/CS values and damage numbers only if they are meaningful (e.g., "3k gold lead", "5% team damage").
 
 - Order reasons from most impactful to least impactful.
 
@@ -99,12 +103,12 @@ Never use "if they had" or "they should have" except when comparing to standard 
 
 Verdict: <SUBJECT_B name> is more at fault.
 
-1. At 15:30 <SUBJECT_B name> was farming bot lane while her entire team contested dragon at the pit – she was on the opposite side of the map with no teleport.
+1. <SUBJECT_B name> showed poor objective timing around dragon; for example, at 15:30 she was farming bot lane while her team was already contesting near the pit.
 
-2. At 17:45 <SUBJECT_B name> died without using Flash (still available per JSON) after face‑checking the river bush near Baron, starting a 4v5 fight that her team lost.
+2. <SUBJECT_B name> repeatedly created avoidable fight risk through unsafe positioning; for example, at 17:45 she face‑checked near Baron and died before her team could contest.
 
 **Example of acceptable output (tie):**
 
-Verdict: Tie — The window from 00:00 to 01:00 contains only skill level‑ups, starting positions, and ward actions; no damage, deaths, or objectives involve <SUBJECT_A name> or <SUBJECT_B name>.
+Verdict: Tie — The window from 00:00 to 01:00 contains not enough events to verdict.
 
 Stop here. Do not write anything else.`;

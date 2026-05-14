@@ -1,4 +1,5 @@
 import { createFileRoute, useSearch, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { TimelineWindowResult } from "@/components/TimelineWindowResult";
 
 /**
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/dev/context/$matchId")({
 function DevContextPage() {
   const { matchId } = Route.useParams();
   const search = useSearch({ from: "/dev/context/$matchId" }) as Search;
+  const [gameLength, setGameLength] = useState<string | null>(null);
 
   if (!SHOW_DEV_CONTEXT) {
     return (
@@ -69,7 +71,14 @@ function DevContextPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Judge context</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Match <span className="font-mono text-foreground">{matchId}</span> · scope:{" "}
+              Match <span className="font-mono text-foreground">{matchId}</span>
+              {gameLength && (
+                <>
+                  {" "}
+                  · Game Length: <span className="text-foreground">{gameLength}</span>
+                </>
+              )}{" "}
+              · scope:{" "}
               <span className="text-gold">{search.scope ?? "unknown"}</span>
             </p>
             {search.puuid && (
@@ -103,6 +112,7 @@ function DevContextPage() {
             runToken={1}
             subjectAChampion={search.subjectA}
             subjectBChampion={search.subjectB}
+            onGameLengthChange={setGameLength}
           />
         ) : search.scope === "full" && search.puuid ? (
           <TimelineWindowResult
@@ -117,6 +127,7 @@ function DevContextPage() {
             runToken={1}
             subjectAChampion={search.subjectA}
             subjectBChampion={search.subjectB}
+            onGameLengthChange={setGameLength}
           />
         ) : (
           <div className="rounded-lg border border-dashed border-border bg-card/40 p-6 text-center text-sm text-muted-foreground">
