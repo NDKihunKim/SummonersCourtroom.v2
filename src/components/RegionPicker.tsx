@@ -17,6 +17,7 @@ import type { TranslationKey } from "@/i18n";
 interface RegionPickerProps {
   value: Shard;
   onChange: (shard: Shard) => void;
+  onOpenChange?: (open: boolean) => void;
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }
 
@@ -51,7 +52,7 @@ function ShardRow({ shard }: { shard: ShardInfo }) {
  * Designed to sit inline on the left side of the search bar — the trigger
  * is borderless so it visually belongs to the parent container.
  */
-export function RegionPicker({ value, onChange, t }: RegionPickerProps) {
+export function RegionPicker({ value, onChange, onOpenChange, t }: RegionPickerProps) {
   // Defensive: render the default shard's visuals if value is somehow unknown.
   const current = getShardInfo(value);
   const regionalShards = REGIONAL_SHARD_ORDER.map(getShardInfo);
@@ -99,11 +100,16 @@ export function RegionPicker({ value, onChange, t }: RegionPickerProps) {
     };
   }, [open, updateScrollThumb]);
 
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  }
+
   return (
-    <Select value={current.code} onValueChange={(v) => onChange(v as Shard)} open={open} onOpenChange={setOpen}>
+    <Select value={current.code} onValueChange={(v) => onChange(v as Shard)} open={open} onOpenChange={handleOpenChange}>
       <SelectTrigger
         // Borderless pill that lives inside the search-bar container.
-        className="w-auto min-w-[88px] gap-1.5 border-0 bg-transparent px-3 font-semibold text-foreground shadow-none focus:ring-0 focus:ring-offset-0"
+        className="h-full w-auto min-w-[88px] gap-1.5 border-0 bg-transparent px-3 font-semibold text-foreground shadow-none focus:ring-0 focus:ring-offset-0"
         aria-label={t?.("selectRegion") ?? "Select region / shard"}
       >
         <SelectValue>
@@ -126,6 +132,7 @@ export function RegionPicker({ value, onChange, t }: RegionPickerProps) {
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content
           position="popper"
+          sideOffset={8}
           // Match the visual treatment of the shared SelectContent (border,
           // bg, shadow, animations) so the dropdown still feels native.
           className="relative z-50 min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1"

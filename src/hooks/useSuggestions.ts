@@ -103,8 +103,8 @@ interface Options {
 
 export function useSuggestions({ savedPlayers, recents, query, shard, limit = 5 }: Options) {
   const savedItems = useMemo(
-    () => filterSavedPlayers(savedPlayers, query, shard, limit).map(savedToSuggestion),
-    [savedPlayers, query, shard, limit],
+    () => filterSavedPlayers(savedPlayers, query, limit).map(savedToSuggestion),
+    [savedPlayers, query, limit],
   );
 
   // Local recents — instant, no network. Already filtered + shard-scoped.

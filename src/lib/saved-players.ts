@@ -109,12 +109,9 @@ export function isPlayerSaved(
 export function filterSavedPlayers(
   all: SavedPlayer[],
   query: string,
-  shard: Shard,
   limit = 5,
 ): SavedPlayer[] {
-  const scoped = all
-    .filter((e) => e.shard === shard)
-    .sort((a, b) => b.savedAt - a.savedAt);
+  const scoped = [...all].sort((a, b) => b.savedAt - a.savedAt);
 
   const q = query.trim().toLowerCase();
   if (!q) return scoped.slice(0, limit);

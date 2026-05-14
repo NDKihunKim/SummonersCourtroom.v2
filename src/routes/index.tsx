@@ -196,6 +196,20 @@ function Index() {
     }
   }
 
+  function closeSuggestions() {
+    setIsSuggestOpen(false);
+    setHighlightedIndex(-1);
+  }
+
+  function handleShardChange(nextShard: Shard) {
+    closeSuggestions();
+    setShard(nextShard);
+  }
+
+  function handleRegionOpenChange(open: boolean) {
+    if (open) closeSuggestions();
+  }
+
   /**
    * Open a player's match history in a NEW tab.
    *
@@ -322,8 +336,7 @@ function Index() {
     const measure = () => {
       const element = suggestionsRef.current;
       if (!element) return;
-      const maxHeight = Math.min(18 * 16, window.innerHeight * 0.38);
-      setSuggestionsHeight(Math.min(element.offsetHeight, maxHeight));
+      setSuggestionsHeight(element.offsetHeight);
     };
 
     measure();
@@ -404,7 +417,12 @@ function Index() {
             >
               {/* Shard picker sits on the LEFT, separated by a subtle divider */}
               <div className="flex items-center border-b border-border pb-1 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-1">
-                <RegionPicker value={shard} onChange={setShard} t={t} />
+                <RegionPicker
+                  value={shard}
+                  onChange={handleShardChange}
+                  onOpenChange={handleRegionOpenChange}
+                  t={t}
+                />
               </div>
               <div className="flex min-w-0 flex-1 items-center">
                 <Search className="ml-3 h-5 w-5 shrink-0 text-muted-foreground" />

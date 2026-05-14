@@ -770,6 +770,12 @@ function outputTimestamp(item: OutputWindowItem): string {
   return typeof item.timestamp === "string" ? item.timestamp : "[unknown time]";
 }
 
+function timestampSortValue(item: OutputWindowItem): number {
+  const match = outputTimestamp(item).match(/^\[(\d+):(\d{2})\]$/);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
 function outputParticipants(item: OutputWindowItem): {
   blue?: unknown[];
   red?: unknown[];
@@ -1073,26 +1079,29 @@ function outputEventSummary(item: OutputWindowItem, championTeams: ChampionTeamL
   return `${timestamp} ${type}: ${JSON.stringify(item)}.`;
 }
 
+function chronologicalContextLine(
+  item: OutputWindowItem,
+  championTeams: ChampionTeamLookup,
+): string {
+  return outputItemType(item) === "frame" ? frameSummary(item) : outputEventSummary(item, championTeams);
+}
+
 function buildBriefFromOutput(evidence: OutputWindowItem[]): string {
   const firstFrame = firstOutputFrame(evidence);
-  const frames = evidence.filter((item) => outputItemType(item) === "frame");
-  const events = evidence.filter((item) => outputItemType(item) !== "frame");
   const championTeams = buildChampionTeamLookup(evidence);
+  const chronologicalItems = [...evidence].sort(
+    (a, b) => timestampSortValue(a) - timestampSortValue(b),
+  );
 
   return [
     "Teams:",
     `- Blue: ${teamLineFromOutput(firstFrame, "blue")}`,
     `- Red: ${teamLineFromOutput(firstFrame, "red")}`,
     "",
-    "Frame Snapshots:",
-    ...(frames.length
-      ? frames.map((item) => `- ${frameSummary(item)}`)
-      : ["- No frame rows retained."]),
-    "",
-    "Relevant Events:",
-    ...(events.length
-      ? events.map((item) => `- ${outputEventSummary(item, championTeams)}`)
-      : ["- No relevant event rows retained."]),
+    "Chronological Context:",
+    ...(chronologicalItems.length
+      ? chronologicalItems.map((item) => `- ${chronologicalContextLine(item, championTeams)}`)
+      : ["- No context rows retained."]),
   ].join("\n");
 }
 

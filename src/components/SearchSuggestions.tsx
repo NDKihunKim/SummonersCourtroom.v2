@@ -14,6 +14,8 @@ import { tierLabel } from "@/lib/tier";
 import { ProfileIcon } from "@/components/ProfileIcon";
 import type { TranslationKey } from "@/i18n";
 
+const REGIONAL_SHARDS = new Set(["EUW", "NA", "EUNE", "LAN", "LAS", "SEA", "OCE", "ME"]);
+
 /**
  * Stable, cheap hash → small int seed for the letter-avatar fallback so the
  * same Riot ID always lands on the same color across renders.
@@ -115,6 +117,7 @@ export function SearchSuggestions({
       >
         {items.map((item, i) => {
           const shardInfo = getShardInfo(item.shard);
+          const showShardEmoji = !REGIONAL_SHARDS.has(item.shard);
           const isActive = i === highlightedIndex;
           const optionId = `recent-option-${i}`;
           // Stable key per row — combines source + dedupe key so a recent
@@ -166,7 +169,7 @@ export function SearchSuggestions({
                 className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-1.5 py-0.5 text-[10px] font-semibold"
                 aria-hidden
               >
-                <span>{shardInfo.emoji}</span>
+                {showShardEmoji && <span>{shardInfo.emoji}</span>}
                 <span>{shardInfo.label}</span>
               </span>
 

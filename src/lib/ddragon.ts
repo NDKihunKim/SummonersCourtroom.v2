@@ -37,6 +37,7 @@ const SESSION_KEY = "riftlog:ddragon-version";
  * when Riot ships a champion with a name that doesn't normalise cleanly.
  */
 const CHAMPION_FILENAME_OVERRIDES: Record<string, string> = {
+  FiddleSticks: "Fiddlesticks",
   Wukong: "MonkeyKing",
   // Multi-word names — Data Dragon strips spaces & punctuation.
   "Cho'Gath": "Chogath",
