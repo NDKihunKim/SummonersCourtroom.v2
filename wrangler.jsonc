@@ -3,5 +3,13 @@
   "name": "summonerscourtroom",
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry"
+  "main": "@tanstack/react-start/server-entry",
+  "vars": {
+    "SUPABASE_URL": "https://gbbbwazmqnqbvcgjhnvz.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_CiDVjfQ4VzII1-vt8w51Sw_ozTpKuLA",
+    "VITE_SUPABASE_URL": "https://gbbbwazmqnqbvcgjhnvz.supabase.co",
+    "VITE_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_CiDVjfQ4VzII1-vt8w51Sw_ozTpKuLA",
+    "VITE_SUPABASE_PROJECT_ID": "gbbbwazmqnqbvcgjhnvz",
+    "VITE_ENABLE_DEV_CONTEXT": "false"
+  }
 }
