@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Loader2, Gavel, ArrowLeft, Check } from "lucide-react";
+import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
 import { ChampionIcon } from "./ChampionIcon";
 import { MatchupHeader } from "./MatchupHeader";
@@ -18,6 +19,7 @@ type Scope = "full" | "window";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
+const MAX_FULL_GAME_VERDICT_MS = 60 * 60_000;
 
 const defaultT: Translate = (key, vars) => {
   const text = String(key);
@@ -53,6 +55,26 @@ function formatDuration(duration: string, locale: Locale, t: Translate): string 
   if (minutes > 0 && seconds > 0) return t("durationMinutesSeconds", { minutes, seconds });
   if (minutes > 0) return t("durationMinutes", { minutes });
   return t("durationSeconds", { seconds });
+}
+
+function parseMatchDurationToMs(duration: string): number | null {
+  const trimmed = duration.trim();
+
+  const mAndS = trimmed.match(/^(?:(\d{1,3})m)?\s*(?:(\d{1,2})s)?$/i);
+  if (mAndS && (mAndS[1] || mAndS[2])) {
+    const minutes = Number(mAndS[1] ?? 0);
+    const seconds = Number(mAndS[2] ?? 0);
+    return seconds < 60 ? (minutes * 60 + seconds) * 1000 : null;
+  }
+
+  const colon = trimmed.match(/^(\d{1,3}):(\d{1,2})$/);
+  if (colon) {
+    const minutes = Number(colon[1]);
+    const seconds = Number(colon[2]);
+    return seconds < 60 ? (minutes * 60 + seconds) * 1000 : null;
+  }
+
+  return null;
 }
 
 function formatPlayedAt(playedAt: string, locale: Locale, t: Translate): string {
@@ -123,6 +145,14 @@ export function MatchCard({
 
   async function runJudge(scope: Scope, windowRange?: [number, number]) {
     if (!pickedAlly) return;
+    if (scope === "full") {
+      const durationMs = parseMatchDurationToMs(match.duration);
+      if (durationMs != null && durationMs > MAX_FULL_GAME_VERDICT_MS) {
+        toast.warning(t("fullGameTooLongWarning"));
+        return;
+      }
+    }
+
     setStage("loading");
     setReasoning(null);
     setVerdictName(null);
@@ -347,6 +377,7 @@ export function MatchCard({
               // per-team champion+role rundown injected into the upper prompt.
               match={match}
               you={you}
+              locale={locale}
               t={t}
               onRun={(range) => void runJudge("window", range)}
             />
@@ -401,6 +432,7 @@ export function MatchCard({
                 onViewContext={() => {
                   const params = new URLSearchParams();
                   params.set("scope", verdictScope ?? "full");
+                  params.set("locale", locale);
                   if (match.userPuuid) params.set("puuid", match.userPuuid);
                   if (match.routingRegion) params.set("region", match.routingRegion);
                   params.set("subjectA", match.champion);

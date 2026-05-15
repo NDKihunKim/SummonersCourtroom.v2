@@ -17,8 +17,8 @@ import type { TranslationKey } from "@/i18n";
  *     window never inverts and never shrinks below MIN.
  */
 
-export const MIN_WINDOW_MS = 60_000;        // 1 minute
-export const MAX_WINDOW_MS = 3 * 60_000;    // 3 minutes
+export const MIN_WINDOW_MS = 5 * 60_000;    // 5 minutes
+export const MAX_WINDOW_MS = 10 * 60_000;   // 10 minutes
 
 export type TimeRange = [number, number];
 
@@ -249,7 +249,7 @@ export function TimeRangePicker({
           />
         </label>
         <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">
-          {t?.("minMaxWindow") ?? "Min 1:00 · Max 3:00"}
+          {t?.("minMaxWindow") ?? "Min 5:00 · Max 10:00"}
         </span>
       </div>
     </div>

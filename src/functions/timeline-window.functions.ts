@@ -103,8 +103,9 @@ const PLATFORM_TO_REGIONAL: Record<string, RegionalRouting> = {
   oc1: "sea",
 };
 
-const MIN_WINDOW_MS = 60_000;
-const MAX_WINDOW_MS = 5 * 60_000;
+const MIN_WINDOW_MS = 5 * 60_000;
+const MAX_WINDOW_MS = 10 * 60_000;
+const MAX_FULL_GAME_CONTEXT_MS = 60 * 60_000;
 const ONE_MINUTE_MS = 60_000;
 
 function assertContextInspectionAllowed() {
@@ -1054,9 +1055,10 @@ function outputEventSummary(item: OutputWindowItem, championTeams: ChampionTeamL
   if (type === "TURRET_PLATE_DESTROYED") {
     const position = positionValue(item);
     const structure = structureAtPosition(position);
+    const destroyedTeam = normalizedTeam(item.team);
     const actorTeam = isUnknownKiller(item.killer)
-      ? normalizedTeam(item.team)
-      : teamForChampion(item.killer, championTeams) ?? normalizedTeam(item.team);
+      ? oppositeTeam(destroyedTeam)
+      : teamForChampion(item.killer, championTeams) ?? oppositeTeam(destroyedTeam);
     const lane = structure?.lane ?? "Unknown";
     const structureName = structure?.name ?? "Unknown Turret";
 
@@ -1315,8 +1317,8 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
     });
 
     const span = data.endMs - data.startMs;
-    if (span < MIN_WINDOW_MS) throw new Error("Window must be at least 60 seconds.");
-    if (span > MAX_WINDOW_MS) throw new Error("Window must be at most 5 minutes.");
+    if (span < MIN_WINDOW_MS) throw new Error("Window must be at least 5 minutes.");
+    if (span > MAX_WINDOW_MS) throw new Error("Window must be at most 10 minutes.");
 
     const routing = inferRouting(data.matchId, data.routingRegion);
     const base = `https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(
@@ -1359,6 +1361,11 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
       riotGet<TimelinePayload>(`${base}/timeline`),
     ]);
     const endMs = timelineEndMs(timeline);
+    if (endMs > MAX_FULL_GAME_CONTEXT_MS) {
+      throw new Error(
+        "[FULL_GAME_TOO_LONG] Full-game context is unavailable for matches over 60 minutes. Use Specify Time instead.",
+      );
+    }
 
     return buildWindowResponse({
       startMs: 0,

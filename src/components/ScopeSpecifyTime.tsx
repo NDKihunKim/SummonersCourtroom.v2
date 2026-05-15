@@ -8,7 +8,7 @@ import {
 } from "./TimeRangePicker";
 import { TimelineWindowResult } from "./TimelineWindowResult";
 import type { Match, Participant } from "@/lib/match-types";
-import type { TranslationKey } from "@/i18n";
+import type { Locale, TranslationKey } from "@/i18n";
 
 /**
  * Specify-Time scope panel. Composes:
@@ -67,6 +67,7 @@ export function ScopeSpecifyTime({
   match,
   you,
   onRun,
+  locale = "en",
   t,
 }: {
   matchId: string;
@@ -99,6 +100,7 @@ export function ScopeSpecifyTime({
    * preview is rendered as before.
    */
   onRun?: (range: TimeRange) => void;
+  locale?: Locale;
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   const gameDurationMs = useMemo(() => parseDurationToMs(durationStr), [durationStr]);
@@ -162,6 +164,7 @@ export function ScopeSpecifyTime({
             subjectBChampion={subjectBChampion}
             match={match}
             you={you}
+            locale={locale}
           />
         </div>
         )}

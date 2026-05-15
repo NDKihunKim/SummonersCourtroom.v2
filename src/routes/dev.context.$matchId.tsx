@@ -1,6 +1,7 @@
 import { createFileRoute, useSearch, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TimelineWindowResult } from "@/components/TimelineWindowResult";
+import type { Locale } from "@/i18n";
 
 /**
  * Standalone "View context" page opened in a new tab from the Verdict
@@ -17,6 +18,7 @@ type Search = {
   subjectB?: string;
   startMs?: number;
   endMs?: number;
+  locale?: Locale;
 };
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
@@ -36,6 +38,7 @@ export const Route = createFileRoute("/dev/context/$matchId")({
     subjectB: typeof raw.subjectB === "string" ? raw.subjectB : undefined,
     startMs: raw.startMs != null ? Number(raw.startMs) : undefined,
     endMs: raw.endMs != null ? Number(raw.endMs) : undefined,
+    locale: raw.locale === "ko" ? "ko" : raw.locale === "en" ? "en" : undefined,
   }),
   component: DevContextPage,
 });
@@ -112,6 +115,7 @@ function DevContextPage() {
             runToken={1}
             subjectAChampion={search.subjectA}
             subjectBChampion={search.subjectB}
+            locale={search.locale ?? "en"}
             onGameLengthChange={setGameLength}
           />
         ) : search.scope === "full" && search.puuid ? (
@@ -127,6 +131,7 @@ function DevContextPage() {
             runToken={1}
             subjectAChampion={search.subjectA}
             subjectBChampion={search.subjectB}
+            locale={search.locale ?? "en"}
             onGameLengthChange={setGameLength}
           />
         ) : (

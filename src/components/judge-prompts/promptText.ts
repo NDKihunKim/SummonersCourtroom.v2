@@ -1,3 +1,5 @@
+import type { Locale } from "@/i18n";
+
 /**
  * Hardcoded prompt text shown around the timeline-window context preview in the
  * Specify Time result panel.
@@ -24,8 +26,32 @@ Use the structured context brief below as the only source of truth for the selec
 
 Do not assume evidence that is not present in the brief. Do not use outside match knowledge, live-game assumptions, vision assumptions, summoner spell assumptions, or champion matchup assumptions unless they are explicitly shown.`;
 
+function outputLanguageInstruction(locale: Locale, championLocalization = ""): string {
+  if (locale === "ko") {
+    return `**OUTPUT LANGUAGE:**
+
+Write the verdict and all reasoning in natural Korean.
+Use the Korean champion names from NAME LOCALIZATION whenever referring to champions. Do not translate summoner names, Riot IDs, timestamps, or numeric evidence.
+Use Korean fixed output wording:
+- Non-tie first line: only the selected champion name, localized into Korean when NAME LOCALIZATION provides it.
+- Tie line: '판결: 무승부 — 선택한 구간에는 판결을 내릴 만큼 충분한 이벤트가 없습니다.'
+
+${championLocalization}`;
+  }
+
+  return `**OUTPUT LANGUAGE:**
+
+Write the verdict and all reasoning in English.
+Use English fixed output wording:
+- Non-tie first line: only the selected champion name.
+- Tie line: 'Verdict: Tie — The selected window contains not enough events to verdict.'`;
+}
+
 /** Lower prompt — strict FINAL INSTRUCTION + OUTPUT FORMAT rendered BELOW the structured context brief. */
-export const LOWER_PROMPT = `--- FINAL INSTRUCTION ---
+export function buildLowerPrompt(locale: Locale = "en", championLocalization = "") {
+  return `--- FINAL INSTRUCTION ---
+
+${outputLanguageInstruction(locale, championLocalization)}
 
 **EARLY WINDOW CHECK (pre‑3:00):**
 
@@ -49,7 +75,7 @@ Do not infer missing evidence. If the structured context brief does not show an 
 
 **TIE CONDITION:**
 
-If no actionable evidence exists for either subject, output: 'Verdict: Tie — The selected window contains not enough events to verdict.' and STOP. Do not proceed to the verdict or reasons.
+If no actionable evidence exists for either subject, output only the Tie line specified in OUTPUT LANGUAGE and STOP. Do not proceed to the verdict or reasons.
 
 **PROCESS VERDICT (only if non‑tie):**
 
@@ -87,7 +113,7 @@ Never use "if they had" or "they should have" except when comparing to standard 
 
 **OUTPUT FORMAT (strict):**
 
-- Line 1: 'Verdict: <SUBJECT_A name> is more at fault.' OR 'Verdict: <SUBJECT_B name> is more at fault.' (exactly one, no ties – ties are handled above).
+- Line 1: Output only the selected champion name. Do not include "Verdict:", "is more at fault", "판결:", or any other words on this line. Pick exactly one subject; no ties here because ties are handled above.
 
 - Then list **1 to 3 reasons**. Use exactly as many as the evidence supports. Do not pad with weak or imaginary reasons.
 
@@ -95,7 +121,11 @@ Never use "if they had" or "they should have" except when comparing to standard 
 
 - Each reason must include example evidence using wording like "for example, ..." and should cite a timestamp when available. The reason should explain what the example shows, not merely restate a raw event log.
 
-- Use qualitative map/event descriptions. Do not use raw coordinate numbers (x,y) in the final answer. You may use coordinates internally to infer relative location or structure context, but translate them into lane, jungle, river, tower, inhibitor, or objective language.
+- Use qualitative map/event descriptions. Never print raw coordinate numbers (x,y) in the final answer. Users cannot interpret coordinates directly. Use coordinates only internally to infer a readable nearby map landmark or zone.
+
+- When describing location, prefer understandable map terms such as "near dragon pit", "near Baron", "baron-side river", "dragon-side river", "Blue-side Gromp", "Red-side Raptors", "bot-side jungle", "mid lane", or named structures like "Blue team's Top Outer Turret" or "Red team's Mid Inhibitor Turret".
+
+- If exact camp/river/objective location is unclear, use a broader zone description instead of coordinates, such as "around bot-side jungle", "near mid lane", "near the enemy outer turret", or "around the inhibitor turret area".
 
 - Order reasons from most impactful to least impactful.
 
@@ -103,7 +133,7 @@ Never use "if they had" or "they should have" except when comparing to standard 
 
 **Example of acceptable output (non‑tie, 2 reasons):**
 
-Verdict: <SUBJECT_B name> is more at fault.
+<SUBJECT_B name>
 
 1. <SUBJECT_B name> showed poor objective timing around dragon; for example, at 15:30 she was farming bot lane while her team was already contesting near the pit.
 
@@ -114,3 +144,4 @@ Verdict: <SUBJECT_B name> is more at fault.
 Verdict: Tie — The window from 00:00 to 01:00 contains not enough events to verdict.
 
 Stop here. Do not write anything else.`;
+}

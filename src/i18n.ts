@@ -57,6 +57,8 @@ const translations = {
     cancel: "Cancel",
     fullGame: "Full Game",
     fullGameVictoryUnavailable: "Full-game verdicts are only available for defeated games.",
+    fullGameTooLongWarning:
+      "[FULL_GAME_TOO_LONG] Full-game verdicts are unavailable for matches over 60 minutes. Use Specify Time with a 5-10 minute window.",
     specifyTime: "Specify Time",
     pickAgain: "Pick again",
     backToScope: "Back to scope",
@@ -65,7 +67,7 @@ const translations = {
     selectedWindowLength: "{minutes}:{seconds} long",
     startTime: "Start",
     endTime: "End",
-    minMaxWindow: "Min 1:00 · Max 3:00",
+    minMaxWindow: "Min 5:00 · Max 10:00",
     verdict: "Verdict",
     verdictTitle: "The Verdict",
     previewOnlyWarning:
@@ -144,6 +146,8 @@ const translations = {
     cancel: "취소",
     fullGame: "전체 경기",
     fullGameVictoryUnavailable: "전체 경기 판결은 패배한 경기에서만 사용할 수 있습니다.",
+    fullGameTooLongWarning:
+      "[FULL_GAME_TOO_LONG] 60분을 초과한 경기는 전체 경기 판결을 사용할 수 없습니다. 시간 선택에서 5-10분 구간을 선택해 주세요.",
     specifyTime: "시간 선택",
     pickAgain: "뒤로가기",
     backToScope: "뒤로가기",
@@ -152,7 +156,7 @@ const translations = {
     selectedWindowLength: "{minutes}분 {seconds}초",
     startTime: "시작",
     endTime: "종료",
-    minMaxWindow: "최소 1분 · 최대 3분",
+    minMaxWindow: "최소 5분 · 최대 10분",
     verdict: "판결",
     verdictTitle: "판결문",
     previewOnlyWarning:

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { getTimelineFullGame, getTimelineWindow } from "@/functions/timeline-window.functions";
 import { PromptBlock } from "./judge-prompts/PromptBlock";
-import { UPPER_PROMPT, LOWER_PROMPT } from "./judge-prompts/promptText";
+import { UPPER_PROMPT, buildLowerPrompt } from "./judge-prompts/promptText";
 import { substituteSubjects } from "./judge-prompts/substituteSubjects";
 import { buildTeamRundown } from "./judge-prompts/teamRundown";
 import type { Match, Participant } from "@/lib/match-types";
+import type { Locale } from "@/i18n";
+import { useChampionNameFormatter } from "@/lib/ddragon";
 
 /**
  * Fetches the merged participantFrames + events window from the local server function
@@ -42,6 +44,7 @@ export function TimelineWindowResult({
   subjectBChampion,
   match,
   you,
+  locale = "en",
   onGameLengthChange,
 }: {
   matchId: string;
@@ -67,6 +70,7 @@ export function TimelineWindowResult({
    */
   match?: Match;
   you?: Participant;
+  locale?: Locale;
   onGameLengthChange?: (gameLength: string | null) => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -81,13 +85,21 @@ export function TimelineWindowResult({
   // when we have both `match` and `you`, so the LLM can see the full 5v5
   // roster + roles at the top of the brief.
   const teamRundown = match && you ? buildTeamRundown(match, you) : "";
+  const formatChampionName = useChampionNameFormatter(locale);
+  const championLocalization = buildChampionLocalization({
+    locale,
+    subjectAChampion,
+    subjectBChampion,
+    match,
+    formatChampionName,
+  });
   const upperPromptBase = substituteSubjects(UPPER_PROMPT, {
     subjectA: subjectAChampion ?? "",
     subjectB: subjectBChampion ?? "",
   });
   const upperPromptBody = teamRundown ? `${upperPromptBase}\n\n${teamRundown}` : upperPromptBase;
   const upperPromptText = upperPromptBody;
-  const lowerPromptText = substituteSubjects(LOWER_PROMPT, {
+  const lowerPromptText = substituteSubjects(buildLowerPrompt(locale, championLocalization), {
     subjectA: subjectAChampion ?? "",
     subjectB: subjectBChampion ?? "",
   });
@@ -220,20 +232,19 @@ export function TimelineWindowResult({
       )}
 
       {result && !error && (
-        // Display-only prompt sandwich: upper framing → brief → JSON dump → lower
-        // FINAL INSTRUCTION. The JSON in the middle is the real
-        // /timeline-window response and keeps its own scroll container so
-        // the surrounding prompt blocks stay visible above and below.
+        // Display-only prompt sandwich: upper framing → brief → lower
+        // FINAL INSTRUCTION → JSON dump. The JSON remains visible for
+        // development review, but copyAll intentionally excludes it.
         <div className="flex flex-col gap-3">
           <PromptBlock label="Upper prompt" text={upperPromptText} tone="intro" />
 
           <PromptBlock label="Structured context brief" text={result.brief} tone="intro" />
 
+          <PromptBlock label="Lower prompt" text={lowerPromptText} tone="instruction" />
+
           <pre className="max-h-[400px] overflow-auto rounded border border-border bg-background p-4 font-mono text-[11px] leading-relaxed text-foreground">
             {JSON.stringify(result.evidence ?? result.items ?? [], null, 2)}
           </pre>
-
-          <PromptBlock label="Lower prompt" text={lowerPromptText} tone="instruction" />
         </div>
       )}
     </div>
@@ -252,4 +263,43 @@ function useEffectOnRunToken(token: number, fn: () => void | Promise<void>) {
     if (token <= 0) return;
     void fnRef.current();
   }, [token]);
+}
+
+function buildChampionLocalization({
+  locale,
+  subjectAChampion,
+  subjectBChampion,
+  match,
+  formatChampionName,
+}: {
+  locale: Locale;
+  subjectAChampion?: string;
+  subjectBChampion?: string;
+  match?: Match;
+  formatChampionName: (champion: string) => string;
+}): string {
+  if (locale !== "ko") return "";
+
+  const championNames = new Set<string>();
+  if (subjectAChampion) championNames.add(subjectAChampion);
+  if (subjectBChampion) championNames.add(subjectBChampion);
+  if (match) {
+    championNames.add(match.champion);
+    for (const participant of [...match.team, ...match.enemies]) {
+      championNames.add(participant.champion);
+    }
+  }
+
+  const rows = [...championNames]
+    .map((champion) => {
+      const localized = formatChampionName(champion);
+      return localized && localized !== champion ? `- ${champion} → ${localized}` : null;
+    })
+    .filter((row): row is string => row !== null);
+
+  if (rows.length === 0) return "";
+  return `**NAME LOCALIZATION:**
+
+Use these Korean champion names in the verdict and reasoning:
+${rows.join("\n")}`;
 }
