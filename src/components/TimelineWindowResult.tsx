@@ -8,11 +8,10 @@ import { buildTeamRundown } from "./judge-prompts/teamRundown";
 import type { Match, Participant } from "@/lib/match-types";
 
 /**
- * Fetches the merged participantFrames + events window from the edge function
+ * Fetches the merged participantFrames + events window from the local server function
  * and displays the JSON exactly like the dev "View context" page does for the
  * narrative output.
  *
- * Pure consumer of the `judge-match` edge function (stage="timeline-window").
  * It is intentionally driven by an explicit "Run" click in the parent —
  * we don't auto-refetch on every slider tick, both for politeness to the
  * Riot API and to keep the UI stable while the user fine-tunes the range.

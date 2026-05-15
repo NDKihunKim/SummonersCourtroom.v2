@@ -1,6 +1,1 @@
 project_id = "gbbbwazmqnqbvcgjhnvz"
-
-[functions.judge-match]
-verify_jwt = false
-# Set `CONTEXTUALIZER_URL` in Supabase project secrets to your Python service base URL
-# (e.g. https://api.example.com) so judge-match can POST /contextualize during stage 1.
