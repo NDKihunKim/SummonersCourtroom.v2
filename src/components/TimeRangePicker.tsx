@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as SliderPrimitive from "@radix-ui/react-slider";
+import { toast } from "sonner";
 import type { TranslationKey } from "@/i18n";
 
 /**
@@ -134,10 +135,30 @@ export function TimeRangePicker({
     onChange([s, e]);
   }
 
+  function isShortManualWindow(rawStart: number, rawEnd: number): boolean {
+    const cap = Math.max(MIN_WINDOW_MS, gameDurationMs);
+    let s = Math.max(0, Math.min(rawStart, cap));
+    let e = Math.max(0, Math.min(rawEnd, cap));
+    if (e < s) [s, e] = [e, s];
+    return e - s < MIN_WINDOW_MS;
+  }
+
+  function warnShortManualWindow() {
+    toast.warning(
+      t?.("specifyTimeMinWindowWarning") ??
+        "The selected window must be at least 5 minutes.",
+    );
+  }
+
   function commitStartFromInput() {
     const parsed = parseMmSs(startStr);
     if (parsed == null) {
       // Invalid input → revert visual to current valid value.
+      setStartStr(formatMs(value[0]));
+      return;
+    }
+    if (isShortManualWindow(parsed, value[1])) {
+      warnShortManualWindow();
       setStartStr(formatMs(value[0]));
       return;
     }
@@ -147,6 +168,11 @@ export function TimeRangePicker({
   function commitEndFromInput() {
     const parsed = parseMmSs(endStr);
     if (parsed == null) {
+      setEndStr(formatMs(value[1]));
+      return;
+    }
+    if (isShortManualWindow(value[0], parsed)) {
+      warnShortManualWindow();
       setEndStr(formatMs(value[1]));
       return;
     }

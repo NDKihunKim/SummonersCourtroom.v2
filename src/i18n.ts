@@ -68,6 +68,7 @@ const translations = {
     startTime: "Start",
     endTime: "End",
     minMaxWindow: "Min 5:00 · Max 10:00",
+    specifyTimeMinWindowWarning: "The selected window must be at least 5 minutes.",
     verdict: "Verdict",
     verdictTitle: "The Verdict",
     previewOnlyWarning:
@@ -157,6 +158,7 @@ const translations = {
     startTime: "시작",
     endTime: "종료",
     minMaxWindow: "최소 5분 · 최대 10분",
+    specifyTimeMinWindowWarning: "선택한 구간은 최소 5분 이상이어야 합니다.",
     verdict: "판결",
     verdictTitle: "판결문",
     previewOnlyWarning:

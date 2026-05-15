@@ -108,6 +108,10 @@ const MAX_WINDOW_MS = 10 * 60_000;
 const MAX_FULL_GAME_CONTEXT_MS = 60 * 60_000;
 const ONE_MINUTE_MS = 60_000;
 
+function contextStartMinuteMs(startMs: number): number {
+  return Math.floor(startMs / ONE_MINUTE_MS) * ONE_MINUTE_MS;
+}
+
 function assertContextInspectionAllowed() {
   if (import.meta.env.DEV) return;
 
@@ -480,48 +484,8 @@ function teamRoster(participants: ParticipantInfo[], teamId: number): string {
     .join(", ");
 }
 
-function nearbyParticipantIds(
-  items: InternalWindowItem[],
-  participants: ParticipantInfo[],
-  subjectIds: Set<number>,
-): Set<number> {
-  const ids = new Set<number>();
-  const participantIds = new Set(participants.map((participant) => participant.participantId));
-
-  for (const subjectFrame of items) {
-    if (
-      subjectFrame.kind !== "frame" ||
-      !subjectFrame.participantRawId ||
-      !subjectIds.has(subjectFrame.participantRawId)
-    ) {
-      continue;
-    }
-    const subjectPosition = frameCoords(subjectFrame);
-    if (!subjectPosition) continue;
-
-    for (const candidate of items) {
-      if (
-        candidate.kind !== "frame" ||
-        candidate.timestampMs !== subjectFrame.timestampMs ||
-        !candidate.participantRawId ||
-        candidate.participantRawId === subjectFrame.participantRawId ||
-        !participantIds.has(candidate.participantRawId)
-      ) {
-        continue;
-      }
-      const candidatePosition = frameCoords(candidate);
-      if (candidatePosition && distance(subjectPosition, candidatePosition) <= 2500) {
-        ids.add(candidate.participantRawId);
-      }
-    }
-  }
-
-  return ids;
-}
-
 function trimEvidence(
   items: InternalWindowItem[],
-  participants: ParticipantInfo[],
   subjectIds: Set<number>,
 ): InternalWindowItem[] {
   if (items.length <= 40 && subjectIds.size === 0) return items;
@@ -531,28 +495,31 @@ function trimEvidence(
     if (!evidence.includes(item)) evidence.push(item);
   };
 
+  const frameByTimestamp = new Map<number, InternalWindowItem>();
+  for (const item of items) {
+    if (item.kind === "frame" && !frameByTimestamp.has(item.timestampMs)) {
+      frameByTimestamp.set(item.timestampMs, item);
+    }
+  }
+
   for (const item of items) {
     if (item.kind === "event" && isRelevantEvent(item, subjectIds)) add(item);
   }
 
-  const involved = new Set<number>(subjectIds);
-  for (const item of evidence) {
-    for (const id of item.involvedRawIds ?? []) involved.add(id);
-  }
-  for (const id of nearbyParticipantIds(items, participants, subjectIds)) involved.add(id);
-
-  for (const item of items) {
-    if (item.kind === "frame" && item.participantRawId && involved.has(item.participantRawId)) {
-      add(item);
-    }
+  for (const frame of frameByTimestamp.values()) {
+    add(frame);
   }
 
   if (evidence.length === 0) {
     for (const item of items.slice(0, 20)) add(item);
   }
 
-  evidence.sort((a, b) => a.timestampMs - b.timestampMs);
-  return evidence.slice(0, 80);
+  evidence.sort((a, b) => {
+    if (a.timestampMs !== b.timestampMs) return a.timestampMs - b.timestampMs;
+    if (a.kind === b.kind) return 0;
+    return a.kind === "frame" ? -1 : 1;
+  });
+  return evidence;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -1175,18 +1142,6 @@ function frameItems(
     .sort((a, b) => (a.participantRawId ?? 0) - (b.participantRawId ?? 0));
 }
 
-function closestPriorFrame(frames: TimelineFrame[], startMs: number): TimelineFrame | null {
-  let best: TimelineFrame | null = null;
-  let bestTs = -1;
-  for (const frame of frames) {
-    const ts = toTimestamp(frame.timestamp);
-    if (ts == null || ts >= startMs || ts <= bestTs) continue;
-    best = frame;
-    bestTs = ts;
-  }
-  return best;
-}
-
 function extractWindow(
   timeline: TimelinePayload,
   startMs: number,
@@ -1218,15 +1173,6 @@ function extractWindow(
   }
 
   items.sort((a, b) => a.timestampMs - b.timestampMs);
-
-  if (items.length > 0 && items[0].kind !== "frame") {
-    const prior = closestPriorFrame(frames, startMs);
-    const priorTs = prior ? toTimestamp(prior.timestamp) : null;
-    if (prior && priorTs != null) {
-      items.unshift(...frameItems(prior, priorTs, champions));
-      items.sort((a, b) => a.timestampMs - b.timestampMs);
-    }
-  }
 
   return items;
 }
@@ -1286,7 +1232,7 @@ function buildWindowResponse({
       .filter((id): id is number => typeof id === "number"),
   );
   const items = extractWindow(timeline, startMs, endMs, champions);
-  const evidence = trimToRelevantEvidence ? trimEvidence(items, participants, subjectIds) : items;
+  const evidence = trimToRelevantEvidence ? trimEvidence(items, subjectIds) : items;
   const outputEvidence = stripInternal(evidence, participants, items, extraOmittedEventTypes);
   const outputItems = stripInternal(items, participants, items, extraOmittedEventTypes);
   const brief = buildBriefFromOutput(outputEvidence);
@@ -1331,7 +1277,7 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
     ]);
 
     return buildWindowResponse({
-      startMs: data.startMs,
+      startMs: contextStartMinuteMs(data.startMs),
       endMs: data.endMs,
       match,
       timeline,
