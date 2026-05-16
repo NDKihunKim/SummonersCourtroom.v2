@@ -107,9 +107,14 @@ const MIN_WINDOW_MS = 5 * 60_000;
 const MAX_WINDOW_MS = 10 * 60_000;
 const MAX_FULL_GAME_CONTEXT_MS = 60 * 60_000;
 const ONE_MINUTE_MS = 60_000;
+const END_OF_GAME_TOLERANCE_MS = 15_000;
 
 function contextStartMinuteMs(startMs: number): number {
   return Math.floor(startMs / ONE_MINUTE_MS) * ONE_MINUTE_MS;
+}
+
+function contextEndMs(endMs: number, timelineEnd: number): number {
+  return timelineEnd - endMs <= END_OF_GAME_TOLERANCE_MS ? timelineEnd : endMs;
 }
 
 function assertContextInspectionAllowed() {
@@ -976,7 +981,7 @@ function outputEventSummary(item: OutputWindowItem, championTeams: ChampionTeamL
         ", ",
       )} ${formatPosition(position)}`;
     }
-    return `${timestamp}: ${killer} has solo-killed ${victim} ${formatPosition(position)}`;
+    return `${timestamp}: ${killer} has killed ${victim} ${formatPosition(position)}`;
   }
 
   if (type === "ELITE_MONSTER_KILL") {
@@ -1275,10 +1280,11 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
       riotGet<MatchPayload>(base),
       riotGet<TimelinePayload>(`${base}/timeline`),
     ]);
+    const timelineEnd = timelineEndMs(timeline);
 
     return buildWindowResponse({
       startMs: contextStartMinuteMs(data.startMs),
-      endMs: data.endMs,
+      endMs: contextEndMs(data.endMs, timelineEnd),
       match,
       timeline,
       userPuuid: data.userPuuid,
