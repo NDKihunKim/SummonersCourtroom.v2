@@ -73,7 +73,7 @@ First decide whether the Structured Context Brief contains actionable evidence f
 
 Do not infer missing evidence. If the brief does not show an event, resource state, position pattern, or map event, do not use it as a reason.
 
-Every reason must be traceable to one or more specific lines in Chronological Context. Do not paraphrase beyond what those lines support.
+Every reason must be traceable to specific lines in Chronological Context. Do not paraphrase beyond what those lines support.
 
 **TIE CONDITION:**
 
@@ -117,7 +117,7 @@ Never use "if they had" or "they should have" except when comparing to standard 
 
 **EXAMPLE VERIFICATION:**
 
-Before writing each numbered reason, verify that every example, timestamp, subject action, location, and event you mention appears in the Structured Context Brief. If an example cannot be directly matched to the brief, do not use it. Prefer fewer reasons over unsupported reasons.
+Before writing each numbered reason, choose the single strongest example from the Structured Context Brief for that reason. Verify that its timestamp, subject action, location, and event appear in the brief. If an example cannot be directly matched to the brief, do not use it. Prefer fewer reasons over unsupported reasons.
 
 **OUTPUT FORMAT (strict):**
 
@@ -127,7 +127,9 @@ Before writing each numbered reason, verify that every example, timestamp, subje
 
 - Each reason must be numbered (1., 2., 3.) and describe a broader fault pattern, such as poor positioning, missed objective setup, unsafe pathing, bad fight timing, or a low-value map decision.
 
-- Each reason must include example evidence using wording like "for example, ..." and should cite a timestamp when available. The reason should explain what the example shows, not merely restate a raw event log.
+- Each reason must include exactly one strongest example using wording like "for example, ..." and should cite a timestamp when available. Do not stack multiple unrelated timestamps or multiple separate examples inside one reason.
+
+- You may mention multiple events only when they are part of the same immediate sequence around one example, such as one death leading directly into one objective loss. Do not list several separate examples to prove the same point.
 
 - Use qualitative map/event descriptions. Never print raw coordinate numbers (x,y) in the final answer. Users cannot interpret coordinates directly. Use coordinates only internally to infer a readable nearby map landmark, named structure, or broad zone.
 
@@ -145,7 +147,7 @@ Before writing each numbered reason, verify that every example, timestamp, subje
 
 1. <SUBJECT_B name> showed poor objective timing around dragon; for example, at 15:30 she was farming bot lane while her team was already contesting near the pit.
 
-2. <SUBJECT_B name> repeatedly created avoidable fight risk through unsafe positioning; for example, at 17:45 she face‑checked near Baron and died before her team could contest.
+2. <SUBJECT_B name> created avoidable fight risk through unsafe positioning; for example, at 17:45 she face‑checked near Baron and died before her team could contest.
 
 **Example of acceptable output (tie):**
 
