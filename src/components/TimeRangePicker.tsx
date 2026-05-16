@@ -39,6 +39,14 @@ function formatKoreanLength(ms: number): { minutes: number; seconds: number } {
   };
 }
 
+function formatWindowLengthVars(ms: number): Record<string, string | number> {
+  const { minutes, seconds } = formatKoreanLength(ms);
+  return {
+    minutes,
+    seconds: String(seconds).padStart(2, "0"),
+  };
+}
+
 /** Parse "m:ss" or "mm:ss" or plain "seconds". Returns null on garbage. */
 function parseMmSs(input: string): number | null {
   const trimmed = input.trim();
@@ -75,7 +83,7 @@ export function TimeRangePicker({
   // We commit on blur / Enter.
   const [startStr, setStartStr] = useState(formatMs(value[0]));
   const [endStr, setEndStr] = useState(formatMs(value[1]));
-  const windowLength = formatKoreanLength(value[1] - value[0]);
+  const windowLength = formatWindowLengthVars(value[1] - value[0]);
 
   // Keep the input strings in sync when the parent updates `value`
   // (e.g. via slider drag, or when reopening the panel).
