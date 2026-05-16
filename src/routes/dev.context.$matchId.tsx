@@ -96,7 +96,7 @@ function DevContextPage() {
         </div>
 
         <div className="mb-4 rounded-lg border border-destructive/60 bg-destructive/10 p-3 text-center text-xs font-medium text-destructive">
-          Preview only — this page shows the context that would be sent to the AI. No AI was used to generate the verdict you saw.
+          Development only — this page shows the context sent to the AI and can run DeepSeek to inspect the raw API response.
         </div>
 
         {search.scope === "window" &&

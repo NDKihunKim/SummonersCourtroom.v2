@@ -3,6 +3,9 @@ import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import type { RegionalRouting } from "@/server/riot";
 import { assertRateLimit } from "@/server/request-rate-limit";
+import { UPPER_PROMPT, buildLowerPrompt } from "@/components/judge-prompts/promptText";
+import { substituteSubjects } from "@/components/judge-prompts/substituteSubjects";
+import type { Locale } from "@/i18n";
 
 type WindowItem = Record<string, unknown> & {
   kind: "frame" | "event";
@@ -83,6 +86,18 @@ const TimelineFullGameInputSchema = TimelineWindowInputSchema.omit({
   endMs: true,
 });
 
+const JudgeVerdictInputSchema = z.object({
+  matchId: z.string().min(3),
+  userPuuid: z.string().min(1),
+  routingRegion: z.enum(["americas", "europe", "asia", "sea"]).optional(),
+  scope: z.enum(["window", "full"]),
+  startMs: z.number().int().min(0).optional(),
+  endMs: z.number().int().min(0).optional(),
+  locale: z.enum(["en", "ko"]).optional(),
+  includeRaw: z.boolean().optional(),
+  subjects: TimelineWindowInputSchema.shape.subjects,
+});
+
 const PLATFORM_TO_REGIONAL: Record<string, RegionalRouting> = {
   br1: "americas",
   la1: "americas",
@@ -108,6 +123,11 @@ const MAX_WINDOW_MS = 10 * 60_000;
 const MAX_FULL_GAME_CONTEXT_MS = 60 * 60_000;
 const ONE_MINUTE_MS = 60_000;
 const END_OF_GAME_TOLERANCE_MS = 15_000;
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_MAX_TOKENS = 1400;
+const DEEPSEEK_FLASH_CACHE_MISS_INPUT_PER_1M = 0.14;
+const DEEPSEEK_FLASH_CACHE_HIT_INPUT_PER_1M = 0.0028;
+const DEEPSEEK_FLASH_OUTPUT_PER_1M = 0.28;
 
 function contextStartMinuteMs(startMs: number): number {
   return Math.floor(startMs / ONE_MINUTE_MS) * ONE_MINUTE_MS;
@@ -132,6 +152,24 @@ function apiKey(): string {
   const key = process.env.RIOT_API_KEY;
   if (!key) throw new Error("RIOT_API_KEY is not configured on the server.");
   return key;
+}
+
+function deepSeekApiKey(): string {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error("DEEPSEEK_API_KEY is not configured on the server.");
+  return key;
+}
+
+function deepSeekModel(): string {
+  return process.env.DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL;
+}
+
+function deepSeekThinking() {
+  const enabled = process.env.DEEPSEEK_THINKING === "enabled";
+  return {
+    enabled,
+    effort: process.env.DEEPSEEK_REASONING_EFFORT === "max" ? "max" : "high",
+  };
 }
 
 function inferRouting(matchId: string, override?: RegionalRouting): RegionalRouting {
@@ -1256,6 +1294,129 @@ function buildWindowResponse({
   };
 }
 
+function buildJudgePrompt({
+  brief,
+  locale,
+  subjectAChampion,
+  subjectBChampion,
+}: {
+  brief: string;
+  locale: Locale;
+  subjectAChampion?: string;
+  subjectBChampion?: string;
+}) {
+  const subjects = {
+    subjectA: subjectAChampion ?? "",
+    subjectB: subjectBChampion ?? "",
+  };
+  const upperPrompt = substituteSubjects(UPPER_PROMPT, subjects);
+  const lowerPrompt = substituteSubjects(buildLowerPrompt(locale), subjects);
+  const prompt = [upperPrompt, "", brief, "", lowerPrompt].join("\n");
+  return { upperPrompt, brief, lowerPrompt, prompt };
+}
+
+type DeepSeekUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
+};
+
+type DeepSeekResponse = {
+  id?: string;
+  model?: string;
+  choices?: Array<{
+    message?: {
+      content?: string;
+      reasoning_content?: string;
+    };
+  }>;
+  usage?: DeepSeekUsage;
+};
+
+function estimateDeepSeekCost(usage?: DeepSeekUsage) {
+  if (!usage) return null;
+  const cacheHitInput = usage.prompt_cache_hit_tokens ?? 0;
+  const cacheMissInput =
+    usage.prompt_cache_miss_tokens ??
+    Math.max(0, (usage.prompt_tokens ?? 0) - cacheHitInput);
+  const output = usage.completion_tokens ?? 0;
+  const usd =
+    (cacheHitInput / 1_000_000) * DEEPSEEK_FLASH_CACHE_HIT_INPUT_PER_1M +
+    (cacheMissInput / 1_000_000) * DEEPSEEK_FLASH_CACHE_MISS_INPUT_PER_1M +
+    (output / 1_000_000) * DEEPSEEK_FLASH_OUTPUT_PER_1M;
+
+  return {
+    usd,
+    cacheHitInputTokens: cacheHitInput,
+    cacheMissInputTokens: cacheMissInput,
+    outputTokens: output,
+    note:
+      "Estimate uses deepseek-v4-flash public pricing. Thinking mode may increase completion tokens through reasoning content.",
+  };
+}
+
+async function callDeepSeek(prompt: string): Promise<{
+  content: string;
+  reasoningContent?: string;
+  usage?: DeepSeekUsage;
+  model: string;
+  thinking: { enabled: boolean; effort: "high" | "max" };
+  raw: DeepSeekResponse;
+}> {
+  const model = deepSeekModel();
+  const thinking = deepSeekThinking();
+  const body: Record<string, unknown> = {
+    model,
+    messages: [{ role: "user", content: prompt }],
+    max_tokens: Number(process.env.DEEPSEEK_MAX_TOKENS ?? DEFAULT_DEEPSEEK_MAX_TOKENS),
+    thinking: { type: thinking.enabled ? "enabled" : "disabled" },
+  };
+  if (thinking.enabled) body.reasoning_effort = thinking.effort;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  let res: Response;
+  try {
+    res = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${deepSeekApiKey()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("DeepSeek API access is unavailable. Check the server API key.");
+    }
+    if (res.status === 429) {
+      throw new Error("DeepSeek rate limit reached. Please wait and try again.");
+    }
+    throw new Error(`DeepSeek API request failed with status ${res.status}.`);
+  }
+
+  const raw = (await res.json()) as DeepSeekResponse;
+  const message = raw.choices?.[0]?.message;
+  const content = message?.content?.trim();
+  if (!content) throw new Error("DeepSeek returned an empty verdict.");
+
+  return {
+    content,
+    reasoningContent: message.reasoning_content,
+    usage: raw.usage,
+    model: raw.model ?? model,
+    thinking,
+    raw,
+  };
+}
+
 export const getTimelineWindow = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TimelineWindowInputSchema.parse(input))
   .handler(async ({ data }) => {
@@ -1329,4 +1490,85 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
       trimToRelevantEvidence: false,
       extraOmittedEventTypes: ["PAUSE_END"],
     });
+  });
+
+export const getJudgeVerdict = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => JudgeVerdictInputSchema.parse(input))
+  .handler(async ({ data }) => {
+    if (data.includeRaw) assertContextInspectionAllowed();
+    assertRateLimit({
+      scope: "judge-verdict",
+      limit: 4,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many AI verdict requests. Please wait a minute and try again.",
+    });
+
+    if (data.scope === "window") {
+      if (data.startMs == null || data.endMs == null) {
+        throw new Error("Specify Time verdict requires startMs and endMs.");
+      }
+      const span = data.endMs - data.startMs;
+      if (span < MIN_WINDOW_MS) throw new Error("Window must be at least 5 minutes.");
+      if (span > MAX_WINDOW_MS) throw new Error("Window must be at most 10 minutes.");
+    }
+
+    const routing = inferRouting(data.matchId, data.routingRegion);
+    const base = `https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(
+      data.matchId,
+    )}`;
+
+    const [match, timeline] = await Promise.all([
+      riotGet<MatchPayload>(base),
+      riotGet<TimelinePayload>(`${base}/timeline`),
+    ]);
+    const timelineEnd = timelineEndMs(timeline);
+
+    const windowResponse =
+      data.scope === "full"
+        ? (() => {
+            if (timelineEnd > MAX_FULL_GAME_CONTEXT_MS) {
+              throw new Error(
+                "[FULL_GAME_TOO_LONG] Full-game context is unavailable for matches over 60 minutes. Use Specify Time instead.",
+              );
+            }
+            return buildWindowResponse({
+              startMs: 0,
+              endMs: timelineEnd,
+              match,
+              timeline,
+              userPuuid: data.userPuuid,
+              subjects: data.subjects,
+              trimToRelevantEvidence: false,
+              extraOmittedEventTypes: ["PAUSE_END"],
+            });
+          })()
+        : buildWindowResponse({
+            startMs: contextStartMinuteMs(data.startMs as number),
+            endMs: contextEndMs(data.endMs as number, timelineEnd),
+            match,
+            timeline,
+            userPuuid: data.userPuuid,
+            subjects: data.subjects,
+          });
+
+    const promptPayload = buildJudgePrompt({
+      brief: windowResponse.brief,
+      locale: data.locale ?? "en",
+      subjectAChampion: data.subjects?.a?.champion,
+      subjectBChampion: data.subjects?.b?.champion,
+    });
+    const deepSeek = await callDeepSeek(promptPayload.prompt);
+    const raw = data.includeRaw ? deepSeek.raw : undefined;
+
+    return {
+      content: deepSeek.content,
+      reasoningContent: data.includeRaw ? deepSeek.reasoningContent : undefined,
+      model: deepSeek.model,
+      thinking: deepSeek.thinking,
+      usage: deepSeek.usage,
+      costEstimate: estimateDeepSeekCost(deepSeek.usage),
+      raw,
+      prompt: data.includeRaw ? promptPayload : undefined,
+      context: data.includeRaw ? windowResponse : undefined,
+    };
   });

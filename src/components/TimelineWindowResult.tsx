@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { getTimelineFullGame, getTimelineWindow } from "@/functions/timeline-window.functions";
+import {
+  getJudgeVerdict,
+  getTimelineFullGame,
+  getTimelineWindow,
+} from "@/functions/timeline-window.functions";
 import { PromptBlock } from "./judge-prompts/PromptBlock";
 import { UPPER_PROMPT, buildLowerPrompt } from "./judge-prompts/promptText";
 import { substituteSubjects } from "./judge-prompts/substituteSubjects";
@@ -29,6 +33,17 @@ type WindowResponse = {
   evidence: unknown[];
   items?: unknown[];
   error?: string;
+};
+
+type JudgeRawResult = {
+  content: string;
+  reasoningContent?: string;
+  model: string;
+  thinking: { enabled: boolean; effort: "high" | "max" };
+  usage?: unknown;
+  costEstimate?: unknown;
+  raw?: unknown;
+  prompt?: unknown;
 };
 
 export function TimelineWindowResult({
@@ -78,6 +93,8 @@ export function TimelineWindowResult({
   const [result, setResult] = useState<WindowResponse | null>(null);
   const [durationMs, setDurationMs] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [judgeLoading, setJudgeLoading] = useState(false);
+  const [judgeResult, setJudgeResult] = useState<JudgeRawResult | null>(null);
 
   // Memo-light: just two string substitutions per render. Plenty fast and
   // avoids the boilerplate of useMemo for sub-millisecond work.
@@ -111,6 +128,7 @@ export function TimelineWindowResult({
     setLoading(true);
     setError(null);
     setResult(null);
+    setJudgeResult(null);
     setDurationMs(null);
     onGameLengthChange?.(null);
     const t0 = performance.now();
@@ -189,6 +207,40 @@ export function TimelineWindowResult({
     }
   }
 
+  async function runDeepSeekForContext() {
+    if (!result) return;
+    setJudgeLoading(true);
+    setError(null);
+    setJudgeResult(null);
+    try {
+      const data = await getJudgeVerdict({
+        data: {
+          matchId,
+          userPuuid,
+          ...(routingRegion ? { routingRegion } : {}),
+          scope,
+          ...(scope === "window" ? { startMs, endMs } : {}),
+          locale,
+          includeRaw: true,
+          subjects: {
+            a: {
+              champion: subjectAChampion,
+              puuid: you?.puuid ?? userPuuid,
+            },
+            b: {
+              champion: subjectBChampion,
+            },
+          },
+        },
+      });
+      setJudgeResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "DeepSeek request failed");
+    } finally {
+      setJudgeLoading(false);
+    }
+  }
+
   if (runToken === 0 && !loading && !error && !result) {
     return (
       <p className="rounded-lg border border-dashed border-border bg-card/40 p-4 text-center text-xs text-muted-foreground">
@@ -221,6 +273,13 @@ export function TimelineWindowResult({
             >
               {copied ? "Copied" : "Copy all"}
             </button>
+            <button
+              onClick={() => void runDeepSeekForContext()}
+              disabled={judgeLoading}
+              className="rounded border border-gold/60 px-2 py-1 text-xs text-gold hover:border-gold disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {judgeLoading ? "Running DeepSeek..." : "Run DeepSeek"}
+            </button>
           </>
         )}
       </div>
@@ -245,6 +304,37 @@ export function TimelineWindowResult({
           <pre className="max-h-[400px] overflow-auto rounded border border-border bg-background p-4 font-mono text-[11px] leading-relaxed text-foreground">
             {JSON.stringify(result.evidence ?? result.items ?? [], null, 2)}
           </pre>
+
+          {judgeResult && (
+            <div className="flex flex-col gap-3">
+              <PromptBlock
+                label="DeepSeek final content"
+                text={judgeResult.content}
+                tone="instruction"
+              />
+              {judgeResult.reasoningContent && (
+                <PromptBlock
+                  label="DeepSeek reasoning_content"
+                  text={judgeResult.reasoningContent}
+                  tone="intro"
+                />
+              )}
+              <pre className="max-h-[420px] overflow-auto rounded border border-gold/50 bg-background p-4 font-mono text-[11px] leading-relaxed text-foreground">
+                {JSON.stringify(
+                  {
+                    model: judgeResult.model,
+                    thinking: judgeResult.thinking,
+                    usage: judgeResult.usage,
+                    costEstimate: judgeResult.costEstimate,
+                    raw: judgeResult.raw,
+                    prompt: judgeResult.prompt,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </div>
+          )}
         </div>
       )}
     </div>

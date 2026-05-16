@@ -10,6 +10,8 @@ import { TimelineWindowResult } from "./TimelineWindowResult";
 import type { Match, Participant } from "@/lib/match-types";
 import type { Locale, TranslationKey } from "@/i18n";
 
+const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
+
 /**
  * Specify-Time scope panel. Composes:
  *   - TimeRangePicker (dual-handle slider + mm:ss inputs)
@@ -118,6 +120,21 @@ export function ScopeSpecifyTime({
   const span = range[1] - range[0];
   const validSpan = span >= MIN_WINDOW_MS && span <= MAX_WINDOW_MS;
 
+  function openContext(scope: "full" | "window") {
+    const params = new URLSearchParams();
+    params.set("scope", scope);
+    params.set("locale", locale);
+    params.set("puuid", userPuuid);
+    if (routingRegion) params.set("region", routingRegion);
+    if (subjectAChampion) params.set("subjectA", subjectAChampion);
+    if (subjectBChampion) params.set("subjectB", subjectBChampion);
+    if (scope === "window") {
+      params.set("startMs", String(range[0]));
+      params.set("endMs", String(range[1]));
+    }
+    window.open(`/dev/context/${matchId}?${params.toString()}`, "_blank");
+  }
+
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
@@ -140,16 +157,36 @@ export function ScopeSpecifyTime({
           t={t}
         />
 
-        <button
-          onClick={() => {
-            if (onRun) onRun(range);
-            else setRunToken((t) => t + 1);
-          }}
-          disabled={!validSpan}
-          className="rounded-lg border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {t?.("verdict") ?? "Verdict"}
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => {
+              if (onRun) onRun(range);
+              else setRunToken((t) => t + 1);
+            }}
+            disabled={!validSpan}
+            className="rounded-lg border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t?.("verdict") ?? "Verdict"}
+          </button>
+
+          {SHOW_DEV_CONTEXT && (
+            <>
+              <button
+                onClick={() => openContext("full")}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold"
+              >
+                Full Context
+              </button>
+              <button
+                onClick={() => openContext("window")}
+                disabled={!validSpan}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Window Context
+              </button>
+            </>
+          )}
+        </div>
 
         {!onRun && (
         <div className="w-full max-w-3xl">

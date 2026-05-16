@@ -10,6 +10,7 @@ import { RuneIcons } from "./RuneIcons";
 import { RosterColumns } from "./RosterColumns";
 import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
+import { getJudgeVerdict } from "@/functions/timeline-window.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import type { Locale, TranslationKey } from "@/i18n";
 
@@ -17,6 +18,7 @@ type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "
 type PipelineStep = "contextualize" | "judge" | "parse";
 type Scope = "full" | "window";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
+type VerdictDisplay = { championName: string; summonerName?: string };
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
 const MAX_FULL_GAME_VERDICT_MS = 60 * 60_000;
@@ -90,6 +92,41 @@ function formatPlayedAt(playedAt: string, locale: Locale, t: Translate): string 
   return t("relativeDaysAgo", { count });
 }
 
+function normalizeVerdictToken(value: string): string {
+  return value.replace(/[^a-z0-9가-힣]/gi, "").toLowerCase();
+}
+
+function parseJudgeOutput(
+  output: string,
+  subjects: Array<{ champion: string; championLabel: string; summoner?: string }>,
+): { verdict: VerdictDisplay | null; reasoning: string } {
+  const lines = output.split(/\r?\n/);
+  const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex === -1) return { verdict: null, reasoning: output };
+
+  const verdictLine = lines[firstContentIndex].trim();
+  const verdictToken = normalizeVerdictToken(verdictLine);
+  const subject = subjects.find((candidate) => {
+    const candidates = [
+      candidate.champion,
+      candidate.championLabel,
+      candidate.summoner ?? "",
+    ].map(normalizeVerdictToken);
+    return candidates.some((candidateToken) => candidateToken && candidateToken === verdictToken);
+  });
+
+  const reasoning = [...lines.slice(0, firstContentIndex), ...lines.slice(firstContentIndex + 1)]
+    .join("\n")
+    .trim();
+
+  return {
+    verdict: subject
+      ? { championName: subject.championLabel, summonerName: subject.summoner }
+      : { championName: verdictLine },
+    reasoning: reasoning || output,
+  };
+}
+
 export function MatchCard({
   match,
   you,
@@ -124,7 +161,7 @@ export function MatchCard({
   const [stage, setStage] = useState<Stage>("closed");
   const [pickedAlly, setPickedAlly] = useState<Participant | null>(null);
   const [reasoning, setReasoning] = useState<string | null>(null);
-  const [verdictName, setVerdictName] = useState<string | null>(null);
+  const [verdictDisplay, setVerdictDisplay] = useState<VerdictDisplay | null>(null);
   const [activeStep, setActiveStep] = useState<PipelineStep>("contextualize");
   const [completed, setCompleted] = useState<Set<PipelineStep>>(new Set());
   const [verdictScope, setVerdictScope] = useState<Scope | null>(null);
@@ -136,7 +173,7 @@ export function MatchCard({
     setStage("closed");
     setPickedAlly(null);
     setReasoning(null);
-    setVerdictName(null);
+    setVerdictDisplay(null);
     setCompleted(new Set());
     setActiveStep("contextualize");
     setVerdictScope(null);
@@ -155,60 +192,69 @@ export function MatchCard({
 
     setStage("loading");
     setReasoning(null);
-    setVerdictName(null);
+    setVerdictDisplay(null);
     setCompleted(new Set());
     setActiveStep("contextualize");
 
-    // ============================================================
-    // MOCK MODE — the real Judge pipeline (Contextualize → Judge →
-    // Parse) is intentionally NOT invoked here. We keep the existing
-    // 3-step loading stepper UX by walking through the stages with
-    // small delays, then render a hardcoded sample verdict so the
-    // user can preview the output layout without spending any AI
-    // tokens. The Verdict panel surfaces a clear "preview only"
-    // warning so this isn't mistaken for a real ruling.
-    // ============================================================
-    const allyName = pickedAlly.summoner;
+    if (!match.riotMatchId || !match.userPuuid) {
+      toast.error("Match metadata unavailable for AI verdict.");
+      reset();
+      return;
+    }
+
+    const allyChampionLabel = formatChampionName(pickedAlly.champion);
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    await wait(600);
-    setCompleted((s) => new Set(s).add("contextualize"));
-    setActiveStep("judge");
+    try {
+      await wait(250);
+      setCompleted((s) => new Set(s).add("contextualize"));
+      setActiveStep("judge");
 
-    await wait(700);
-    const fmt = (ms: number) => {
-      const t = Math.floor(ms / 1000);
-      return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
-    };
-    const windowPrefix =
-      scope === "window" && windowRange
-        ? `In the ${fmt(windowRange[0])}–${fmt(windowRange[1])} window, `
-        : "";
-    const koreanWindowPrefix =
-      scope === "window" && windowRange
-        ? `${fmt(windowRange[0])}–${fmt(windowRange[1])} 구간에서 `
-        : "";
-    const sampleReasoning =
-      locale === "ko"
-        ? `판결: ${koreanWindowPrefix}${allyName}에게 더 큰 잘못이 있습니다.\n\n` +
-          `1. 12:30에 ${allyName}은 시야가 없는 상태에서 적 미드 포탑 너머로 과하게 전진했고, 소환사 주문 2개가 빠진 상황에서 첫 킬과 400골드 제압 골드를 내주며 미드 라인 격차를 키웠습니다.\n` +
-          `2. 18:10에 팀이 드래곤을 두고 교전하는 동안 ${allyName}은 적 탑 정글을 파밍하고 있었고, 그 결과 4대5 교전으로 오브젝트와 이어지는 포탑을 잃었습니다.\n` +
-          `3. 24:45에 ${allyName}은 와드 없이 바론 둥지 부쉬를 확인하다가 교전을 시작하게 만들었고, 팀은 0대4로 패하며 바론까지 내줬습니다.`
-        : `Verdict: ${windowPrefix}${allyName} is more at fault.\n\n` +
-          `1. At 12:30 ${allyName} overextended past the enemy mid turret with no vision while down two summoner spells, giving up first blood and a 400g shutdown that snowballed mid lane.\n` +
-          `2. At 18:10 ${allyName} was farming the enemy top jungle while the team contested Dragon — the resulting 4v5 cost the objective and a follow-up tower.\n` +
-          `3. At 24:45 ${allyName} face-checked the Baron pit bush without wards, starting a fight her team lost 0-for-4 and conceding Baron.`;
-    setReasoning(sampleReasoning);
-    setCompleted((s) => new Set(s).add("judge"));
-    setActiveStep("parse");
+      const verdict = await getJudgeVerdict({
+        data: {
+          matchId: match.riotMatchId,
+          userPuuid: match.userPuuid,
+          ...(match.routingRegion ? { routingRegion: match.routingRegion } : {}),
+          scope,
+          ...(scope === "window" && windowRange
+            ? { startMs: windowRange[0], endMs: windowRange[1] }
+            : {}),
+          locale,
+          subjects: {
+            a: {
+              champion: match.champion,
+              puuid: you?.puuid ?? match.userPuuid,
+            },
+            b: {
+              champion: pickedAlly.champion,
+              puuid: pickedAlly.puuid,
+            },
+          },
+        },
+      });
+      const parsed = parseJudgeOutput(verdict.content, [
+        { champion: match.champion, championLabel, summoner: you?.summoner },
+        {
+          champion: pickedAlly.champion,
+          championLabel: allyChampionLabel,
+          summoner: pickedAlly.summoner,
+        },
+      ]);
+      setReasoning(parsed.reasoning);
+      setVerdictDisplay(parsed.verdict);
+      setCompleted((s) => new Set(s).add("judge"));
+      setActiveStep("parse");
 
-    await wait(500);
-    setVerdictName(allyName);
-    setCompleted((s) => new Set(s).add("parse"));
+      await wait(200);
+      setCompleted((s) => new Set(s).add("parse"));
 
-    setVerdictScope(scope);
-    setVerdictWindow(windowRange ?? null);
-    setStage("verdict");
+      setVerdictScope(scope);
+      setVerdictWindow(windowRange ?? null);
+      setStage("verdict");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "AI verdict request failed.");
+      reset();
+    }
   }
 
   return (
@@ -425,7 +471,7 @@ export function MatchCard({
                 />
               )}
               <Verdict
-                verdictName={verdictName}
+                verdictDisplay={verdictDisplay}
                 reasoning={reasoning}
                 onClose={reset}
                 onAgain={() => setStage("pickAlly")}
@@ -702,14 +748,14 @@ function JudgeLoading({
 }
 
 function Verdict({
-  verdictName,
+  verdictDisplay,
   reasoning,
   onClose,
   onAgain,
   onViewContext,
   t,
 }: {
-  verdictName: string | null;
+  verdictDisplay: VerdictDisplay | null;
   reasoning: string;
   onClose: () => void;
   onAgain: () => void;
@@ -724,18 +770,17 @@ function Verdict({
           {t("verdictTitle")}
         </h3>
       </div>
-      {/* Preview-only warning — the Full Game flow currently renders a
-          hardcoded sample verdict instead of calling the AI pipeline,
-          so we make that explicit here to avoid confusing the viewer. */}
-      <div className="mb-3 rounded-lg border border-destructive/60 bg-destructive/10 p-3 text-center text-xs font-medium text-destructive">
-        {t("previewOnlyWarning")}
-      </div>
-      {verdictName && (
+      {verdictDisplay && (
         <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
           <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
             {t("moreAtFault")}
           </div>
-          <div className="mt-1 text-xl font-bold text-gold">{verdictName}</div>
+          <div className="mt-1 text-2xl font-bold text-gold">{verdictDisplay.championName}</div>
+          {verdictDisplay.summonerName && (
+            <div className="mt-1 text-xs font-medium text-muted-foreground">
+              {verdictDisplay.summonerName}
+            </div>
+          )}
         </div>
       )}
       <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
