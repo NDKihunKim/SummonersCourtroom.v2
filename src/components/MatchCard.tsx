@@ -79,6 +79,13 @@ function parseMatchDurationToMs(duration: string): number | null {
   return null;
 }
 
+function formatMsClock(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function formatPlayedAt(playedAt: string, locale: Locale, t: Translate): string {
   if (locale !== "ko") return playedAt;
   if (playedAt.toLowerCase() === "just now") return t("justNow");
@@ -155,6 +162,7 @@ export function MatchCard({
   const resultLabel = win ? t("victory") : t("defeat");
   const queueLabel = formatQueue(match.queue, locale, t);
   const durationLabel = formatDuration(match.duration, locale, t);
+  const matchDurationMs = parseMatchDurationToMs(match.duration);
   const playedAtLabel = formatPlayedAt(match.playedAt, locale, t);
   const championLabel = formatChampionName(match.champion);
 
@@ -168,6 +176,12 @@ export function MatchCard({
   const [verdictWindow, setVerdictWindow] = useState<[number, number] | null>(null);
 
   const expanded = stage !== "closed";
+  const verdictWindowLabel =
+    verdictScope === "window" && verdictWindow
+      ? `${formatMsClock(verdictWindow[0])}-${formatMsClock(verdictWindow[1])}`
+      : verdictScope === "full"
+        ? `Full Game - ${matchDurationMs != null ? formatMsClock(matchDurationMs) : match.duration}`
+        : null;
 
   function reset() {
     setStage("closed");
@@ -473,6 +487,7 @@ export function MatchCard({
               <Verdict
                 verdictDisplay={verdictDisplay}
                 reasoning={reasoning}
+                windowLabel={verdictWindowLabel}
                 onClose={reset}
                 onAgain={() => setStage("pickAlly")}
                 onViewContext={() => {
@@ -750,6 +765,7 @@ function JudgeLoading({
 function Verdict({
   verdictDisplay,
   reasoning,
+  windowLabel,
   onClose,
   onAgain,
   onViewContext,
@@ -757,6 +773,7 @@ function Verdict({
 }: {
   verdictDisplay: VerdictDisplay | null;
   reasoning: string;
+  windowLabel: string | null;
   onClose: () => void;
   onAgain: () => void;
   onViewContext: () => void;
@@ -764,11 +781,18 @@ function Verdict({
 }) {
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
-        <Gavel className="h-4 w-4 text-gold" />
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
-          {t("verdictTitle")}
-        </h3>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Gavel className="h-4 w-4 text-gold" />
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
+            {t("verdictTitle")}
+          </h3>
+        </div>
+        {windowLabel && (
+          <div className="rounded-md border border-gold/60 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
+            {windowLabel}
+          </div>
+        )}
       </div>
       {verdictDisplay && (
         <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
