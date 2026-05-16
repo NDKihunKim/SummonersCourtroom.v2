@@ -86,6 +86,14 @@ function formatMsClock(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatWindowLength(ms: number, t: Translate): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  return t("selectedWindowLength", {
+    minutes: Math.floor(totalSeconds / 60),
+    seconds: String(totalSeconds % 60).padStart(2, "0"),
+  });
+}
+
 function formatPlayedAt(playedAt: string, locale: Locale, t: Translate): string {
   if (locale !== "ko") return playedAt;
   if (playedAt.toLowerCase() === "just now") return t("justNow");
@@ -178,9 +186,14 @@ export function MatchCard({
   const expanded = stage !== "closed";
   const verdictWindowLabel =
     verdictScope === "window" && verdictWindow
-      ? `${formatMsClock(verdictWindow[0])}-${formatMsClock(verdictWindow[1])}`
+      ? `[${formatMsClock(verdictWindow[0])}-${formatMsClock(verdictWindow[1])}] ${formatWindowLength(
+          verdictWindow[1] - verdictWindow[0],
+          t,
+        )}`
       : verdictScope === "full"
-        ? `Full Game - ${matchDurationMs != null ? formatMsClock(matchDurationMs) : match.duration}`
+        ? `${t("fullGame")} - ${
+            matchDurationMs != null ? formatWindowLength(matchDurationMs, t) : match.duration
+          }`
         : null;
 
   function reset() {
@@ -192,6 +205,26 @@ export function MatchCard({
     setActiveStep("contextualize");
     setVerdictScope(null);
     setVerdictWindow(null);
+  }
+
+  function showMockWindowResult(windowRange: [number, number]) {
+    if (!pickedAlly) return;
+    setReasoning(
+      [
+        `${formatChampionName(pickedAlly.champion)} created avoidable pressure loss during the selected window; for example, they were late to the key fight and gave the enemy team time to convert the advantage.`,
+        "",
+        `${formatChampionName(pickedAlly.champion)} also failed to match the team's objective timing, which made the losing sequence harder to recover from.`,
+      ].join("\n"),
+    );
+    setVerdictDisplay({
+      championName: formatChampionName(pickedAlly.champion),
+      summonerName: pickedAlly.summoner,
+    });
+    setCompleted(new Set(["contextualize", "judge", "parse"]));
+    setActiveStep("parse");
+    setVerdictScope("window");
+    setVerdictWindow(windowRange);
+    setStage("verdict");
   }
 
   async function runJudge(scope: Scope, windowRange?: [number, number]) {
@@ -440,6 +473,7 @@ export function MatchCard({
               locale={locale}
               t={t}
               onRun={(range) => void runJudge("window", range)}
+              onMockResult={SHOW_DEV_CONTEXT ? showMockWindowResult : undefined}
             />
           )}
 
@@ -789,7 +823,7 @@ function Verdict({
           </h3>
         </div>
         {windowLabel && (
-          <div className="rounded-md border border-gold/60 bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
+          <div className="text-right text-sm font-semibold uppercase tracking-wider text-gold">
             {windowLabel}
           </div>
         )}
