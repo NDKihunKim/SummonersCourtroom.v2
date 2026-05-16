@@ -172,6 +172,10 @@ function deepSeekThinking() {
   };
 }
 
+function deepSeekMaxTokens(): number {
+  return Number(process.env.DEEPSEEK_MAX_TOKENS ?? DEFAULT_DEEPSEEK_MAX_TOKENS);
+}
+
 function inferRouting(matchId: string, override?: RegionalRouting): RegionalRouting {
   if (override) return override;
   const platform = matchId.split("_", 1)[0]?.toLowerCase();
@@ -1319,6 +1323,12 @@ type DeepSeekUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+  };
   prompt_cache_hit_tokens?: number;
   prompt_cache_miss_tokens?: number;
 };
@@ -1327,12 +1337,32 @@ type DeepSeekResponse = {
   id?: string;
   model?: string;
   choices?: Array<{
+    finish_reason?: string;
     message?: {
       content?: string;
       reasoning_content?: string;
     };
   }>;
   usage?: DeepSeekUsage;
+};
+
+type VerdictAnalyticsEvent = {
+  success: boolean;
+  matchId: string;
+  scope: "full" | "window";
+  routingRegion: RegionalRouting;
+  locale: Locale;
+  model?: string;
+  thinking?: { enabled: boolean; effort: "high" | "max" };
+  finishReason?: string;
+  errorType?: string;
+  gameLengthMs: number;
+  requestedWindowMs?: number;
+  actualContextWindowMs: number;
+  usage?: DeepSeekUsage;
+  costEstimate?: ReturnType<typeof estimateDeepSeekCost>;
+  maxTokens: number;
+  durationMs: number;
 };
 
 function estimateDeepSeekCost(usage?: DeepSeekUsage) {
@@ -1357,12 +1387,68 @@ function estimateDeepSeekCost(usage?: DeepSeekUsage) {
   };
 }
 
+function numberOrZero(value: number | undefined): number {
+  return Number.isFinite(value) ? (value as number) : 0;
+}
+
+function safeBlob(value: string | number | boolean | undefined): string {
+  if (value == null) return "";
+  return String(value).slice(0, 256);
+}
+
+async function writeVerdictAnalytics(event: VerdictAnalyticsEvent) {
+  try {
+    const { env } = await import("cloudflare:workers");
+    const analytics = env.analytic_engine;
+    if (!analytics) return;
+
+    const usage = event.usage;
+    analytics.writeDataPoint({
+      indexes: ["verdict_request"],
+      blobs: [
+        "verdict_request",
+        safeBlob(event.success),
+        event.scope,
+        event.routingRegion,
+        event.locale,
+        safeBlob(event.model),
+        safeBlob(event.thinking?.enabled),
+        safeBlob(event.thinking?.effort),
+        safeBlob(event.finishReason),
+        safeBlob(event.errorType),
+        safeBlob(event.matchId),
+      ],
+      doubles: [
+        event.gameLengthMs / 1000,
+        (event.requestedWindowMs ?? 0) / 1000,
+        event.actualContextWindowMs / 1000,
+        numberOrZero(usage?.prompt_tokens),
+        numberOrZero(usage?.completion_tokens),
+        numberOrZero(usage?.total_tokens),
+        numberOrZero(usage?.prompt_tokens_details?.cached_tokens),
+        numberOrZero(usage?.completion_tokens_details?.reasoning_tokens),
+        numberOrZero(usage?.prompt_cache_hit_tokens),
+        numberOrZero(usage?.prompt_cache_miss_tokens),
+        event.costEstimate?.usd ?? 0,
+        event.durationMs,
+        event.maxTokens,
+      ],
+    });
+  } catch (error) {
+    console.warn(
+      "Failed to write verdict analytics.",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 async function callDeepSeek(prompt: string): Promise<{
   content: string;
   reasoningContent?: string;
   usage?: DeepSeekUsage;
   model: string;
   thinking: { enabled: boolean; effort: "high" | "max" };
+  finishReason?: string;
   raw: DeepSeekResponse;
 }> {
   const model = deepSeekModel();
@@ -1370,7 +1456,7 @@ async function callDeepSeek(prompt: string): Promise<{
   const body: Record<string, unknown> = {
     model,
     messages: [{ role: "user", content: prompt }],
-    max_tokens: Number(process.env.DEEPSEEK_MAX_TOKENS ?? DEFAULT_DEEPSEEK_MAX_TOKENS),
+    max_tokens: deepSeekMaxTokens(),
     thinking: { type: thinking.enabled ? "enabled" : "disabled" },
   };
   if (thinking.enabled) body.reasoning_effort = thinking.effort;
@@ -1413,6 +1499,7 @@ async function callDeepSeek(prompt: string): Promise<{
     usage: raw.usage,
     model: raw.model ?? model,
     thinking,
+    finishReason: raw.choices?.[0]?.finish_reason,
     raw,
   };
 }
@@ -1495,6 +1582,7 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
 export const getJudgeVerdict = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => JudgeVerdictInputSchema.parse(input))
   .handler(async ({ data }) => {
+    const requestStartedAt = Date.now();
     if (data.includeRaw) assertContextInspectionAllowed();
     assertRateLimit({
       scope: "judge-verdict",
@@ -1522,6 +1610,12 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       riotGet<TimelinePayload>(`${base}/timeline`),
     ]);
     const timelineEnd = timelineEndMs(timeline);
+    const requestedWindowMs =
+      data.scope === "window" ? (data.endMs as number) - (data.startMs as number) : undefined;
+    const actualContextStartMs =
+      data.scope === "full" ? 0 : contextStartMinuteMs(data.startMs as number);
+    const actualContextEndMs =
+      data.scope === "full" ? timelineEnd : contextEndMs(data.endMs as number, timelineEnd);
 
     const windowResponse =
       data.scope === "full"
@@ -1532,8 +1626,8 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
               );
             }
             return buildWindowResponse({
-              startMs: 0,
-              endMs: timelineEnd,
+              startMs: actualContextStartMs,
+              endMs: actualContextEndMs,
               match,
               timeline,
               userPuuid: data.userPuuid,
@@ -1543,8 +1637,8 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
             });
           })()
         : buildWindowResponse({
-            startMs: contextStartMinuteMs(data.startMs as number),
-            endMs: contextEndMs(data.endMs as number, timelineEnd),
+            startMs: actualContextStartMs,
+            endMs: actualContextEndMs,
             match,
             timeline,
             userPuuid: data.userPuuid,
@@ -1557,7 +1651,45 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       subjectAChampion: data.subjects?.a?.champion,
       subjectBChampion: data.subjects?.b?.champion,
     });
-    const deepSeek = await callDeepSeek(promptPayload.prompt);
+    let deepSeek: Awaited<ReturnType<typeof callDeepSeek>>;
+    try {
+      deepSeek = await callDeepSeek(promptPayload.prompt);
+    } catch (error) {
+      await writeVerdictAnalytics({
+        success: false,
+        matchId: data.matchId,
+        scope: data.scope,
+        routingRegion: routing,
+        locale: data.locale ?? "en",
+        model: deepSeekModel(),
+        thinking: deepSeekThinking(),
+        errorType: error instanceof Error ? error.message : "unknown_error",
+        gameLengthMs: timelineEnd,
+        requestedWindowMs,
+        actualContextWindowMs: actualContextEndMs - actualContextStartMs,
+        maxTokens: deepSeekMaxTokens(),
+        durationMs: Date.now() - requestStartedAt,
+      });
+      throw error;
+    }
+    const costEstimate = estimateDeepSeekCost(deepSeek.usage);
+    await writeVerdictAnalytics({
+      success: true,
+      matchId: data.matchId,
+      scope: data.scope,
+      routingRegion: routing,
+      locale: data.locale ?? "en",
+      model: deepSeek.model,
+      thinking: deepSeek.thinking,
+      finishReason: deepSeek.finishReason,
+      gameLengthMs: timelineEnd,
+      requestedWindowMs,
+      actualContextWindowMs: actualContextEndMs - actualContextStartMs,
+      usage: deepSeek.usage,
+      costEstimate,
+      maxTokens: deepSeekMaxTokens(),
+      durationMs: Date.now() - requestStartedAt,
+    });
     const raw = data.includeRaw ? deepSeek.raw : undefined;
 
     return {
@@ -1566,7 +1698,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       model: deepSeek.model,
       thinking: deepSeek.thinking,
       usage: deepSeek.usage,
-      costEstimate: estimateDeepSeekCost(deepSeek.usage),
+      costEstimate,
       raw,
       prompt: data.includeRaw ? promptPayload : undefined,
       context: data.includeRaw ? windowResponse : undefined,

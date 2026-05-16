@@ -10,6 +10,12 @@
       "invocation_logs": true
     }
   },
+  "analytics_engine_datasets": [
+    {
+      "binding": "analytic_engine",
+      "dataset": "analytic_events"
+    }
+  ],
   "vars": {
     "SUPABASE_URL": "https://gbbbwazmqnqbvcgjhnvz.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_CiDVjfQ4VzII1-vt8w51Sw_ozTpKuLA",
