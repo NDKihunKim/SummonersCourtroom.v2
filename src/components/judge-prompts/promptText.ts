@@ -119,6 +119,10 @@ Consider these factors:
 
 - Only write "enabled", "allowed", "caused", or "led to" when the brief shows a direct sequence: subject mistake or absence, then a numbers/pressure disadvantage, then the enemy fight win, objective, building, or game-ending event shortly after.
 
+- For position-based causality, keep timestamps close. Prefer position evidence within about 15 seconds of the event it explains. If the position snapshot is older than about 15 seconds, phrase the point cautiously or choose a different example; do not claim direct absence or distance from an objective based on stale position evidence.
+
+- Do not write movement/pathing claims like "moved away", "chose to leave", "rotated away", or "walked away from the team" unless multiple chronological lines directly show that movement. If only one snapshot is shown, state only the observable position, such as "was isolated near top lane".
+
 **LOCATION WORDING:**
 
 Use timestamps and describe locations by understandable zones or named structures, such as "near dragon pit", "near Baron", "baron-side river", "dragon-side river", "bot-side jungle", "mid lane", "under outer turret", or "near inhibitor turret".
@@ -144,6 +148,8 @@ Before writing each numbered reason, choose the single strongest example from th
 - Each reason must include exactly one strongest example using wording like "for example, ..." and should cite a timestamp when available. Do not stack multiple unrelated timestamps or multiple separate examples inside one reason.
 
 - You may mention multiple events only when they are part of the same immediate sequence around one example, such as one death leading directly into one objective loss. Do not list several separate examples to prove the same point.
+
+- When referring to side-level outcomes, write "Blue team" or "Red team", not just "Blue" or "Red". For example, write "giving Red team a three-kill swing".
 
 - Use qualitative map/event descriptions. Never print raw coordinate numbers (x,y) in the final answer. Users cannot interpret coordinates directly. Use coordinates only internally to infer a readable nearby map landmark, named structure, or broad zone.
 
