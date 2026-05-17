@@ -327,6 +327,8 @@ async function findCachedByRiotId(shard: string, gameName: string, tagLine: stri
     .eq("shard", shard)
     // ilike on the indexed lower(game_name) — tag check is cheap in JS below.
     .ilike("game_name", gameName)
+    .order("cached_at", { ascending: false })
+    .order("last_refresh_at", { ascending: false })
     .limit(5);
 
   if (error) {
