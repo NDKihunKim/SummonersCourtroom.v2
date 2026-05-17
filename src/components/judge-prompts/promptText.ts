@@ -91,6 +91,8 @@ Consider these factors:
 
 - **Objective and building context:** Was the subject present for meaningful dragon, Herald, Baron, turret plate, turret, inhibitor, or nexus pressure when the brief shows those events mattered?
 
+- **Momentum swing context:** A death or missed presence can be high fault when the brief shows an immediate sequence where it creates a numbers disadvantage, enables follow-up kills, or leads directly into an enemy objective/building push.
+
 - **Resource and contribution context:** Use gold, CS, level, health, XP, and champion damage only when they explain a decision. A deficit alone is not fault; the fault must come from how the subject played around that state.
 
 - **Role and game-time expectations:** Use role labels and game time to judge reasonable presence and risk. Do not invent champion-specific matchup rules.
@@ -103,7 +105,19 @@ Consider these factors:
 
 - Do not blame absence from a fight/objective unless the brief shows both the subject's location and the relevant fight/objective timing.
 
+- Do not assign solo blame for a contested teamfight when multiple allies were present unless the brief shows a distinct subject mistake, such as being caught first, isolated from the team, arriving late, or being far from the fight.
+
+- Do not call base defense poor objective presence. If the enemy is pushing inhibitor or nexus structures, being near base or defending those structures is usually reasonable unless the brief shows the subject was caught alone, arrived late, or ignored another clearly contestable high-value event.
+
 - Do not reward or punish actions that require unseen vision, cooldown, communication, or intent.
+
+**CAUSE AND LABEL ALIGNMENT:**
+
+- The fault label must match the example. If the reason says "poor objective presence", the example must show the subject dead before, absent from, or far from a relevant objective/building event in a way that made contest meaningfully harder.
+
+- If the example shows base defense, inhibitor defense, nexus defense, or a forced retreat under pressure, describe it as fight positioning, death timing, or defensive execution only if the brief supports that. Do not relabel it as poor objective presence.
+
+- Only write "enabled", "allowed", "caused", or "led to" when the brief shows a direct sequence: subject mistake or absence, then a numbers/pressure disadvantage, then the enemy fight win, objective, building, or game-ending event shortly after.
 
 **LOCATION WORDING:**
 
