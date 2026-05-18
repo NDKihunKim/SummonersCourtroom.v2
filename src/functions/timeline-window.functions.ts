@@ -1464,7 +1464,7 @@ async function callDeepSeek(prompt: string): Promise<{
   if (thinking.enabled) body.reasoning_effort = thinking.effort;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45_000);
+  const timeout = setTimeout(() => controller.abort(), 120_000);
   let res: Response;
   try {
     res = await fetch("https://api.deepseek.com/chat/completions", {
@@ -1476,6 +1476,11 @@ async function callDeepSeek(prompt: string): Promise<{
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("DeepSeek request timed out. Please try again.");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
