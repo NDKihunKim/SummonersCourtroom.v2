@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Gavel, ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
@@ -185,6 +185,7 @@ export function MatchCard({
   const [verdictScope, setVerdictScope] = useState<Scope | null>(null);
   const [verdictWindow, setVerdictWindow] = useState<[number, number] | null>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
+  const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const resetTurnstile = useCallback(() => {
@@ -201,6 +202,12 @@ export function MatchCard({
     return token;
   }, [turnstileSiteKey]);
 
+  useEffect(() => {
+    return () => {
+      mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
+
   const expanded = stage !== "closed";
   const verdictWindowLabel =
     verdictScope === "window" && verdictWindow
@@ -214,7 +221,13 @@ export function MatchCard({
           }`
         : null;
 
+  function clearMockLoadingTimers() {
+    mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
+    mockLoadingTimersRef.current = [];
+  }
+
   function reset() {
+    clearMockLoadingTimers();
     setStage("closed");
     setPickedAlly(null);
     setReasoning(null);
@@ -227,6 +240,7 @@ export function MatchCard({
 
   function showMockWindowResult(windowRange: [number, number]) {
     if (!pickedAlly) return;
+    clearMockLoadingTimers();
     setReasoning(
       [
         `${formatChampionName(pickedAlly.champion)} created avoidable pressure loss during the selected window; for example, they were late to the key fight and gave the enemy team time to convert the advantage.`,
@@ -245,8 +259,35 @@ export function MatchCard({
     setStage("verdict");
   }
 
+  function showMockLoading(windowRange: [number, number]) {
+    if (!pickedAlly) return;
+    clearMockLoadingTimers();
+    setReasoning(null);
+    setVerdictDisplay(null);
+    setCompleted(new Set());
+    setActiveStep("contextualize");
+    setVerdictScope("window");
+    setVerdictWindow(windowRange);
+    setStage("loading");
+
+    mockLoadingTimersRef.current = [
+      setTimeout(() => {
+        setCompleted(new Set(["contextualize"]));
+        setActiveStep("judge");
+      }, 1800),
+      setTimeout(() => {
+        setCompleted(new Set(["contextualize", "judge"]));
+        setActiveStep("parse");
+      }, 4200),
+      setTimeout(() => {
+        setCompleted(new Set(["contextualize", "judge", "parse"]));
+      }, 6600),
+    ];
+  }
+
   async function runJudge(scope: Scope, windowRange?: [number, number]) {
     if (!pickedAlly) return;
+    clearMockLoadingTimers();
     if (!isRankedSolo) {
       toast.warning(t("rankedSoloVerdictOnly"));
       return;
@@ -512,6 +553,7 @@ export function MatchCard({
               t={t}
               onRun={(range) => void runJudge("window", range)}
               onMockResult={SHOW_DEV_CONTEXT ? showMockWindowResult : undefined}
+              onMockLoading={SHOW_DEV_CONTEXT ? showMockLoading : undefined}
             />
           )}
 
@@ -780,16 +822,37 @@ function JudgeLoading({
   completed: Set<PipelineStep>;
   t: Translate;
 }) {
+  const loadingPhrases: TranslationKey[] = [
+    "judgeLoadingPhraseDeliberating",
+    "judgeLoadingPhraseTimeline",
+    "judgeLoadingPhraseEvidence",
+    "judgeLoadingPhraseMoments",
+    "judgeLoadingPhrasePreparing",
+  ];
+  const [phraseIndex, setPhraseIndex] = useState(0);
   const steps: { id: PipelineStep; label: string; sub: string }[] = [
     { id: "contextualize", label: t("contextualizeStep"), sub: t("contextualizeStepSub") },
     { id: "judge", label: t("judgeStep"), sub: t("judgeStepSub") },
     { id: "parse", label: t("verdictStep"), sub: t("verdictStepSub") },
   ];
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setPhraseIndex((index) => (index + 1) % loadingPhrases.length);
+    }, 2600);
+    return () => window.clearInterval(id);
+  }, [loadingPhrases.length]);
+
   return (
     <div className="flex flex-col items-center gap-5 py-6">
-      <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gold">
-        {t("judgeDeliberating")}
-      </p>
+      <div className="min-h-5 overflow-hidden text-center">
+        <p
+          key={phraseIndex}
+          className="animate-judge-loading-phrase text-sm font-semibold uppercase tracking-[0.3em] text-gold"
+        >
+          {t(loadingPhrases[phraseIndex])}
+        </p>
+      </div>
       <ol className="flex w-full max-w-2xl items-start justify-between gap-2">
         {steps.map((s, i) => {
           const isDone = completed.has(s.id);

@@ -70,6 +70,7 @@ export function ScopeSpecifyTime({
   you,
   onRun,
   onMockResult,
+  onMockLoading,
   locale = "en",
   t,
 }: {
@@ -104,6 +105,7 @@ export function ScopeSpecifyTime({
    */
   onRun?: (range: TimeRange) => void;
   onMockResult?: (range: TimeRange) => void;
+  onMockLoading?: (range: TimeRange) => void;
   locale?: Locale;
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
@@ -193,6 +195,15 @@ export function ScopeSpecifyTime({
                   className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Mock Results
+                </button>
+              )}
+              {onMockLoading && (
+                <button
+                  onClick={() => onMockLoading(range)}
+                  disabled={!validSpan}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Mock Loading
                 </button>
               )}
             </>

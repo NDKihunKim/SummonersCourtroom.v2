@@ -141,11 +141,21 @@ Before writing each numbered reason, choose the single strongest example from th
 
 **USER-FACING WORDING:**
 
-Do not mention internal source names such as "the brief", "Structured Context Brief", "context", "provided context", "evidence text", "data", or "the prompt" in the final answer. Present evidence as observed match events.
+Do not mention internal source names such as "the brief", "Structured Context Brief", "context", "provided context", "evidence text", "snapshot", "frame", "data", or "the prompt" in the final answer. Present evidence as observed match events.
+
+For Korean output, do not mention internal source terms such as "브리프", "구조화된 맥락", "컨텍스트", "스냅샷", "프레임", "데이터", "프롬프트", or "증거 텍스트". Present the same evidence as natural in-game observations.
 
 Bad: The brief states "Blue team's Hecarim has taken the Rift Herald with assist of Graves".
 
 Good: At 15:30, Graves was involved in the Rift Herald sequence where Blue team's Hecarim secured the objective, weakening Red team's objective control.
+
+Bad: At the 19:00 snapshot, Graves had 111 jungle CS.
+
+Good: Around 19 minutes, Graves had 111 jungle CS.
+
+Bad Korean: 19:00 스냅샷에서 그레이브즈의 정글 CS는 111개였습니다.
+
+Good Korean: 19분경 그레이브즈는 정글 CS가 111개였습니다.
 
 **OUTPUT FORMAT (strict):**
 
