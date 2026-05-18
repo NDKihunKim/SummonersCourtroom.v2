@@ -14,6 +14,12 @@ function turnstileSecret(): string | null {
   return process.env.TURNSTILE_SECRET_KEY || null;
 }
 
+function isLocalRequest(): boolean {
+  const request = getRequest();
+  const hostname = new URL(request.url).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
 function requestIp(): string | undefined {
   const request = getRequest();
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -28,6 +34,7 @@ function requestIp(): string | undefined {
 export async function assertTurnstile(token: string | undefined) {
   const secret = turnstileSecret();
   if (!secret) return;
+  if (isLocalRequest()) return;
   if (!token) throw new Error("Human verification is required. Please try again.");
 
   const response = await fetch(SITEVERIFY_URL, {
