@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   useEffect,
   useId,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -34,6 +35,7 @@ import { SampleSizeSelector } from "@/components/SampleSizeSelector";
 import { useSampleSize } from "@/hooks/useSampleSize";
 import { computeMatchStats } from "@/lib/match-stats";
 import { useLocale, type Locale, type TranslationKey } from "@/i18n";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -111,6 +113,14 @@ function Index() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const [suggestionsHeight, setSuggestionsHeight] = useState(0);
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const clearTurnstile = useCallback(() => setTurnstileToken(undefined), []);
+  const resetTurnstile = useCallback(() => {
+    setTurnstileToken(undefined);
+    setTurnstileResetKey((key) => key + 1);
+  }, []);
 
   // Composed suggestions: local recents first, then shared backend index
   // (sorted Challenger -> Iron). Debounces the server call internally.
@@ -141,7 +151,12 @@ function Index() {
   }, [isSuggestOpen]);
 
   const mutation = useMutation({
-    mutationFn: async (vars: { gameName: string; tagLine: string; shard: Shard }) => {
+    mutationFn: async (vars: {
+      gameName: string;
+      tagLine: string;
+      shard: Shard;
+      turnstileToken?: string;
+    }) => {
       return getOrFetchMatchHistory({ data: vars });
     },
     onSuccess: (result, vars) => {
@@ -158,6 +173,7 @@ function Index() {
       });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : t("failedToLoadMatches")),
+    onSettled: resetTurnstile,
   });
 
   function onSubmit(e: FormEvent) {
@@ -170,7 +186,7 @@ function Index() {
     // Close the dropdown on submit so it doesn't linger over the result view.
     setIsSuggestOpen(false);
     // Cache function takes the raw shard and handles routing internally.
-    mutation.mutate({ ...parsed, shard });
+    mutation.mutate({ ...parsed, shard, turnstileToken });
   }
 
   /** Apply a clicked / Enter-selected suggestion: fill input + submit. */
@@ -185,6 +201,7 @@ function Index() {
       gameName: item.gameName,
       tagLine: item.tagLine,
       shard: item.shard,
+      turnstileToken,
     });
   }
 
@@ -486,6 +503,15 @@ function Index() {
                 t={t}
               />
             )}
+            </div>
+            <div className="mt-3">
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                resetKey={turnstileResetKey}
+                onToken={setTurnstileToken}
+                onExpire={clearTurnstile}
+                onError={clearTurnstile}
+              />
             </div>
             <div
               className="overflow-hidden transition-[height] duration-300 ease-out"

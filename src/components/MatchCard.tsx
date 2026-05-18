@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Loader2, Gavel, ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
@@ -13,6 +13,7 @@ import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
 import { getJudgeVerdict } from "@/functions/timeline-window.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import type { Locale, TranslationKey } from "@/i18n";
+import { TurnstileWidget } from "./TurnstileWidget";
 
 type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "verdict";
 type PipelineStep = "contextualize" | "judge" | "parse";
@@ -183,6 +184,14 @@ export function MatchCard({
   const [completed, setCompleted] = useState<Set<PipelineStep>>(new Set());
   const [verdictScope, setVerdictScope] = useState<Scope | null>(null);
   const [verdictWindow, setVerdictWindow] = useState<[number, number] | null>(null);
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const clearTurnstile = useCallback(() => setTurnstileToken(undefined), []);
+  const resetTurnstile = useCallback(() => {
+    setTurnstileToken(undefined);
+    setTurnstileResetKey((key) => key + 1);
+  }, []);
 
   const expanded = stage !== "closed";
   const verdictWindowLabel =
@@ -272,6 +281,7 @@ export function MatchCard({
             ? { startMs: windowRange[0], endMs: windowRange[1] }
             : {}),
           locale,
+          turnstileToken,
           subjects: {
             a: {
               champion: match.champion,
@@ -306,6 +316,8 @@ export function MatchCard({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "AI verdict request failed.");
       reset();
+    } finally {
+      resetTurnstile();
     }
   }
 
@@ -464,6 +476,11 @@ export function MatchCard({
               isWin={win}
               t={t}
               formatChampionName={formatChampionName}
+              turnstileSiteKey={turnstileSiteKey}
+              turnstileResetKey={turnstileResetKey}
+              onTurnstileToken={setTurnstileToken}
+              onTurnstileExpire={clearTurnstile}
+              onTurnstileError={clearTurnstile}
               onSpecifyTime={
                 match.riotMatchId && match.userPuuid
                   ? () => setStage("specifyTime")
@@ -491,6 +508,11 @@ export function MatchCard({
               t={t}
               onRun={(range) => void runJudge("window", range)}
               onMockResult={SHOW_DEV_CONTEXT ? showMockWindowResult : undefined}
+              turnstileSiteKey={turnstileSiteKey}
+              turnstileResetKey={turnstileResetKey}
+              onTurnstileToken={setTurnstileToken}
+              onTurnstileExpire={clearTurnstile}
+              onTurnstileError={clearTurnstile}
             />
           )}
 
@@ -674,6 +696,11 @@ function PickScope({
   isWin,
   t,
   formatChampionName,
+  turnstileSiteKey,
+  turnstileResetKey,
+  onTurnstileToken,
+  onTurnstileExpire,
+  onTurnstileError,
 }: {
   you: { champion: string; summoner?: string; kills: number; deaths: number; assists: number };
   ally: Participant;
@@ -695,6 +722,11 @@ function PickScope({
   isWin: boolean;
   t: Translate;
   formatChampionName: (champion: string) => string;
+  turnstileSiteKey?: string;
+  turnstileResetKey: number;
+  onTurnstileToken: (token: string) => void;
+  onTurnstileExpire: () => void;
+  onTurnstileError: () => void;
 }) {
   return (
     <div>
@@ -745,6 +777,18 @@ function PickScope({
           {t("specifyTime")}
         </button>
       </div>
+      {turnstileSiteKey && (
+        <div className="mt-4">
+          <TurnstileWidget
+            siteKey={turnstileSiteKey}
+            resetKey={turnstileResetKey}
+            onToken={onTurnstileToken}
+            onExpire={onTurnstileExpire}
+            onError={onTurnstileError}
+            compact
+          />
+        </div>
+      )}
     </div>
   );
 }

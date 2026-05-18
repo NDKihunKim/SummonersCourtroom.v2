@@ -30,6 +30,7 @@ import { parseDivision, parseTier, type Division, type Tier } from "@/lib/tier";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getLeagueEntriesByPuuid, pickSoloEntry } from "@/server/league";
 import { assertRateLimit } from "@/server/request-rate-limit";
+import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 import {
   fetchMatch,
   formatDuration,
@@ -79,6 +80,7 @@ const RiotIdSchema = z.object({
   shard: ShardSchema,
   gameName: z.string().min(1).max(32),
   tagLine: z.string().min(2).max(8),
+  turnstileToken: TurnstileTokenSchema,
 });
 
 /** What the result page renders. Matches `GetMatchHistoryResult` in shape. */
@@ -450,6 +452,7 @@ export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
       windowMs: ONE_MINUTE_MS,
       message: "Too many uncached searches. Please wait a minute and try again.",
     });
+    await assertTurnstile(data.turnstileToken);
     const fresh = await fetchFreshFromRiot(data.shard, data.gameName, data.tagLine);
     const cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ false);
 
@@ -490,6 +493,7 @@ export const refreshSummoner = createServerFn({ method: "POST" })
       }
     }
 
+    await assertTurnstile(data.turnstileToken);
     const fresh = await fetchFreshFromRiot(data.shard, data.gameName, data.tagLine);
     const cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ true);
 

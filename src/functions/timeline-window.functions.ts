@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import type { RegionalRouting } from "@/server/riot";
 import { assertRateLimit } from "@/server/request-rate-limit";
+import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 import { UPPER_PROMPT, buildLowerPrompt } from "@/components/judge-prompts/promptText";
 import { substituteSubjects } from "@/components/judge-prompts/substituteSubjects";
 import type { Locale } from "@/i18n";
@@ -95,6 +96,7 @@ const JudgeVerdictInputSchema = z.object({
   endMs: z.number().int().min(0).optional(),
   locale: z.enum(["en", "ko"]).optional(),
   includeRaw: z.boolean().optional(),
+  turnstileToken: TurnstileTokenSchema,
   subjects: TimelineWindowInputSchema.shape.subjects,
 });
 
@@ -1590,6 +1592,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       windowMs: ONE_MINUTE_MS,
       message: "Too many AI verdict requests. Please wait a minute and try again.",
     });
+    if (!data.includeRaw) await assertTurnstile(data.turnstileToken);
 
     if (data.scope === "window") {
       if (data.startMs == null || data.endMs == null) {

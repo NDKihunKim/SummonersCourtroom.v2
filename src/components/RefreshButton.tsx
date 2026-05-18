@@ -11,7 +11,7 @@
  */
 
 import { Loader2, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Shard } from "@/lib/regions";
@@ -20,6 +20,7 @@ import {
   type CachedSummonerPayload,
 } from "@/functions/summoner-cache.functions";
 import type { TranslationKey } from "@/i18n";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 
 interface Props {
   shard: Shard;
@@ -67,6 +68,14 @@ export function RefreshButton({
   // Re-render every second while the cooldown is active OR the timestamp is
   // fresh enough that "Xm ago" might roll over visibly. Cleared otherwise.
   const [now, setNow] = useState(() => Date.now());
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const clearTurnstile = useCallback(() => setTurnstileToken(undefined), []);
+  const resetTurnstile = useCallback(() => {
+    setTurnstileToken(undefined);
+    setTurnstileResetKey((key) => key + 1);
+  }, []);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -74,7 +83,7 @@ export function RefreshButton({
 
   const mutation = useMutation({
     mutationFn: () =>
-      refreshSummoner({ data: { shard, gameName, tagLine } }),
+      refreshSummoner({ data: { shard, gameName, tagLine, turnstileToken } }),
     onSuccess: (payload) => {
       onRefreshed(payload);
       toast.success(t?.("matchHistoryRefreshed") ?? "Match history refreshed.");
@@ -84,6 +93,7 @@ export function RefreshButton({
       // server function — surface them directly.
       toast.error(err instanceof Error ? err.message : (t?.("refreshFailed") ?? "Refresh failed."));
     },
+    onSettled: resetTurnstile,
   });
 
   const cooldownRemainingMs = Math.max(0, refreshAvailableAt - now);
@@ -122,6 +132,14 @@ export function RefreshButton({
           ? `${t?.("availableIn") ?? "Available in"} ${Math.ceil(cooldownRemainingMs / 1000)}s`
           : `${t?.("updated") ?? "Updated"} ${formatAgo(cachedAt, now, t)}`}
       </span>
+      <TurnstileWidget
+        siteKey={turnstileSiteKey}
+        resetKey={turnstileResetKey}
+        onToken={setTurnstileToken}
+        onExpire={clearTurnstile}
+        onError={clearTurnstile}
+        compact
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   MAX_WINDOW_MS,
 } from "./TimeRangePicker";
 import { TimelineWindowResult } from "./TimelineWindowResult";
+import { TurnstileWidget } from "./TurnstileWidget";
 import type { Match, Participant } from "@/lib/match-types";
 import type { Locale, TranslationKey } from "@/i18n";
 
@@ -70,6 +71,11 @@ export function ScopeSpecifyTime({
   you,
   onRun,
   onMockResult,
+  turnstileSiteKey,
+  turnstileResetKey,
+  onTurnstileToken,
+  onTurnstileExpire,
+  onTurnstileError,
   locale = "en",
   t,
 }: {
@@ -104,6 +110,11 @@ export function ScopeSpecifyTime({
    */
   onRun?: (range: TimeRange) => void;
   onMockResult?: (range: TimeRange) => void;
+  turnstileSiteKey?: string;
+  turnstileResetKey?: number;
+  onTurnstileToken?: (token: string) => void;
+  onTurnstileExpire?: () => void;
+  onTurnstileError?: () => void;
   locale?: Locale;
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
@@ -199,22 +210,33 @@ export function ScopeSpecifyTime({
           )}
         </div>
 
-        {!onRun && (
-        <div className="w-full max-w-3xl">
-          <TimelineWindowResult
-            matchId={matchId}
-            userPuuid={userPuuid}
-            routingRegion={routingRegion}
-            startMs={range[0]}
-            endMs={range[1]}
-            runToken={runToken}
-            subjectAChampion={subjectAChampion}
-            subjectBChampion={subjectBChampion}
-            match={match}
-            you={you}
-            locale={locale}
+        {turnstileSiteKey && onTurnstileToken && onTurnstileExpire && onTurnstileError && (
+          <TurnstileWidget
+            siteKey={turnstileSiteKey}
+            resetKey={turnstileResetKey ?? 0}
+            onToken={onTurnstileToken}
+            onExpire={onTurnstileExpire}
+            onError={onTurnstileError}
+            compact
           />
-        </div>
+        )}
+
+        {!onRun && (
+          <div className="w-full max-w-3xl">
+            <TimelineWindowResult
+              matchId={matchId}
+              userPuuid={userPuuid}
+              routingRegion={routingRegion}
+              startMs={range[0]}
+              endMs={range[1]}
+              runToken={runToken}
+              subjectAChampion={subjectAChampion}
+              subjectBChampion={subjectBChampion}
+              match={match}
+              you={you}
+              locale={locale}
+            />
+          </div>
         )}
       </div>
     </div>
