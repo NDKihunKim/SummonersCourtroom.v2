@@ -127,6 +127,8 @@ Consider these factors:
 
 Use timestamps and describe locations by understandable zones or named structures, such as "near dragon pit", "near Baron", "baron-side river", "dragon-side river", "bot-side jungle", "mid lane", "under outer turret", or "near inhibitor turret".
 
+Choose the most relevant user-facing landmark supported by the brief. Prefer objective landmarks like "near dragon pit", "near Rift Herald", "near Baron", or a named turret/inhibitor over broad zones like "bot-side jungle" when the event is close to that objective or structure. Use broad jungle, river, or lane zones only when no more specific landmark is supported.
+
 If map side, lane ownership, or structure location is unclear, use the brief's turret and inhibitor labels/positions only as internal reference points. Never base a verdict on coordinates alone.
 
 **NO COUNTERFACTUALS:**
@@ -162,6 +164,8 @@ Good: At 15:30, Graves was involved in the Rift Herald sequence where Blue team'
 - Use qualitative map/event descriptions. Never print raw coordinate numbers (x,y) in the final answer. Users cannot interpret coordinates directly. Use coordinates only internally to infer a readable nearby map landmark, named structure, or broad zone.
 
 - When describing location, prefer understandable map terms such as "near dragon pit", "near Baron", "baron-side river", "dragon-side river", "Blue-side Gromp", "Red-side Raptors", "bot-side jungle", "mid lane", or named structures like "Blue team's Top Outer Turret" or "Red team's Mid Inhibitor Turret".
+
+- Prefer objective or structure landmarks over broad jungle zones when the reason is about that nearby objective or structure.
 
 - If exact camp/river/objective location is unclear, use a broader zone description instead of coordinates, such as "around bot-side jungle", "near mid lane", "near the enemy outer turret", or "around the inhibitor turret area".
 
