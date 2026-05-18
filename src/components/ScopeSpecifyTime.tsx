@@ -76,6 +76,7 @@ export function ScopeSpecifyTime({
   onTurnstileToken,
   onTurnstileExpire,
   onTurnstileError,
+  turnstileReady = true,
   locale = "en",
   t,
 }: {
@@ -115,6 +116,7 @@ export function ScopeSpecifyTime({
   onTurnstileToken?: (token: string) => void;
   onTurnstileExpire?: () => void;
   onTurnstileError?: () => void;
+  turnstileReady?: boolean;
   locale?: Locale;
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
@@ -176,7 +178,8 @@ export function ScopeSpecifyTime({
               if (onRun) onRun(range);
               else setRunToken((t) => t + 1);
             }}
-            disabled={!validSpan}
+            disabled={!validSpan || !turnstileReady}
+            title={!turnstileReady ? "Complete human verification before requesting a verdict." : undefined}
             className="rounded-lg border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t?.("verdict") ?? "Verdict"}

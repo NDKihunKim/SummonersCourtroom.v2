@@ -192,6 +192,8 @@ export function MatchCard({
     setTurnstileToken(undefined);
     setTurnstileResetKey((key) => key + 1);
   }, []);
+  const needsTurnstile = Boolean(turnstileSiteKey);
+  const turnstileReady = !needsTurnstile || Boolean(turnstileToken);
 
   const expanded = stage !== "closed";
   const verdictWindowLabel =
@@ -481,6 +483,7 @@ export function MatchCard({
               onTurnstileToken={setTurnstileToken}
               onTurnstileExpire={clearTurnstile}
               onTurnstileError={clearTurnstile}
+              turnstileReady={turnstileReady}
               onSpecifyTime={
                 match.riotMatchId && match.userPuuid
                   ? () => setStage("specifyTime")
@@ -513,6 +516,7 @@ export function MatchCard({
               onTurnstileToken={setTurnstileToken}
               onTurnstileExpire={clearTurnstile}
               onTurnstileError={clearTurnstile}
+              turnstileReady={turnstileReady}
             />
           )}
 
@@ -701,6 +705,7 @@ function PickScope({
   onTurnstileToken,
   onTurnstileExpire,
   onTurnstileError,
+  turnstileReady,
 }: {
   you: { champion: string; summoner?: string; kills: number; deaths: number; assists: number };
   ally: Participant;
@@ -727,6 +732,7 @@ function PickScope({
   onTurnstileToken: (token: string) => void;
   onTurnstileExpire: () => void;
   onTurnstileError: () => void;
+  turnstileReady: boolean;
 }) {
   return (
     <div>
@@ -754,10 +760,16 @@ function PickScope({
             option disabled so users understand the feature boundary. */}
         <button
           onClick={isWin ? undefined : onFullGame}
-          disabled={isWin}
-          title={isWin ? t("fullGameVictoryUnavailable") : undefined}
-          className={
+          disabled={isWin || !turnstileReady}
+          title={
             isWin
+              ? t("fullGameVictoryUnavailable")
+              : !turnstileReady
+                ? "Complete human verification before requesting a verdict."
+                : undefined
+          }
+          className={
+            isWin || !turnstileReady
               ? "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
               : "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
           }
@@ -766,13 +778,19 @@ function PickScope({
         </button>
         <button
           onClick={onSpecifyTime}
-          disabled={!onSpecifyTime}
+          disabled={!onSpecifyTime || !turnstileReady}
           className={
-            onSpecifyTime
+            onSpecifyTime && turnstileReady
               ? "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
               : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
           }
-          title={onSpecifyTime ? "Pick a 1–3 min slice of the game" : "Match metadata unavailable"}
+          title={
+            !onSpecifyTime
+              ? "Match metadata unavailable"
+              : !turnstileReady
+                ? "Complete human verification before requesting a verdict."
+                : "Pick a 5-10 min slice of the game"
+          }
         >
           {t("specifyTime")}
         </button>

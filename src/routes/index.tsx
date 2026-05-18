@@ -121,6 +121,8 @@ function Index() {
     setTurnstileToken(undefined);
     setTurnstileResetKey((key) => key + 1);
   }, []);
+  const needsTurnstile = Boolean(turnstileSiteKey);
+  const turnstileReady = !needsTurnstile || Boolean(turnstileToken);
 
   // Composed suggestions: local recents first, then shared backend index
   // (sorted Challenger -> Iron). Debounces the server call internally.
@@ -468,7 +470,8 @@ function Index() {
               </div>
               <button
                 type="submit"
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || !turnstileReady}
+                title={!turnstileReady ? "Complete human verification before searching." : undefined}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
               >
                 {mutation.isPending ? (

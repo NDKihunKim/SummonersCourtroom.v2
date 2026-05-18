@@ -76,6 +76,8 @@ export function RefreshButton({
     setTurnstileToken(undefined);
     setTurnstileResetKey((key) => key + 1);
   }, []);
+  const needsTurnstile = Boolean(turnstileSiteKey);
+  const turnstileReady = !needsTurnstile || Boolean(turnstileToken);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -98,7 +100,7 @@ export function RefreshButton({
 
   const cooldownRemainingMs = Math.max(0, refreshAvailableAt - now);
   const onCooldown = cooldownRemainingMs > 0;
-  const disabled = mutation.isPending || onCooldown;
+  const disabled = mutation.isPending || onCooldown || !turnstileReady;
 
   // Soft hint: turn timestamp gold once the cache is older than 10 minutes.
   // Acts as a nudge to refresh without auto-refetching.
@@ -115,6 +117,8 @@ export function RefreshButton({
         title={
           onCooldown
             ? `${t?.("availableIn") ?? "Available in"} ${Math.ceil(cooldownRemainingMs / 1000)}s`
+            : !turnstileReady
+              ? "Complete human verification before refreshing."
             : t?.("refreshMatchHistory") ?? "Refresh match history"
         }
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
