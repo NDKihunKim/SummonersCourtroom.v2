@@ -191,7 +191,15 @@ export function MatchCard({
     turnstileRef.current?.reset();
     setTurnstileResetKey((key) => key + 1);
   }, []);
-  const executeTurnstile = useCallback(() => turnstileRef.current?.execute(), []);
+  const executeTurnstile = useCallback(async () => {
+    if (!turnstileSiteKey) return undefined;
+    if (!turnstileRef.current) {
+      throw new Error("Human verification is not ready. Please try again.");
+    }
+    const token = await turnstileRef.current.execute();
+    if (!token) throw new Error("Human verification did not complete. Please try again.");
+    return token;
+  }, [turnstileSiteKey]);
 
   const expanded = stage !== "closed";
   const verdictWindowLabel =

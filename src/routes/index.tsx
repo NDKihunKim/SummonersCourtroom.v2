@@ -120,7 +120,15 @@ function Index() {
     turnstileRef.current?.reset();
     setTurnstileResetKey((key) => key + 1);
   }, []);
-  const executeTurnstile = useCallback(() => turnstileRef.current?.execute(), []);
+  const executeTurnstile = useCallback(async () => {
+    if (!turnstileSiteKey) return undefined;
+    if (!turnstileRef.current) {
+      throw new Error("Human verification is not ready. Please try again.");
+    }
+    const token = await turnstileRef.current.execute();
+    if (!token) throw new Error("Human verification did not complete. Please try again.");
+    return token;
+  }, [turnstileSiteKey]);
 
   // Composed suggestions: local recents first, then shared backend index
   // (sorted Challenger -> Iron). Debounces the server call internally.
