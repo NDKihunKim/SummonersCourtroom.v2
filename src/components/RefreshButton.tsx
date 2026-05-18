@@ -68,6 +68,7 @@ export function RefreshButton({
   // Re-render every second while the cooldown is active OR the timestamp is
   // fresh enough that "Xm ago" might roll over visibly. Cleared otherwise.
   const [now, setNow] = useState(() => Date.now());
+  const [isVerifying, setIsVerifying] = useState(false);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
@@ -101,12 +102,16 @@ export function RefreshButton({
       // server function — surface them directly.
       toast.error(err instanceof Error ? err.message : (t?.("refreshFailed") ?? "Refresh failed."));
     },
-    onSettled: resetTurnstile,
+    onSettled: () => {
+      setIsVerifying(false);
+      resetTurnstile();
+    },
   });
 
   const cooldownRemainingMs = Math.max(0, refreshAvailableAt - now);
   const onCooldown = cooldownRemainingMs > 0;
-  const disabled = mutation.isPending || onCooldown;
+  const isRefreshing = isVerifying || mutation.isPending;
+  const disabled = isRefreshing || onCooldown;
 
   // Soft hint: turn timestamp gold once the cache is older than 10 minutes.
   // Acts as a nudge to refresh without auto-refetching.
@@ -115,9 +120,11 @@ export function RefreshButton({
 
   async function handleRefresh() {
     try {
+      setIsVerifying(true);
       const turnstileToken = await executeTurnstile();
       mutation.mutate(turnstileToken);
     } catch (error) {
+      setIsVerifying(false);
       toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
     }
   }
@@ -136,7 +143,7 @@ export function RefreshButton({
         }
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {mutation.isPending ? (
+        {isRefreshing ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <RefreshCw className="h-4 w-4" />

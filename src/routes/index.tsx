@@ -109,6 +109,7 @@ function Index() {
   const { savedPlayers, addSavedPlayer, removeSavedPlayer, isSaved } = useSavedPlayers();
   const [isSuggestOpen, setIsSuggestOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [isSearchVerifying, setIsSearchVerifying] = useState(false);
   const listboxId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -181,8 +182,12 @@ function Index() {
       });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : t("failedToLoadMatches")),
-    onSettled: resetTurnstile,
+    onSettled: () => {
+      setIsSearchVerifying(false);
+      resetTurnstile();
+    },
   });
+  const isSearching = isSearchVerifying || mutation.isPending;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -195,9 +200,11 @@ function Index() {
     setIsSuggestOpen(false);
     // Cache function takes the raw shard and handles routing internally.
     try {
+      setIsSearchVerifying(true);
       const turnstileToken = await executeTurnstile();
       mutation.mutate({ ...parsed, shard, turnstileToken });
     } catch (error) {
+      setIsSearchVerifying(false);
       toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
     }
   }
@@ -211,6 +218,7 @@ function Index() {
     // string we just constructed and dodges any stale-state edge cases
     // around setRiotId not being applied before mutation.mutate runs.
     try {
+      setIsSearchVerifying(true);
       const turnstileToken = await executeTurnstile();
       mutation.mutate({
         gameName: item.gameName,
@@ -219,6 +227,7 @@ function Index() {
         turnstileToken,
       });
     } catch (error) {
+      setIsSearchVerifying(false);
       toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
     }
   }
@@ -486,10 +495,10 @@ function Index() {
               </div>
               <button
                 type="submit"
-                disabled={mutation.isPending}
+                disabled={isSearching}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
               >
-                {mutation.isPending ? (
+                {isSearching ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
                   </>
