@@ -217,6 +217,10 @@ export function queueName(queueId: number): string {
   return QUEUE_NAMES[queueId] ?? `Queue ${queueId}`;
 }
 
+export function isCustomGameQueue(queueId: number): boolean {
+  return queueId === 0;
+}
+
 const SUMMONER_SPELLS: Record<number, string> = {
   1: "Cleanse",
   3: "Exhaust",

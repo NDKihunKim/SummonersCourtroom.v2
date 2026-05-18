@@ -1690,17 +1690,18 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       maxTokens: deepSeekMaxTokens(),
       durationMs: Date.now() - requestStartedAt,
     });
-    const raw = data.includeRaw ? deepSeek.raw : undefined;
+    const includeDiagnostics = data.includeRaw === true;
+    const raw = includeDiagnostics ? deepSeek.raw : undefined;
 
     return {
       content: deepSeek.content,
-      reasoningContent: data.includeRaw ? deepSeek.reasoningContent : undefined,
+      reasoningContent: includeDiagnostics ? deepSeek.reasoningContent : undefined,
       model: deepSeek.model,
       thinking: deepSeek.thinking,
-      usage: deepSeek.usage,
-      costEstimate,
+      usage: includeDiagnostics ? deepSeek.usage : undefined,
+      costEstimate: includeDiagnostics ? costEstimate : undefined,
       raw,
-      prompt: data.includeRaw ? promptPayload : undefined,
-      context: data.includeRaw ? windowResponse : undefined,
+      prompt: includeDiagnostics ? promptPayload : undefined,
+      context: includeDiagnostics ? windowResponse : undefined,
     };
   });

@@ -25,10 +25,6 @@ function ContactPage() {
           </a>
           .
         </p>
-        <p>
-          This is a placeholder public contact address and should be replaced
-          with a real production inbox before launch.
-        </p>
       </Section>
 
       <Section title="Developer and platform notices">

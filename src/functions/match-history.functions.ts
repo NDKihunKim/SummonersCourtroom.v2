@@ -5,6 +5,7 @@ import {
   REGIONAL_ROUTINGS,
   fetchMatch,
   formatDuration,
+  isCustomGameQueue,
   listMatchIds,
   platformToRegional,
   queueName,
@@ -81,6 +82,8 @@ function normaliseMatch(
   userPuuid: string,
   fallbackRouting: RegionalRouting,
 ): Match | null {
+  if (isCustomGameQueue(raw.info.queueId)) return null;
+
   const me = raw.info.participants.find((p) => p.puuid === userPuuid);
   if (!me) return null;
 

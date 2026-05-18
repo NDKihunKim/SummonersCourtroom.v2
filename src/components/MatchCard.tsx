@@ -169,6 +169,7 @@ export function MatchCard({
   const formatChampionName = useChampionNameFormatter(locale);
   const resultLabel = win ? t("victory") : t("defeat");
   const queueLabel = formatQueue(match.queue, locale, t);
+  const isRankedSolo = match.queue === "Ranked Solo";
   const durationLabel = formatDuration(match.duration, locale, t);
   const matchDurationMs = parseMatchDurationToMs(match.duration);
   const playedAtLabel = formatPlayedAt(match.playedAt, locale, t);
@@ -229,6 +230,10 @@ export function MatchCard({
 
   async function runJudge(scope: Scope, windowRange?: [number, number]) {
     if (!pickedAlly) return;
+    if (!isRankedSolo) {
+      toast.warning(t("rankedSoloVerdictOnly"));
+      return;
+    }
     if (scope === "full") {
       const durationMs = parseMatchDurationToMs(match.duration);
       if (durationMs != null && durationMs > MAX_FULL_GAME_VERDICT_MS) {
@@ -402,7 +407,19 @@ export function MatchCard({
               can stay dumb/reusable. */}
           {stage === "closed" && (
             <div className="ml-auto flex flex-1 justify-center">
-              <ExpandToggle onClick={() => setStage("pickAlly")} />
+              {isRankedSolo ? (
+                <ExpandToggle onClick={() => setStage("pickAlly")} />
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  title={t("rankedSoloVerdictOnly")}
+                  className="inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground opacity-60"
+                  aria-label={t("rankedSoloVerdictOnly")}
+                >
+                  <Gavel className="h-4 w-4" />
+                </button>
+              )}
             </div>
           )}
         </div>

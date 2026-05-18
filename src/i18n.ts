@@ -17,7 +17,7 @@ const translations = {
     search: "Search",
     loading: "Loading",
     heroHelper:
-      "Enter your Riot ID to pull recent matches live from Riot, then let the AI Judge weigh in on every match.",
+      "Enter your Riot ID to pull recent matches from Riot, then let the AI Judge weigh in on every match.",
     newSearch: "New search",
     savePlayer: "Save",
     unsavePlayer: "Unsave",
@@ -57,6 +57,7 @@ const translations = {
     cancel: "Cancel",
     fullGame: "Full Game",
     fullGameVictoryUnavailable: "Full-game verdicts are only available for defeated games.",
+    rankedSoloVerdictOnly: "AI verdicts are only available for Ranked Solo games.",
     fullGameTooLongWarning:
       "[FULL_GAME_TOO_LONG] Full-game verdicts are unavailable for matches over 60 minutes. Use Specify Time with a 5-10 minute window.",
     specifyTime: "Specify Time",
@@ -147,6 +148,7 @@ const translations = {
     cancel: "취소",
     fullGame: "전체 경기",
     fullGameVictoryUnavailable: "전체 경기 판결은 패배한 경기에서만 사용할 수 있습니다.",
+    rankedSoloVerdictOnly: "AI 판결은 랭크 솔로 게임에서만 사용할 수 있습니다.",
     fullGameTooLongWarning:
       "[FULL_GAME_TOO_LONG] 60분을 초과한 경기는 전체 경기 판결을 사용할 수 없습니다. 시간 선택에서 5-10분 구간을 선택해 주세요.",
     specifyTime: "시간 선택",
