@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Loader2, Gavel, ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
@@ -13,7 +13,7 @@ import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
 import { getJudgeVerdict } from "@/functions/timeline-window.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import type { Locale, TranslationKey } from "@/i18n";
-import { TurnstileWidget } from "./TurnstileWidget";
+import { TurnstileWidget, type TurnstileHandle } from "./TurnstileWidget";
 
 type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "verdict";
 type PipelineStep = "contextualize" | "judge" | "parse";
@@ -184,16 +184,14 @@ export function MatchCard({
   const [completed, setCompleted] = useState<Set<PipelineStep>>(new Set());
   const [verdictScope, setVerdictScope] = useState<Scope | null>(null);
   const [verdictWindow, setVerdictWindow] = useState<[number, number] | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
-  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
-  const clearTurnstile = useCallback(() => setTurnstileToken(undefined), []);
   const resetTurnstile = useCallback(() => {
-    setTurnstileToken(undefined);
+    turnstileRef.current?.reset();
     setTurnstileResetKey((key) => key + 1);
   }, []);
-  const needsTurnstile = Boolean(turnstileSiteKey);
-  const turnstileReady = !needsTurnstile || Boolean(turnstileToken);
+  const executeTurnstile = useCallback(() => turnstileRef.current?.execute(), []);
 
   const expanded = stage !== "closed";
   const verdictWindowLabel =
@@ -269,6 +267,7 @@ export function MatchCard({
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
+      const turnstileToken = await executeTurnstile();
       await wait(250);
       setCompleted((s) => new Set(s).add("contextualize"));
       setActiveStep("judge");
@@ -478,12 +477,6 @@ export function MatchCard({
               isWin={win}
               t={t}
               formatChampionName={formatChampionName}
-              turnstileSiteKey={turnstileSiteKey}
-              turnstileResetKey={turnstileResetKey}
-              onTurnstileToken={setTurnstileToken}
-              onTurnstileExpire={clearTurnstile}
-              onTurnstileError={clearTurnstile}
-              turnstileReady={turnstileReady}
               onSpecifyTime={
                 match.riotMatchId && match.userPuuid
                   ? () => setStage("specifyTime")
@@ -511,12 +504,6 @@ export function MatchCard({
               t={t}
               onRun={(range) => void runJudge("window", range)}
               onMockResult={SHOW_DEV_CONTEXT ? showMockWindowResult : undefined}
-              turnstileSiteKey={turnstileSiteKey}
-              turnstileResetKey={turnstileResetKey}
-              onTurnstileToken={setTurnstileToken}
-              onTurnstileExpire={clearTurnstile}
-              onTurnstileError={clearTurnstile}
-              turnstileReady={turnstileReady}
             />
           )}
 
@@ -588,6 +575,7 @@ export function MatchCard({
           )}
         </div>
       )}
+      <TurnstileWidget ref={turnstileRef} siteKey={turnstileSiteKey} resetKey={turnstileResetKey} />
     </div>
   );
 }
@@ -700,12 +688,6 @@ function PickScope({
   isWin,
   t,
   formatChampionName,
-  turnstileSiteKey,
-  turnstileResetKey,
-  onTurnstileToken,
-  onTurnstileExpire,
-  onTurnstileError,
-  turnstileReady,
 }: {
   you: { champion: string; summoner?: string; kills: number; deaths: number; assists: number };
   ally: Participant;
@@ -727,12 +709,6 @@ function PickScope({
   isWin: boolean;
   t: Translate;
   formatChampionName: (champion: string) => string;
-  turnstileSiteKey?: string;
-  turnstileResetKey: number;
-  onTurnstileToken: (token: string) => void;
-  onTurnstileExpire: () => void;
-  onTurnstileError: () => void;
-  turnstileReady: boolean;
 }) {
   return (
     <div>
@@ -760,16 +736,10 @@ function PickScope({
             option disabled so users understand the feature boundary. */}
         <button
           onClick={isWin ? undefined : onFullGame}
-          disabled={isWin || !turnstileReady}
-          title={
-            isWin
-              ? t("fullGameVictoryUnavailable")
-              : !turnstileReady
-                ? "Complete human verification before requesting a verdict."
-                : undefined
-          }
+          disabled={isWin}
+          title={isWin ? t("fullGameVictoryUnavailable") : undefined}
           className={
-            isWin || !turnstileReady
+            isWin
               ? "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
               : "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
           }
@@ -778,35 +748,17 @@ function PickScope({
         </button>
         <button
           onClick={onSpecifyTime}
-          disabled={!onSpecifyTime || !turnstileReady}
+          disabled={!onSpecifyTime}
           className={
-            onSpecifyTime && turnstileReady
+            onSpecifyTime
               ? "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
               : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
           }
-          title={
-            !onSpecifyTime
-              ? "Match metadata unavailable"
-              : !turnstileReady
-                ? "Complete human verification before requesting a verdict."
-                : "Pick a 5-10 min slice of the game"
-          }
+          title={onSpecifyTime ? "Pick a 5-10 min slice of the game" : "Match metadata unavailable"}
         >
           {t("specifyTime")}
         </button>
       </div>
-      {turnstileSiteKey && (
-        <div className="mt-4">
-          <TurnstileWidget
-            siteKey={turnstileSiteKey}
-            resetKey={turnstileResetKey}
-            onToken={onTurnstileToken}
-            onExpire={onTurnstileExpire}
-            onError={onTurnstileError}
-            compact
-          />
-        </div>
-      )}
     </div>
   );
 }

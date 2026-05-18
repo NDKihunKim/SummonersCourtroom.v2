@@ -7,7 +7,6 @@ import {
   MAX_WINDOW_MS,
 } from "./TimeRangePicker";
 import { TimelineWindowResult } from "./TimelineWindowResult";
-import { TurnstileWidget } from "./TurnstileWidget";
 import type { Match, Participant } from "@/lib/match-types";
 import type { Locale, TranslationKey } from "@/i18n";
 
@@ -71,12 +70,6 @@ export function ScopeSpecifyTime({
   you,
   onRun,
   onMockResult,
-  turnstileSiteKey,
-  turnstileResetKey,
-  onTurnstileToken,
-  onTurnstileExpire,
-  onTurnstileError,
-  turnstileReady = true,
   locale = "en",
   t,
 }: {
@@ -111,12 +104,6 @@ export function ScopeSpecifyTime({
    */
   onRun?: (range: TimeRange) => void;
   onMockResult?: (range: TimeRange) => void;
-  turnstileSiteKey?: string;
-  turnstileResetKey?: number;
-  onTurnstileToken?: (token: string) => void;
-  onTurnstileExpire?: () => void;
-  onTurnstileError?: () => void;
-  turnstileReady?: boolean;
   locale?: Locale;
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
@@ -178,8 +165,7 @@ export function ScopeSpecifyTime({
               if (onRun) onRun(range);
               else setRunToken((t) => t + 1);
             }}
-            disabled={!validSpan || !turnstileReady}
-            title={!turnstileReady ? "Complete human verification before requesting a verdict." : undefined}
+            disabled={!validSpan}
             className="rounded-lg border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t?.("verdict") ?? "Verdict"}
@@ -212,17 +198,6 @@ export function ScopeSpecifyTime({
             </>
           )}
         </div>
-
-        {turnstileSiteKey && onTurnstileToken && onTurnstileExpire && onTurnstileError && (
-          <TurnstileWidget
-            siteKey={turnstileSiteKey}
-            resetKey={turnstileResetKey ?? 0}
-            onToken={onTurnstileToken}
-            onExpire={onTurnstileExpire}
-            onError={onTurnstileError}
-            compact
-          />
-        )}
 
         {!onRun && (
           <div className="w-full max-w-3xl">

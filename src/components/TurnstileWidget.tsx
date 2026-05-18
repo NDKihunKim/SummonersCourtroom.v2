@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 declare global {
   interface Window {
@@ -8,17 +8,25 @@ declare global {
         options: {
           sitekey: string;
           theme?: "auto" | "light" | "dark";
-          size?: "normal" | "compact" | "flexible";
+          size?: "normal" | "compact" | "flexible" | "invisible";
+          execution?: "render" | "execute";
+          appearance?: "always" | "execute" | "interaction-only";
           callback?: (token: string) => void;
           "expired-callback"?: () => void;
           "error-callback"?: () => void;
         },
       ) => string;
+      execute: (widgetId?: string) => void;
       reset: (widgetId?: string) => void;
       remove: (widgetId: string) => void;
     };
   }
 }
+
+export type TurnstileHandle = {
+  execute: () => Promise<string | undefined>;
+  reset: () => void;
+};
 
 let turnstileScriptPromise: Promise<void> | null = null;
 
@@ -50,60 +58,93 @@ function loadTurnstileScript(): Promise<void> {
   return turnstileScriptPromise;
 }
 
-export function TurnstileWidget({
-  siteKey,
-  resetKey,
-  onToken,
-  onExpire,
-  onError,
-  compact = false,
-}: {
-  siteKey?: string;
-  resetKey: number;
-  onToken: (token: string) => void;
-  onExpire: () => void;
-  onError: () => void;
-  compact?: boolean;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<string | null>(null);
+export const TurnstileWidget = forwardRef<TurnstileHandle, { siteKey?: string; resetKey?: number }>(
+  function TurnstileWidget({ siteKey, resetKey = 0 }, ref) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const widgetIdRef = useRef<string | null>(null);
+    const pendingRef = useRef<{
+      resolve: (token: string | undefined) => void;
+      reject: (error: Error) => void;
+    } | null>(null);
 
-  useEffect(() => {
-    if (!siteKey || !containerRef.current) return;
-    let cancelled = false;
+    function settleToken(token: string | undefined) {
+      pendingRef.current?.resolve(token);
+      pendingRef.current = null;
+    }
 
-    loadTurnstileScript()
-      .then(() => {
-        if (cancelled || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
-          sitekey: siteKey,
-          theme: "dark",
-          size: compact ? "compact" : "flexible",
-          callback: onToken,
-          "expired-callback": onExpire,
-          "error-callback": onError,
-        });
-      })
-      .catch(onError);
+    function rejectToken(message: string) {
+      pendingRef.current?.reject(new Error(message));
+      pendingRef.current = null;
+    }
 
-    return () => {
-      cancelled = true;
-      if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(widgetIdRef.current);
-        widgetIdRef.current = null;
-      }
-    };
-  }, [compact, onError, onExpire, onToken, siteKey]);
+    function renderWidget() {
+      if (!siteKey || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        theme: "dark",
+        size: "invisible",
+        execution: "execute",
+        appearance: "execute",
+        callback: settleToken,
+        "expired-callback": () => rejectToken("Human verification expired. Please try again."),
+        "error-callback": () => rejectToken("Human verification failed. Please try again."),
+      });
+    }
 
-  useEffect(() => {
-    if (widgetIdRef.current && window.turnstile) window.turnstile.reset(widgetIdRef.current);
-  }, [resetKey]);
+    useEffect(() => {
+      if (!siteKey || !containerRef.current) return;
+      let cancelled = false;
 
-  if (!siteKey) return null;
+      loadTurnstileScript()
+        .then(() => {
+          if (!cancelled) renderWidget();
+        })
+        .catch(() => rejectToken("Human verification failed to load. Please try again."));
 
-  return (
-    <div className="flex justify-center">
-      <div ref={containerRef} className={compact ? "min-h-[65px]" : "min-h-[65px] w-full"} />
-    </div>
-  );
-}
+      return () => {
+        cancelled = true;
+        pendingRef.current = null;
+        if (widgetIdRef.current && window.turnstile) {
+          window.turnstile.remove(widgetIdRef.current);
+          widgetIdRef.current = null;
+        }
+      };
+    }, [siteKey]);
+
+    useEffect(() => {
+      if (widgetIdRef.current && window.turnstile) window.turnstile.reset(widgetIdRef.current);
+    }, [resetKey]);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        execute: async () => {
+          if (!siteKey) return undefined;
+          await loadTurnstileScript();
+          renderWidget();
+          if (!window.turnstile || !widgetIdRef.current) {
+            throw new Error("Human verification is not ready. Please try again.");
+          }
+
+          if (pendingRef.current) {
+            throw new Error("Human verification is already running. Please wait.");
+          }
+
+          return new Promise<string | undefined>((resolve, reject) => {
+            pendingRef.current = { resolve, reject };
+            window.turnstile?.execute(widgetIdRef.current ?? undefined);
+          });
+        },
+        reset: () => {
+          pendingRef.current = null;
+          if (widgetIdRef.current && window.turnstile) window.turnstile.reset(widgetIdRef.current);
+        },
+      }),
+      [siteKey],
+    );
+
+    if (!siteKey) return null;
+
+    return <div ref={containerRef} className="sr-only" aria-hidden="true" />;
+  },
+);

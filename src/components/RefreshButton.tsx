@@ -11,7 +11,7 @@
  */
 
 import { Loader2, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Shard } from "@/lib/regions";
@@ -20,7 +20,7 @@ import {
   type CachedSummonerPayload,
 } from "@/functions/summoner-cache.functions";
 import type { TranslationKey } from "@/i18n";
-import { TurnstileWidget } from "@/components/TurnstileWidget";
+import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
 
 interface Props {
   shard: Shard;
@@ -68,23 +68,21 @@ export function RefreshButton({
   // Re-render every second while the cooldown is active OR the timestamp is
   // fresh enough that "Xm ago" might roll over visibly. Cleared otherwise.
   const [now, setNow] = useState(() => Date.now());
+  const turnstileRef = useRef<TurnstileHandle>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
-  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
-  const clearTurnstile = useCallback(() => setTurnstileToken(undefined), []);
   const resetTurnstile = useCallback(() => {
-    setTurnstileToken(undefined);
+    turnstileRef.current?.reset();
     setTurnstileResetKey((key) => key + 1);
   }, []);
-  const needsTurnstile = Boolean(turnstileSiteKey);
-  const turnstileReady = !needsTurnstile || Boolean(turnstileToken);
+  const executeTurnstile = useCallback(() => turnstileRef.current?.execute(), []);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (turnstileToken?: string) =>
       refreshSummoner({ data: { shard, gameName, tagLine, turnstileToken } }),
     onSuccess: (payload) => {
       onRefreshed(payload);
@@ -100,25 +98,32 @@ export function RefreshButton({
 
   const cooldownRemainingMs = Math.max(0, refreshAvailableAt - now);
   const onCooldown = cooldownRemainingMs > 0;
-  const disabled = mutation.isPending || onCooldown || !turnstileReady;
+  const disabled = mutation.isPending || onCooldown;
 
   // Soft hint: turn timestamp gold once the cache is older than 10 minutes.
   // Acts as a nudge to refresh without auto-refetching.
   const ageMs = now - cachedAt;
   const stale = ageMs > 10 * 60_000;
 
+  async function handleRefresh() {
+    try {
+      const turnstileToken = await executeTurnstile();
+      mutation.mutate(turnstileToken);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
+    }
+  }
+
   return (
     <div className="flex items-center gap-2">
       <button
         type="button"
-        onClick={() => mutation.mutate()}
+        onClick={() => void handleRefresh()}
         disabled={disabled}
         aria-label={t?.("refreshMatchHistory") ?? "Refresh match history"}
         title={
           onCooldown
             ? `${t?.("availableIn") ?? "Available in"} ${Math.ceil(cooldownRemainingMs / 1000)}s`
-            : !turnstileReady
-              ? "Complete human verification before refreshing."
             : t?.("refreshMatchHistory") ?? "Refresh match history"
         }
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
@@ -137,12 +142,9 @@ export function RefreshButton({
           : `${t?.("updated") ?? "Updated"} ${formatAgo(cachedAt, now, t)}`}
       </span>
       <TurnstileWidget
+        ref={turnstileRef}
         siteKey={turnstileSiteKey}
         resetKey={turnstileResetKey}
-        onToken={setTurnstileToken}
-        onExpire={clearTurnstile}
-        onError={clearTurnstile}
-        compact
       />
     </div>
   );

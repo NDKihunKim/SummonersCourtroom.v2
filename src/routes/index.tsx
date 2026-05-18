@@ -35,7 +35,7 @@ import { SampleSizeSelector } from "@/components/SampleSizeSelector";
 import { useSampleSize } from "@/hooks/useSampleSize";
 import { computeMatchStats } from "@/lib/match-stats";
 import { useLocale, type Locale, type TranslationKey } from "@/i18n";
-import { TurnstileWidget } from "@/components/TurnstileWidget";
+import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -112,17 +112,15 @@ function Index() {
   const listboxId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
   const [suggestionsHeight, setSuggestionsHeight] = useState(0);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
-  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
-  const clearTurnstile = useCallback(() => setTurnstileToken(undefined), []);
   const resetTurnstile = useCallback(() => {
-    setTurnstileToken(undefined);
+    turnstileRef.current?.reset();
     setTurnstileResetKey((key) => key + 1);
   }, []);
-  const needsTurnstile = Boolean(turnstileSiteKey);
-  const turnstileReady = !needsTurnstile || Boolean(turnstileToken);
+  const executeTurnstile = useCallback(() => turnstileRef.current?.execute(), []);
 
   // Composed suggestions: local recents first, then shared backend index
   // (sorted Challenger -> Iron). Debounces the server call internally.
@@ -178,7 +176,7 @@ function Index() {
     onSettled: resetTurnstile,
   });
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     const parsed = parseRiotId(riotId);
     if (!parsed) {
@@ -188,23 +186,33 @@ function Index() {
     // Close the dropdown on submit so it doesn't linger over the result view.
     setIsSuggestOpen(false);
     // Cache function takes the raw shard and handles routing internally.
-    mutation.mutate({ ...parsed, shard, turnstileToken });
+    try {
+      const turnstileToken = await executeTurnstile();
+      mutation.mutate({ ...parsed, shard, turnstileToken });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
+    }
   }
 
   /** Apply a clicked / Enter-selected suggestion: fill input + submit. */
-  function selectSuggestion(item: Suggestion) {
+  async function selectSuggestion(item: Suggestion) {
     const value = `${item.gameName}#${item.tagLine}`;
     setRiotId(value);
     setIsSuggestOpen(false);
     // Use the suggestion's parsed parts directly — avoids re-parsing the
     // string we just constructed and dodges any stale-state edge cases
     // around setRiotId not being applied before mutation.mutate runs.
-    mutation.mutate({
-      gameName: item.gameName,
-      tagLine: item.tagLine,
-      shard: item.shard,
-      turnstileToken,
-    });
+    try {
+      const turnstileToken = await executeTurnstile();
+      mutation.mutate({
+        gameName: item.gameName,
+        tagLine: item.tagLine,
+        shard: item.shard,
+        turnstileToken,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
+    }
   }
 
   /** Footer "Clear all history" — wipes local recents only. */
@@ -470,8 +478,7 @@ function Index() {
               </div>
               <button
                 type="submit"
-                disabled={mutation.isPending || !turnstileReady}
-                title={!turnstileReady ? "Complete human verification before searching." : undefined}
+                disabled={mutation.isPending}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
               >
                 {mutation.isPending ? (
@@ -509,11 +516,9 @@ function Index() {
             </div>
             <div className="mt-3">
               <TurnstileWidget
+                ref={turnstileRef}
                 siteKey={turnstileSiteKey}
                 resetKey={turnstileResetKey}
-                onToken={setTurnstileToken}
-                onExpire={clearTurnstile}
-                onError={clearTurnstile}
               />
             </div>
             <div
