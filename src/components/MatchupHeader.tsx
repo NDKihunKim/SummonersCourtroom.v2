@@ -79,10 +79,34 @@ export interface MatchupHeaderProps {
   you: { champion: string; kills: number; deaths: number; assists: number; summoner?: string };
   /** The ally chosen on the PickAlly screen. */
   ally: Participant;
+  players?: Participant[];
   formatChampionName?: (champion: string) => string;
 }
 
-export function MatchupHeader({ you, ally, formatChampionName = (champion) => champion }: MatchupHeaderProps) {
+export function MatchupHeader({
+  you,
+  ally,
+  players,
+  formatChampionName = (champion) => champion,
+}: MatchupHeaderProps) {
+  if (players?.length) {
+    return (
+      <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
+        {players.map((player, index) => (
+          <div key={`${player.puuid ?? player.summoner}-${index}`} className="flex items-center gap-3">
+            {index > 0 ? <span className="text-lg font-bold text-muted-foreground">vs</span> : null}
+            <Tile
+              name={player.summoner}
+              champion={player.champion}
+              championLabel={formatChampionName(player.champion)}
+              kda={`${safeNum(player.kills)}/${safeNum(player.deaths)}/${safeNum(player.assists)}`}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   // Format KDA defensively — the contextualizer pipeline can in theory
   // hand back a participant with missing stats; we never want to render
   // "undefined/undefined/undefined" inside the header.
@@ -92,7 +116,6 @@ export function MatchupHeader({ you, ally, formatChampionName = (champion) => ch
   return (
     <div className="mb-4 flex items-center justify-center gap-3">
       <Tile
-        highlighted
         name={you.summoner ?? "You"}
         champion={you.champion}
         championLabel={formatChampionName(you.champion)}
