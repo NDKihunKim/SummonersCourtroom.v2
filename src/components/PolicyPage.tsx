@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { AdFrame } from "@/components/AdFrame";
+import type { Locale, TranslationKey } from "@/i18n";
 
 export const CONTACT_EMAIL = "peanuttabasco852@gmail.com";
 
@@ -11,13 +12,19 @@ export function PolicyPage({
   title,
   eyebrow,
   children,
+  locale = "en",
+  onLocaleChange,
+  t,
 }: {
   title: string;
   eyebrow?: string;
   children: ReactNode;
+  locale?: Locale;
+  onLocaleChange?: (locale: Locale) => void;
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   return (
-    <AdFrame>
+    <AdFrame locale={locale} onLocaleChange={onLocaleChange} t={t}>
       <main className="rounded-2xl" style={{ background: "var(--gradient-hero)" }}>
         <div className="mx-auto max-w-3xl px-4 pb-12 pt-20 sm:pt-24">
           {eyebrow && (

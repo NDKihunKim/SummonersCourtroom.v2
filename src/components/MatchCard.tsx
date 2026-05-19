@@ -827,9 +827,9 @@ function JudgeLoading({
     "judgeLoadingPhraseTimeline",
     "judgeLoadingPhraseEvidence",
     "judgeLoadingPhraseMoments",
-    "judgeLoadingPhrasePreparing",
   ];
   const [phraseIndex, setPhraseIndex] = useState(0);
+  const [dotCount, setDotCount] = useState(1);
   const steps: { id: PipelineStep; label: string; sub: string }[] = [
     { id: "contextualize", label: t("contextualizeStep"), sub: t("contextualizeStepSub") },
     { id: "judge", label: t("judgeStep"), sub: t("judgeStepSub") },
@@ -839,9 +839,16 @@ function JudgeLoading({
   useEffect(() => {
     const id = window.setInterval(() => {
       setPhraseIndex((index) => (index + 1) % loadingPhrases.length);
-    }, 2600);
+    }, 5200);
     return () => window.clearInterval(id);
   }, [loadingPhrases.length]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setDotCount((count) => (count >= 3 ? 1 : count + 1));
+    }, 600);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-5 py-6">
@@ -851,6 +858,7 @@ function JudgeLoading({
           className="animate-judge-loading-phrase text-sm font-semibold uppercase tracking-[0.3em] text-gold"
         >
           {t(loadingPhrases[phraseIndex])}
+          <span aria-hidden="true">{".".repeat(dotCount)}</span>
         </p>
       </div>
       <ol className="flex w-full max-w-2xl items-start justify-between gap-2">

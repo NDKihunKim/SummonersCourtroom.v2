@@ -12,12 +12,12 @@ const RIOT_DISCLAIMER =
   "Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
 
 const FOOTER_LINKS = [
-  { href: "/about", label: "About" },
-  { href: "/privacy", label: "Privacy" },
-  { href: "/terms", label: "Terms" },
-  { href: "/contact", label: "Contact" },
-  { href: "/legal", label: "Legal" },
-];
+  { href: "/about", label: "About", key: "footerAbout" },
+  { href: "/privacy", label: "Privacy", key: "footerPrivacy" },
+  { href: "/terms", label: "Terms", key: "footerTerms" },
+  { href: "/contact", label: "Contact", key: "footerContact" },
+  { href: "/legal", label: "Legal", key: "footerLegal" },
+] as const;
 
 /**
  * Mock ad slots (north/south leaderboards + east/west skyscrapers) have
@@ -101,7 +101,7 @@ export function AdFrame({
               href={link.href}
               className="font-semibold text-muted-foreground transition-colors hover:text-gold"
             >
-              {link.label}
+              {t?.(link.key) ?? link.label}
             </a>
           ))}
         </nav>
