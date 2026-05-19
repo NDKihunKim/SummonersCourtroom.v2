@@ -30,6 +30,18 @@ Treat frame snapshots as state evidence: position, role, level, gold, CS, jungle
 
 Do not use outside match knowledge, hidden information, matchup theory, vision assumptions, summoner spell assumptions, player intent, or facts not shown in the brief.`;
 
+export function buildFreeForAllUpperPrompt(champions: readonly string[]) {
+  const championList =
+    champions.length > 0
+      ? champions.join(", ")
+      : "the selected defeated-team champions";
+
+  return `${UPPER_PROMPT.replace(
+    "Your task is to compare SUBJECT_A and SUBJECT_B and decide which subject shows greater process fault within the provided context window.",
+    `Your task is to judge the defeated team champions: ${championList}. Decide which one champion shows the greatest process fault within the provided context window.`,
+  )}`;
+}
+
 function outputLanguageInstruction(locale: Locale, championLocalization = ""): string {
   if (locale === "ko") {
     return `**OUTPUT LANGUAGE:**
@@ -196,4 +208,36 @@ Good Korean: 19분경 그레이브즈는 정글 CS가 111개였습니다.
 Verdict: Tie — The window from 00:00 to 01:00 contains not enough events to verdict.
 
 Stop here. Do not write anything else.`;
+}
+
+export function buildFreeForAllLowerPrompt(
+  locale: Locale = "en",
+  championLocalization = "",
+  teamRoster = "",
+) {
+  const base = buildLowerPrompt(locale, championLocalization)
+    .replaceAll("SUBJECT_A or SUBJECT_B", "any selected defeated-team player")
+    .replaceAll("SUBJECT_A and SUBJECT_B", "the selected defeated-team players")
+    .replaceAll("SUBJECT_A", "the selected player")
+    .replaceAll("SUBJECT_B", "the selected player")
+    .replaceAll("either subject", "any selected defeated-team player")
+    .replaceAll("the subject", "the selected player")
+    .replaceAll("a subject", "a selected player")
+    .replaceAll("subject's", "selected player's")
+    .replaceAll("subject", "selected player")
+    .replace(
+      "- Line 1: Output only the selected champion name. Do not include \"Verdict:\", \"is more at fault\", \"판결:\", or any other words on this line. Pick exactly one selected player; no ties here because ties are handled above.",
+      "- Line 1: Output only the champion name of the selected defeated-team player who was most at fault. Do not include \"Verdict:\", \"is more at fault\", \"판결:\", or any other words on this line. Pick exactly one player from the selected defeated-team list; no ties here because ties are handled above.",
+    );
+
+  return `${base}
+
+**FREE FOR ALL MODE OVERRIDE:**
+
+Judge only these selected defeated-team players:
+${teamRoster}
+
+Compare all selected defeated-team players against each other. The winner of the verdict must be one champion from this list. Do not output a player from the winning team or from outside this list.
+
+When explaining the verdict, make clear why the chosen player was more at fault than the other selected teammates when the Structured Context Brief supports that comparison. Keep every other evidence, wording, location, language, and output-format rule above.`;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Gavel, ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
@@ -12,17 +12,40 @@ import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
 import { getJudgeVerdict } from "@/functions/timeline-window.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
+import { sortByRole } from "@/lib/role-order";
 import type { Locale, TranslationKey } from "@/i18n";
 import { TurnstileWidget, type TurnstileHandle } from "./TurnstileWidget";
 
 type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "verdict";
 type PipelineStep = "contextualize" | "judge" | "parse";
 type Scope = "full" | "window";
+type FaultMode = "me-vs-1" | "one-vs-one" | "free-for-all" | "switch-teams";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 type VerdictDisplay = { championName: string; summonerName?: string };
+type FreeForAllContextPlayer = {
+  champion: string;
+  puuid?: string;
+  role?: string;
+  summoner?: string;
+};
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
 const MAX_FULL_GAME_VERDICT_MS = 60 * 60_000;
+
+function toFreeForAllContextPlayer(player: Participant): FreeForAllContextPlayer {
+  return {
+    champion: player.champion,
+    puuid: player.puuid,
+    role: player.teamPosition,
+    summoner: player.summoner,
+  };
+}
+
+function addFreeForAllContextParams(params: URLSearchParams, team: Participant[]) {
+  if (team.length === 0) return;
+  params.set("verdictMode", "free-for-all");
+  params.set("freeForAllTeam", JSON.stringify(team.map(toFreeForAllContextPlayer)));
+}
 
 const defaultT: Translate = (key, vars) => {
   const text = String(key);
@@ -177,6 +200,9 @@ export function MatchCard({
   const championLabel = formatChampionName(match.champion);
 
   const [stage, setStage] = useState<Stage>("closed");
+  const [faultMode, setFaultMode] = useState<FaultMode>("me-vs-1");
+  const [showEnemyTeam, setShowEnemyTeam] = useState(false);
+  const [pickedSubjectA, setPickedSubjectA] = useState<Participant | null>(null);
   const [pickedAlly, setPickedAlly] = useState<Participant | null>(null);
   const [reasoning, setReasoning] = useState<string | null>(null);
   const [verdictDisplay, setVerdictDisplay] = useState<VerdictDisplay | null>(null);
@@ -220,6 +246,18 @@ export function MatchCard({
             matchDurationMs != null ? formatWindowLength(matchDurationMs, t) : match.duration
           }`
         : null;
+  const viewedParticipant: Participant = {
+    champion: match.champion,
+    summoner: you?.summoner ?? "You",
+    kills: match.kills,
+    deaths: match.deaths,
+    assists: match.assists,
+    puuid: you?.puuid ?? match.userPuuid,
+    teamId: match.userTeamId,
+    teamPosition: match.userTeamPosition,
+  };
+  const visibleTeamMembers = sortByRole(showEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+  const subjectA = pickedSubjectA ?? viewedParticipant;
 
   function clearMockLoadingTimers() {
     mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
@@ -229,6 +267,9 @@ export function MatchCard({
   function reset() {
     clearMockLoadingTimers();
     setStage("closed");
+    setFaultMode("me-vs-1");
+    setShowEnemyTeam(false);
+    setPickedSubjectA(null);
     setPickedAlly(null);
     setReasoning(null);
     setVerdictDisplay(null);
@@ -312,7 +353,9 @@ export function MatchCard({
       return;
     }
 
-    const allyChampionLabel = formatChampionName(pickedAlly.champion);
+    const subjectAChampionLabel = formatChampionName(subjectA.champion);
+    const subjectBChampionLabel = formatChampionName(pickedAlly.champion);
+    const freeForAllTeam = faultMode === "free-for-all" ? visibleTeamMembers : undefined;
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
@@ -332,10 +375,16 @@ export function MatchCard({
             : {}),
           locale,
           turnstileToken,
+          verdictMode: faultMode === "free-for-all" ? "free-for-all" : "duel",
+          ...(freeForAllTeam
+            ? {
+                freeForAllTeam: freeForAllTeam.map(toFreeForAllContextPlayer),
+              }
+            : {}),
           subjects: {
             a: {
-              champion: match.champion,
-              puuid: you?.puuid ?? match.userPuuid,
+              champion: subjectA.champion,
+              puuid: subjectA.puuid,
             },
             b: {
               champion: pickedAlly.champion,
@@ -344,14 +393,27 @@ export function MatchCard({
           },
         },
       });
-      const parsed = parseJudgeOutput(verdict.content, [
-        { champion: match.champion, championLabel, summoner: you?.summoner },
-        {
-          champion: pickedAlly.champion,
-          championLabel: allyChampionLabel,
-          summoner: pickedAlly.summoner,
-        },
-      ]);
+      const parsed = parseJudgeOutput(
+        verdict.content,
+        freeForAllTeam
+          ? freeForAllTeam.map((player) => ({
+              champion: player.champion,
+              championLabel: formatChampionName(player.champion),
+              summoner: player.summoner,
+            }))
+          : [
+              {
+                champion: subjectA.champion,
+                championLabel: subjectAChampionLabel,
+                summoner: subjectA.summoner,
+              },
+              {
+                champion: pickedAlly.champion,
+                championLabel: subjectBChampionLabel,
+                summoner: pickedAlly.summoner,
+              },
+            ],
+      );
       setReasoning(parsed.reasoning);
       setVerdictDisplay(parsed.verdict);
       setCompleted((s) => new Set(s).add("judge"));
@@ -490,42 +552,76 @@ export function MatchCard({
       {/* Expanded Judge slide */}
       {expanded && (
         <div className="border-t border-border bg-background/40 px-4 py-5 animate-fade-in">
-          {stage === "pickAlly" && (
+          {(stage === "pickAlly" || (stage === "pickScope" && pickedAlly)) && (
             <PickAlly
-              you={{
-                champion: match.champion,
-                summoner: you?.summoner,
-                kills: match.kills,
-                deaths: match.deaths,
-                assists: match.assists,
+              mode={faultMode}
+              onModeChange={(nextMode) => {
+                setFaultMode(nextMode);
+                if (nextMode === "me-vs-1") setShowEnemyTeam(false);
+                setPickedSubjectA(null);
+                setPickedAlly(null);
+                if (nextMode === "free-for-all") {
+                  const members = sortByRole(showEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+                  setPickedSubjectA(members[0] ?? null);
+                  setPickedAlly(members[1] ?? null);
+                  setStage(members.length >= 2 ? "pickScope" : "pickAlly");
+                  return;
+                }
+                setStage("pickAlly");
               }}
+              showEnemyTeam={showEnemyTeam}
+              onSwitchTeams={() => {
+                const nextShowEnemyTeam = !showEnemyTeam;
+                setShowEnemyTeam(nextShowEnemyTeam);
+                const nextMode = faultMode === "free-for-all"
+                  ? "free-for-all"
+                  : nextShowEnemyTeam
+                    ? "one-vs-one"
+                    : "me-vs-1";
+                setFaultMode(nextMode);
+                setPickedSubjectA(null);
+                setPickedAlly(null);
+                if (nextMode === "free-for-all") {
+                  const members = sortByRole(nextShowEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+                  setPickedSubjectA(members[0] ?? null);
+                  setPickedAlly(members[1] ?? null);
+                  setStage(members.length >= 2 ? "pickScope" : "pickAlly");
+                  return;
+                }
+                setStage("pickAlly");
+              }}
+              onClearSelection={() => {
+                setPickedSubjectA(null);
+                setPickedAlly(null);
+                setStage("pickAlly");
+              }}
+              you={viewedParticipant}
               allies={match.team}
+              enemies={match.enemies}
+              freeForAllPlayers={visibleTeamMembers}
               onCancel={reset}
+              selectedA={stage === "pickScope" ? subjectA : undefined}
+              selectedB={stage === "pickScope" ? pickedAlly ?? undefined : undefined}
               t={t}
               formatChampionName={formatChampionName}
               onPick={(a) => {
+                setPickedSubjectA(null);
                 setPickedAlly(a);
+                setStage("pickScope");
+              }}
+              onPickDuel={(a, b) => {
+                setPickedSubjectA(a);
+                setPickedAlly(b);
                 setStage("pickScope");
               }}
             />
           )}
 
           {stage === "pickScope" && pickedAlly && (
-            <PickScope
-              you={{
-                champion: match.champion,
-                summoner: you?.summoner,
-                kills: match.kills,
-                deaths: match.deaths,
-                assists: match.assists,
-              }}
-              ally={pickedAlly}
-              onBack={() => setStage("pickAlly")}
-              onCancel={reset}
+            <ScopeActions
               onFullGame={() => runJudge("full")}
-              isWin={win}
+              isWin={showEnemyTeam ? !win : win}
               t={t}
-              formatChampionName={formatChampionName}
               onSpecifyTime={
                 match.riotMatchId && match.userPuuid
                   ? () => setStage("specifyTime")
@@ -543,7 +639,7 @@ export function MatchCard({
               onBack={() => setStage("pickScope")}
               // SUBJECT_A = the viewer's champion on this match
               // SUBJECT_B = the ally the user picked in the previous step
-              subjectAChampion={match.champion}
+              subjectAChampion={subjectA.champion}
               subjectBChampion={pickedAlly.champion}
               // Full match + viewer so TimelineWindowResult can build the
               // per-team champion+role rundown injected into the upper prompt.
@@ -554,6 +650,12 @@ export function MatchCard({
               onRun={(range) => void runJudge("window", range)}
               onMockResult={SHOW_DEV_CONTEXT ? showMockWindowResult : undefined}
               onMockLoading={SHOW_DEV_CONTEXT ? showMockLoading : undefined}
+              verdictMode={faultMode === "free-for-all" ? "free-for-all" : "duel"}
+              freeForAllTeam={
+                faultMode === "free-for-all"
+                  ? visibleTeamMembers.map(toFreeForAllContextPlayer)
+                  : undefined
+              }
             />
           )}
 
@@ -566,11 +668,11 @@ export function MatchCard({
               {pickedAlly && (
                 <MatchupHeader
                   you={{
-                    champion: match.champion,
-                    summoner: you?.summoner,
-                    kills: match.kills,
-                    deaths: match.deaths,
-                    assists: match.assists,
+                    champion: subjectA.champion,
+                    summoner: subjectA.summoner,
+                    kills: subjectA.kills,
+                    deaths: subjectA.deaths,
+                    assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
                   formatChampionName={formatChampionName}
@@ -588,11 +690,11 @@ export function MatchCard({
               {pickedAlly && (
                 <MatchupHeader
                   you={{
-                    champion: match.champion,
-                    summoner: you?.summoner,
-                    kills: match.kills,
-                    deaths: match.deaths,
-                    assists: match.assists,
+                    champion: subjectA.champion,
+                    summoner: subjectA.summoner,
+                    kills: subjectA.kills,
+                    deaths: subjectA.deaths,
+                    assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
                   formatChampionName={formatChampionName}
@@ -610,8 +712,11 @@ export function MatchCard({
                   params.set("locale", locale);
                   if (match.userPuuid) params.set("puuid", match.userPuuid);
                   if (match.routingRegion) params.set("region", match.routingRegion);
-                  params.set("subjectA", match.champion);
+                  params.set("subjectA", subjectA.champion);
                   if (pickedAlly) params.set("subjectB", pickedAlly.champion);
+                  if (faultMode === "free-for-all") {
+                    addFreeForAllContextParams(params, visibleTeamMembers);
+                  }
                   if (verdictScope === "window" && verdictWindow) {
                     params.set("startMs", String(verdictWindow[0]));
                     params.set("endMs", String(verdictWindow[1]));
@@ -635,56 +740,187 @@ export function MatchCard({
 // which adds truncation + tooltip + champion icon + zebra striping.
 
 function PickAlly({
+  mode,
+  onModeChange,
+  showEnemyTeam,
+  onSwitchTeams,
   you,
   allies,
+  enemies,
+  freeForAllPlayers,
   onPick,
+  onPickDuel,
+  onClearSelection,
   onCancel,
+  selectedA,
+  selectedB,
   t,
   formatChampionName,
 }: {
-  you: { champion: string; summoner?: string; kills: number; deaths: number; assists: number };
+  mode: FaultMode;
+  onModeChange: (mode: FaultMode) => void;
+  showEnemyTeam: boolean;
+  onSwitchTeams: () => void;
+  you: Participant;
   allies: Participant[];
+  enemies: Participant[];
+  freeForAllPlayers: Participant[];
   onPick: (a: Participant) => void;
+  onPickDuel: (a: Participant, b: Participant) => void;
+  onClearSelection: () => void;
   onCancel: () => void;
+  selectedA?: Participant;
+  selectedB?: Participant;
   t: Translate;
   formatChampionName: (champion: string) => string;
 }) {
+  const [duelPicks, setDuelPicks] = useState<Participant[]>([]);
+  const teamMembers = sortByRole(showEnemyTeam ? enemies : [...allies, you]);
+
+  function playerKey(player: Participant): string {
+    return player.puuid ?? player.summoner?.toLowerCase() ?? player.champion;
+  }
+
+  function isPicked(player: Participant): boolean {
+    const key = playerKey(player);
+    return duelPicks.some((pick) => playerKey(pick) === key);
+  }
+
+  function toggleDuelPick(player: Participant) {
+    setDuelPicks((current) => {
+      const key = playerKey(player);
+      const existing = current.findIndex((pick) => playerKey(pick) === key);
+      if (existing >= 0) return current.filter((_, index) => index !== existing);
+      const next = [...current, player];
+      if (next.length === 2) onPickDuel(next[0], next[1]);
+      return next.slice(0, 2);
+    });
+  }
+
+  function selectMode(nextMode: FaultMode) {
+    onModeChange(nextMode);
+    setDuelPicks([]);
+  }
+
+  function switchTeams() {
+    setDuelPicks([]);
+    onSwitchTeams();
+  }
+
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
           <Gavel className="mr-1 inline h-3.5 w-3.5" /> {t("biggerFaultQuestion")}
         </h3>
-        <button
-          onClick={onCancel}
-          className="text-xs text-muted-foreground hover:text-foreground"
-        >
-          {t("cancel")}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!showEnemyTeam ? (
+            <ModeButton active={mode === "me-vs-1"} onClick={() => selectMode("me-vs-1")}>
+              Me vs 1
+            </ModeButton>
+          ) : null}
+          <ModeButton active={mode === "one-vs-one"} onClick={() => selectMode("one-vs-one")}>
+            1 vs 1
+          </ModeButton>
+          <ModeButton active={mode === "free-for-all"} onClick={() => selectMode("free-for-all")}>
+            Free for All
+          </ModeButton>
+          <ModeButton active={showEnemyTeam} onClick={switchTeams}>
+            Switch Teams
+          </ModeButton>
+          <button
+            onClick={onCancel}
+            className="ml-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t("cancel")}
+          </button>
+        </div>
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <PlayerTile
-          highlighted
-          name={you.summoner ?? "You"}
-          champion={you.champion}
-          championLabel={formatChampionName(you.champion)}
-          kda={`${you.kills}/${you.deaths}/${you.assists}`}
-        />
-        <span className="text-xl font-bold text-muted-foreground">vs</span>
-        <div className="flex flex-wrap gap-3">
-          {allies.map((a, i) => (
-            <button key={i} onClick={() => onPick(a)} className="group">
+
+      {mode === "free-for-all" ? (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {freeForAllPlayers.map((player, i) => (
+            <Fragment key={`${player.summoner}-${i}`}>
+              {i > 0 ? <span className="text-xl font-bold text-muted-foreground">vs</span> : null}
               <PlayerTile
-                name={a.summoner}
-                champion={a.champion}
-                championLabel={formatChampionName(a.champion)}
-                kda={`${a.kills}/${a.deaths}/${a.assists}`}
+                highlighted
+                name={player.summoner}
+                champion={player.champion}
+                championLabel={formatChampionName(player.champion)}
+                kda={`${player.kills}/${player.deaths}/${player.assists}`}
+              />
+            </Fragment>
+          ))}
+        </div>
+      ) : showEnemyTeam || mode === "one-vs-one" ? (
+        <div className="flex flex-wrap justify-center gap-3">
+          {teamMembers.map((player, i) => (
+            <button key={`${player.summoner}-${i}`} onClick={() => toggleDuelPick(player)} className="group">
+              <PlayerTile
+                highlighted={isPicked(player)}
+                name={player.summoner}
+                champion={player.champion}
+                championLabel={formatChampionName(player.champion)}
+                kda={`${player.kills}/${player.deaths}/${player.assists}`}
               />
             </button>
           ))}
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <PlayerTile
+            highlighted
+            name={you.summoner ?? "You"}
+            champion={you.champion}
+            championLabel={formatChampionName(you.champion)}
+            kda={`${you.kills}/${you.deaths}/${you.assists}`}
+          />
+          <span className="text-xl font-bold text-muted-foreground">vs</span>
+          <div className="flex flex-wrap gap-3">
+            {allies.map((a, i) => (
+              <button key={i} onClick={() => onPick(a)} className="group">
+                <PlayerTile
+                  highlighted={selectedB ? playerKey(selectedB) === playerKey(a) : false}
+                  name={a.summoner}
+                  champion={a.champion}
+                  championLabel={formatChampionName(a.champion)}
+                  kda={`${a.kills}/${a.deaths}/${a.assists}`}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ModeButton({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+        active
+          ? "border-gold bg-gold/15 text-gold"
+          : disabled
+            ? "cursor-not-allowed border-border bg-muted/30 text-muted-foreground/60"
+            : "border-border bg-card text-muted-foreground hover:border-gold hover:text-gold"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -694,21 +930,28 @@ function PlayerTile({
   championLabel = champion,
   kda,
   highlighted,
+  role,
 }: {
   name: string;
   champion: string;
   championLabel?: string;
   kda: string;
   highlighted?: boolean;
+  role?: string;
 }) {
   return (
     <div
       className={`flex w-28 shrink-0 flex-col items-center gap-1 overflow-hidden rounded-lg border p-2 transition-all ${
         highlighted
           ? "border-gold bg-secondary/50"
-          : "border-border bg-card hover:border-gold hover:bg-secondary/40"
+          : "border-border bg-card hover:border-gold/40 hover:bg-secondary/40"
       }`}
     >
+      {role ? (
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gold/80">
+          {role}
+        </span>
+      ) : null}
       {/* Real champion square — instantly recognisable to LoL players,
           which is exactly what the "pick the bigger fault" UI needs. */}
       <ChampionIcon champion={champion} size={48} />
@@ -728,21 +971,12 @@ function PlayerTile({
   );
 }
 
-function PickScope({
-  you,
-  ally,
-  onBack,
-  onCancel,
+function ScopeActions({
   onFullGame,
   onSpecifyTime,
   isWin,
   t,
-  formatChampionName,
 }: {
-  you: { champion: string; summoner?: string; kills: number; deaths: number; assists: number };
-  ally: Participant;
-  onBack: () => void;
-  onCancel: () => void;
   onFullGame: () => void;
   /**
    * When provided, the "Specify Time" button is enabled and triggers this
@@ -755,32 +989,12 @@ function PickScope({
    * button entirely — full-game judging is intentionally Defeat-only,
    * since the prompt is framed around assigning fault for a loss. Wins
    * can still be analyzed via the Specify-Time scope, which is neutral.
-   */
+  */
   isWin: boolean;
   t: Translate;
-  formatChampionName: (champion: string) => string;
 }) {
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-3 w-3" /> {t("pickAgain")}
-        </button>
-        <button
-          onClick={onCancel}
-          className="text-xs text-muted-foreground hover:text-foreground"
-        >
-          {t("cancel")}
-        </button>
-      </div>
-      {/* Visual matchup card — replaces the prior text-only "Judging You vs X"
-          line so the user sees both subjects (champion icon + name + KDA)
-          before confirming the scope. Same component used on the loading
-          and verdict stages for consistency across the pipeline. */}
-      <MatchupHeader you={you} ally={ally} formatChampionName={formatChampionName} />
+    <div className="mt-4 animate-fade-in">
       <div className="flex flex-wrap justify-center gap-3">
         {/* Full-game scope is Defeat-only. Victory rows still show the
             option disabled so users understand the feature boundary. */}

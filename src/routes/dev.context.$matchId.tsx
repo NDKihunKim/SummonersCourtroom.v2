@@ -19,9 +19,49 @@ type Search = {
   startMs?: number;
   endMs?: number;
   locale?: Locale;
+  verdictMode?: "duel" | "free-for-all";
+  freeForAllTeam?: Array<{
+    champion: string;
+    puuid?: string;
+    role?: string;
+    summoner?: string;
+  }>;
 };
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
+
+function parseFreeForAllTeam(rawValue: unknown): Search["freeForAllTeam"] {
+  let parsed: unknown;
+  if (typeof rawValue === "string") {
+    try {
+      parsed = JSON.parse(rawValue);
+    } catch {
+      return undefined;
+    }
+  } else {
+    parsed = rawValue;
+  }
+
+  try {
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed
+      .map((player) => {
+        if (!player || typeof player !== "object") return null;
+        const record = player as Record<string, unknown>;
+        if (typeof record.champion !== "string" || record.champion.length === 0) return null;
+        return {
+          champion: record.champion,
+          puuid: typeof record.puuid === "string" ? record.puuid : undefined,
+          role: typeof record.role === "string" ? record.role : undefined,
+          summoner: typeof record.summoner === "string" ? record.summoner : undefined,
+        };
+      })
+      .filter((player): player is NonNullable<Search["freeForAllTeam"]>[number] => player !== null)
+      .slice(0, 5);
+  } catch {
+    return undefined;
+  }
+}
 
 export const Route = createFileRoute("/dev/context/$matchId")({
   head: () => ({
@@ -39,6 +79,8 @@ export const Route = createFileRoute("/dev/context/$matchId")({
     startMs: raw.startMs != null ? Number(raw.startMs) : undefined,
     endMs: raw.endMs != null ? Number(raw.endMs) : undefined,
     locale: raw.locale === "ko" ? "ko" : raw.locale === "en" ? "en" : undefined,
+    verdictMode: raw.verdictMode === "free-for-all" ? "free-for-all" : "duel",
+    freeForAllTeam: parseFreeForAllTeam(raw.freeForAllTeam),
   }),
   component: DevContextPage,
 });
@@ -116,6 +158,8 @@ function DevContextPage() {
             subjectAChampion={search.subjectA}
             subjectBChampion={search.subjectB}
             locale={search.locale ?? "en"}
+            verdictMode={search.verdictMode}
+            freeForAllTeam={search.freeForAllTeam}
             onGameLengthChange={setGameLength}
           />
         ) : search.scope === "full" && search.puuid ? (
@@ -132,6 +176,8 @@ function DevContextPage() {
             subjectAChampion={search.subjectA}
             subjectBChampion={search.subjectB}
             locale={search.locale ?? "en"}
+            verdictMode={search.verdictMode}
+            freeForAllTeam={search.freeForAllTeam}
             onGameLengthChange={setGameLength}
           />
         ) : (

@@ -4,7 +4,12 @@ import { z } from "zod";
 import type { RegionalRouting } from "@/server/riot";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
-import { UPPER_PROMPT, buildLowerPrompt } from "@/components/judge-prompts/promptText";
+import {
+  UPPER_PROMPT,
+  buildFreeForAllLowerPrompt,
+  buildFreeForAllUpperPrompt,
+  buildLowerPrompt,
+} from "@/components/judge-prompts/promptText";
 import { substituteSubjects } from "@/components/judge-prompts/substituteSubjects";
 import type { Locale } from "@/i18n";
 
@@ -68,6 +73,13 @@ type SubjectInput = {
   puuid?: string;
 };
 
+type FreeForAllPlayerInput = {
+  champion: string;
+  puuid?: string;
+  role?: string;
+  summoner?: string;
+};
+
 const TimelineWindowInputSchema = z.object({
   matchId: z.string().min(3),
   userPuuid: z.string().min(1),
@@ -80,6 +92,7 @@ const TimelineWindowInputSchema = z.object({
       b: z.object({ champion: z.string().optional(), puuid: z.string().optional() }).optional(),
     })
     .optional(),
+  focusPuuids: z.array(z.string().min(1)).max(10).optional(),
 });
 
 const TimelineFullGameInputSchema = TimelineWindowInputSchema.omit({
@@ -98,6 +111,18 @@ const JudgeVerdictInputSchema = z.object({
   includeRaw: z.boolean().optional(),
   turnstileToken: TurnstileTokenSchema,
   subjects: TimelineWindowInputSchema.shape.subjects,
+  verdictMode: z.enum(["duel", "free-for-all"]).optional(),
+  freeForAllTeam: z
+    .array(
+      z.object({
+        champion: z.string().min(1),
+        puuid: z.string().optional(),
+        role: z.string().optional(),
+        summoner: z.string().optional(),
+      }),
+    )
+    .max(5)
+    .optional(),
 });
 
 const PLATFORM_TO_REGIONAL: Record<string, RegionalRouting> = {
@@ -1249,6 +1274,7 @@ function buildWindowResponse({
   timeline,
   userPuuid,
   subjects: inputSubjects,
+  focusPuuids = [],
   trimToRelevantEvidence = true,
   extraOmittedEventTypes = [],
 }: {
@@ -1258,6 +1284,7 @@ function buildWindowResponse({
   timeline: TimelinePayload;
   userPuuid: string;
   subjects?: z.infer<typeof TimelineWindowInputSchema>["subjects"];
+  focusPuuids?: readonly string[];
   trimToRelevantEvidence?: boolean;
   extraOmittedEventTypes?: readonly string[];
 }) {
@@ -1276,8 +1303,13 @@ function buildWindowResponse({
     },
   ];
   const subjectIds = new Set(
-    subjects
-      .map((subject) => subject.participant?.participantId)
+    [
+      ...subjects.map((subject) => subject.participant),
+      ...focusPuuids
+        .map((puuid) => findSubject(participants, { puuid })?.participant)
+        .filter(Boolean),
+    ]
+      .map((participant) => participant?.participantId)
       .filter((id): id is number => typeof id === "number"),
   );
   const items = extractWindow(timeline, startMs, endMs, champions);
@@ -1305,18 +1337,37 @@ function buildJudgePrompt({
   locale,
   subjectAChampion,
   subjectBChampion,
+  verdictMode = "duel",
+  freeForAllTeam = [],
 }: {
   brief: string;
   locale: Locale;
   subjectAChampion?: string;
   subjectBChampion?: string;
+  verdictMode?: "duel" | "free-for-all";
+  freeForAllTeam?: readonly FreeForAllPlayerInput[];
 }) {
   const subjects = {
     subjectA: subjectAChampion ?? "",
     subjectB: subjectBChampion ?? "",
   };
-  const upperPrompt = substituteSubjects(UPPER_PROMPT, subjects);
-  const lowerPrompt = substituteSubjects(buildLowerPrompt(locale), subjects);
+  const teamRoster = freeForAllTeam.length
+    ? freeForAllTeam
+        .map((player, index) => {
+          const role = player.role ? `${player.role}: ` : "";
+          const summoner = player.summoner ? ` (${player.summoner})` : "";
+          return `- ${role}${player.champion}${summoner}`;
+        })
+        .join("\n")
+    : "- Selected defeated-team roster unavailable.";
+  const upperPrompt =
+    verdictMode === "free-for-all"
+      ? buildFreeForAllUpperPrompt(freeForAllTeam.map((player) => player.champion))
+      : substituteSubjects(UPPER_PROMPT, subjects);
+  const lowerPrompt =
+    verdictMode === "free-for-all"
+      ? buildFreeForAllLowerPrompt(locale, "", teamRoster)
+      : substituteSubjects(buildLowerPrompt(locale), subjects);
   const prompt = [upperPrompt, "", brief, "", lowerPrompt].join("\n");
   return { upperPrompt, brief, lowerPrompt, prompt };
 }
@@ -1544,6 +1595,7 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
       timeline,
       userPuuid: data.userPuuid,
       subjects: data.subjects,
+      focusPuuids: data.focusPuuids,
     });
   });
 
@@ -1581,6 +1633,7 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
       timeline,
       userPuuid: data.userPuuid,
       subjects: data.subjects,
+      focusPuuids: data.focusPuuids,
       trimToRelevantEvidence: false,
       extraOmittedEventTypes: ["PAUSE_END"],
     });
@@ -1624,6 +1677,13 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       data.scope === "full" ? 0 : contextStartMinuteMs(data.startMs as number);
     const actualContextEndMs =
       data.scope === "full" ? timelineEnd : contextEndMs(data.endMs as number, timelineEnd);
+    const verdictMode = data.verdictMode ?? "duel";
+    const focusPuuids =
+      verdictMode === "free-for-all"
+        ? data.freeForAllTeam
+            ?.map((player) => player.puuid)
+            .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0)
+        : undefined;
 
     const windowResponse =
       data.scope === "full"
@@ -1640,6 +1700,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
               timeline,
               userPuuid: data.userPuuid,
               subjects: data.subjects,
+              focusPuuids,
               trimToRelevantEvidence: false,
               extraOmittedEventTypes: ["PAUSE_END"],
             });
@@ -1651,6 +1712,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
             timeline,
             userPuuid: data.userPuuid,
             subjects: data.subjects,
+            focusPuuids,
           });
 
     const promptPayload = buildJudgePrompt({
@@ -1658,6 +1720,8 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       locale: data.locale ?? "en",
       subjectAChampion: data.subjects?.a?.champion,
       subjectBChampion: data.subjects?.b?.champion,
+      verdictMode,
+      freeForAllTeam: data.freeForAllTeam,
     });
     let deepSeek: Awaited<ReturnType<typeof callDeepSeek>>;
     try {

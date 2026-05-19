@@ -12,6 +12,14 @@ import type { Locale, TranslationKey } from "@/i18n";
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
 
+type VerdictMode = "duel" | "free-for-all";
+type FreeForAllContextPlayer = {
+  champion: string;
+  puuid?: string;
+  role?: string;
+  summoner?: string;
+};
+
 /**
  * Specify-Time scope panel. Composes:
  *   - TimeRangePicker (dual-handle slider + mm:ss inputs)
@@ -71,6 +79,8 @@ export function ScopeSpecifyTime({
   onRun,
   onMockResult,
   onMockLoading,
+  verdictMode = "duel",
+  freeForAllTeam,
   locale = "en",
   t,
 }: {
@@ -106,6 +116,8 @@ export function ScopeSpecifyTime({
   onRun?: (range: TimeRange) => void;
   onMockResult?: (range: TimeRange) => void;
   onMockLoading?: (range: TimeRange) => void;
+  verdictMode?: VerdictMode;
+  freeForAllTeam?: FreeForAllContextPlayer[];
   locale?: Locale;
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
@@ -132,6 +144,10 @@ export function ScopeSpecifyTime({
     if (routingRegion) params.set("region", routingRegion);
     if (subjectAChampion) params.set("subjectA", subjectAChampion);
     if (subjectBChampion) params.set("subjectB", subjectBChampion);
+    if (verdictMode === "free-for-all" && freeForAllTeam?.length) {
+      params.set("verdictMode", verdictMode);
+      params.set("freeForAllTeam", JSON.stringify(freeForAllTeam));
+    }
     if (scope === "window") {
       params.set("startMs", String(range[0]));
       params.set("endMs", String(range[1]));
@@ -224,6 +240,8 @@ export function ScopeSpecifyTime({
               match={match}
               you={you}
               locale={locale}
+              verdictMode={verdictMode}
+              freeForAllTeam={freeForAllTeam}
             />
           </div>
         )}

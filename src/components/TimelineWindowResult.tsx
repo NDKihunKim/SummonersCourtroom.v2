@@ -6,7 +6,12 @@ import {
   getTimelineWindow,
 } from "@/functions/timeline-window.functions";
 import { PromptBlock } from "./judge-prompts/PromptBlock";
-import { UPPER_PROMPT, buildLowerPrompt } from "./judge-prompts/promptText";
+import {
+  UPPER_PROMPT,
+  buildFreeForAllLowerPrompt,
+  buildFreeForAllUpperPrompt,
+  buildLowerPrompt,
+} from "./judge-prompts/promptText";
 import { substituteSubjects } from "./judge-prompts/substituteSubjects";
 import { buildTeamRundown } from "./judge-prompts/teamRundown";
 import type { Match, Participant } from "@/lib/match-types";
@@ -46,6 +51,14 @@ type JudgeRawResult = {
   prompt?: unknown;
 };
 
+type VerdictMode = "duel" | "free-for-all";
+type FreeForAllContextPlayer = {
+  champion: string;
+  puuid?: string;
+  role?: string;
+  summoner?: string;
+};
+
 export function TimelineWindowResult({
   matchId,
   userPuuid,
@@ -60,6 +73,8 @@ export function TimelineWindowResult({
   match,
   you,
   locale = "en",
+  verdictMode = "duel",
+  freeForAllTeam,
   onGameLengthChange,
 }: {
   matchId: string;
@@ -86,6 +101,8 @@ export function TimelineWindowResult({
   match?: Match;
   you?: Participant;
   locale?: Locale;
+  verdictMode?: VerdictMode;
+  freeForAllTeam?: FreeForAllContextPlayer[];
   onGameLengthChange?: (gameLength: string | null) => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -108,18 +125,29 @@ export function TimelineWindowResult({
     subjectAChampion,
     subjectBChampion,
     match,
+    freeForAllTeam,
     formatChampionName,
   });
-  const upperPromptBase = substituteSubjects(UPPER_PROMPT, {
-    subjectA: subjectAChampion ?? "",
-    subjectB: subjectBChampion ?? "",
-  });
-  const upperPromptBody = teamRundown ? `${upperPromptBase}\n\n${teamRundown}` : upperPromptBase;
+  const teamRoster = buildFreeForAllRoster(freeForAllTeam);
+  const upperPromptBase =
+    verdictMode === "free-for-all"
+      ? buildFreeForAllUpperPrompt(freeForAllTeam?.map((player) => player.champion) ?? [])
+      : substituteSubjects(UPPER_PROMPT, {
+          subjectA: subjectAChampion ?? "",
+          subjectB: subjectBChampion ?? "",
+        });
+  const upperPromptBody =
+    verdictMode === "free-for-all" || !teamRundown
+      ? upperPromptBase
+      : `${upperPromptBase}\n\n${teamRundown}`;
   const upperPromptText = upperPromptBody;
-  const lowerPromptText = substituteSubjects(buildLowerPrompt(locale, championLocalization), {
-    subjectA: subjectAChampion ?? "",
-    subjectB: subjectBChampion ?? "",
-  });
+  const lowerPromptText =
+    verdictMode === "free-for-all"
+      ? buildFreeForAllLowerPrompt(locale, championLocalization, teamRoster)
+      : substituteSubjects(buildLowerPrompt(locale, championLocalization), {
+          subjectA: subjectAChampion ?? "",
+          subjectB: subjectBChampion ?? "",
+        });
 
   // Fetch is triggered when `runToken` changes (parent bumps it on "Run").
   // We deliberately do NOT depend on startMs/endMs so the user can fine-tune
@@ -149,6 +177,13 @@ export function TimelineWindowResult({
                     champion: subjectBChampion,
                   },
                 },
+                ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                  ? {
+                      focusPuuids: freeForAllTeam
+                        .map((player) => player.puuid)
+                        .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0),
+                    }
+                  : {}),
               },
             })
           : await getTimelineWindow({
@@ -167,6 +202,13 @@ export function TimelineWindowResult({
                     champion: subjectBChampion,
                   },
                 },
+                ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                  ? {
+                      focusPuuids: freeForAllTeam
+                        .map((player) => player.puuid)
+                        .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0),
+                    }
+                  : {}),
               },
             });
       setDurationMs(Math.round(performance.now() - t0));
@@ -222,6 +264,10 @@ export function TimelineWindowResult({
           ...(scope === "window" ? { startMs, endMs } : {}),
           locale,
           includeRaw: true,
+          verdictMode,
+          ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+            ? { freeForAllTeam }
+            : {}),
           subjects: {
             a: {
               champion: subjectAChampion,
@@ -360,12 +406,14 @@ function buildChampionLocalization({
   subjectAChampion,
   subjectBChampion,
   match,
+  freeForAllTeam,
   formatChampionName,
 }: {
   locale: Locale;
   subjectAChampion?: string;
   subjectBChampion?: string;
   match?: Match;
+  freeForAllTeam?: FreeForAllContextPlayer[];
   formatChampionName: (champion: string) => string;
 }): string {
   if (locale !== "ko") return "";
@@ -373,6 +421,9 @@ function buildChampionLocalization({
   const championNames = new Set<string>();
   if (subjectAChampion) championNames.add(subjectAChampion);
   if (subjectBChampion) championNames.add(subjectBChampion);
+  for (const player of freeForAllTeam ?? []) {
+    championNames.add(player.champion);
+  }
   if (match) {
     championNames.add(match.champion);
     for (const participant of [...match.team, ...match.enemies]) {
@@ -392,4 +443,15 @@ function buildChampionLocalization({
 
 Use these Korean champion names in the verdict and reasoning:
 ${rows.join("\n")}`;
+}
+
+function buildFreeForAllRoster(freeForAllTeam?: FreeForAllContextPlayer[]): string {
+  if (!freeForAllTeam?.length) return "- Selected defeated-team roster unavailable.";
+  return freeForAllTeam
+    .map((player) => {
+      const role = player.role ? `${player.role}: ` : "";
+      const summoner = player.summoner ? ` (${player.summoner})` : "";
+      return `- ${role}${player.champion}${summoner}`;
+    })
+    .join("\n");
 }
