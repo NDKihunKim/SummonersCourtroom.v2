@@ -16,6 +16,7 @@ import { Route as ContactRouteImport } from './routes/contact'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DevContextMatchIdRouteImport } from './routes/dev.context.$matchId'
+import { Route as SummonerShardGameNameTagLineRouteImport } from './routes/summoner.$shard.$gameName.$tagLine'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -52,6 +53,12 @@ const DevContextMatchIdRoute = DevContextMatchIdRouteImport.update({
   path: '/dev/context/$matchId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SummonerShardGameNameTagLineRoute =
+  SummonerShardGameNameTagLineRouteImport.update({
+    id: '/summoner/$shard/$gameName/$tagLine',
+    path: '/summoner/$shard/$gameName/$tagLine',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -61,6 +68,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/dev/context/$matchId': typeof DevContextMatchIdRoute
+  '/summoner/$shard/$gameName/$tagLine': typeof SummonerShardGameNameTagLineRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +78,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/dev/context/$matchId': typeof DevContextMatchIdRoute
+  '/summoner/$shard/$gameName/$tagLine': typeof SummonerShardGameNameTagLineRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -80,6 +89,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/dev/context/$matchId': typeof DevContextMatchIdRoute
+  '/summoner/$shard/$gameName/$tagLine': typeof SummonerShardGameNameTagLineRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,6 +101,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/dev/context/$matchId'
+    | '/summoner/$shard/$gameName/$tagLine'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -100,6 +111,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/dev/context/$matchId'
+    | '/summoner/$shard/$gameName/$tagLine'
   id:
     | '__root__'
     | '/'
@@ -109,6 +121,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/dev/context/$matchId'
+    | '/summoner/$shard/$gameName/$tagLine'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -119,6 +132,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
   DevContextMatchIdRoute: typeof DevContextMatchIdRoute
+  SummonerShardGameNameTagLineRoute: typeof SummonerShardGameNameTagLineRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -172,6 +186,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevContextMatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/summoner/$shard/$gameName/$tagLine': {
+      id: '/summoner/$shard/$gameName/$tagLine'
+      path: '/summoner/$shard/$gameName/$tagLine'
+      fullPath: '/summoner/$shard/$gameName/$tagLine'
+      preLoaderRoute: typeof SummonerShardGameNameTagLineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -183,6 +204,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
   DevContextMatchIdRoute: DevContextMatchIdRoute,
+  SummonerShardGameNameTagLineRoute: SummonerShardGameNameTagLineRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

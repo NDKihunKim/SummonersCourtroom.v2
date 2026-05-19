@@ -1,5 +1,5 @@
 /**
- * RosterColumns — renders the ALLIES / ENEMIES roster shown on the right
+ * RosterColumns — renders the BLUE / RED roster shown on the right
  * side of each MatchCard row.
  *
  * Why a dedicated component (instead of inlining in MatchCard):
@@ -31,9 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-/** How many roster slots to render per side. League is always 5v5, but the
- *  ALLIES side excludes "you", so we cap at 4 there. We accept up to 5 here
- *  and let the caller slice — keeps this component dumb about who "you" is. */
+/** How many roster slots to render per side. League is always 5v5. */
 const MAX_ROWS = 5;
 
 interface ColumnProps {
@@ -49,6 +47,7 @@ interface ColumnProps {
    */
   onPlayerClick?: (summoner: string) => void;
   formatChampionName?: (champion: string) => string;
+  highlightedPlayerKey?: string;
 }
 
 function RosterColumn({
@@ -57,6 +56,7 @@ function RosterColumn({
   accent,
   onPlayerClick,
   formatChampionName = (champion) => champion,
+  highlightedPlayerKey,
 }: ColumnProps) {
   // Cap the rendered list defensively. Riot can technically return weird
   // participant counts in custom games; never render more than MAX_ROWS so
@@ -72,6 +72,8 @@ function RosterColumn({
       </span>
 
       {rows.map((p, i) => {
+        const playerKey = p.puuid ?? p.summoner?.toLowerCase() ?? "";
+        const isHighlighted = Boolean(highlightedPlayerKey && playerKey === highlightedPlayerKey);
         // Zebra striping — every other row gets a faint background tint so
         // the eye can track horizontally between the two columns.
         const zebra = i % 2 === 1 ? "bg-muted/30" : "";
@@ -88,7 +90,11 @@ function RosterColumn({
               ring={false}
               className="shrink-0"
             />
-            <span className="block min-w-0 flex-1 truncate text-left text-[11px] text-muted-foreground">
+            <span
+              className={`block min-w-0 flex-1 truncate text-left text-[11px] ${
+                isHighlighted ? "font-semibold text-gold/80" : "text-muted-foreground"
+              }`}
+            >
               {p.summoner}
             </span>
           </>
@@ -173,38 +179,28 @@ export function RosterColumns({
   onPlayerClick,
   formatChampionName = (champion) => champion,
 }: Props) {
-  // Merge "you" into the Allies column so the visual roster is symmetrical
-  // (5 vs 5). We do NOT mutate the caller's `allies` array; a shallow copy
-  // keeps this side-effect-free and React-safe.
-  //
-  // Defensive de-dup: the server already filters "you" out of the team
-  // payload, but if a future server change ever regresses we must not
-  // render the same player twice. Match on PUUID first (canonical), and
-  // fall back to a case-insensitive Riot ID match for participants missing
-  // a PUUID (shouldn't happen in production, but cheap to handle).
-  // The slice cap inside RosterColumn (MAX_ROWS = 5) still guarantees the
-  // column never overflows even if de-dup somehow leaves >5 entries.
-  const mergedAllies = (() => {
-    if (!you) return allies;
+  const highlightedPlayerKey = you?.puuid ?? you?.summoner?.toLowerCase() ?? "";
+
+  // Merge "you" into the full roster so Blue / Red columns show the actual
+  // game sides rather than the viewed player's allies/enemies.
+  const fullRoster = (() => {
+    if (!you) return [...allies, ...enemies];
     const youKey = you.puuid ?? you.summoner?.toLowerCase() ?? "";
-    const filtered = allies.filter((p) => {
+    const filtered = [...allies, ...enemies].filter((p) => {
       const key = p.puuid ?? p.summoner?.toLowerCase() ?? "";
       return key !== youKey;
     });
-    // Append (not prepend) — order is determined entirely by sortByRole
-    // below, so the insertion index here is irrelevant for known roles.
-    // For an unknown-role "you" (remake / custom), the stable sort keeps
-    // them at the end alongside any other unknown-role allies.
     return [...filtered, you];
   })();
 
   // Sort BOTH columns by canonical role order (TOP → JUNGLE → MIDDLE →
-  // BOTTOM → UTILITY) so the viewer's row position matches their lane,
-  // mirroring how the Enemies column already reads. Unknown / missing
-  // roles fall to the bottom while preserving original relative order
-  // (stable sort) — see src/lib/role-order.ts for the rationale.
-  const sortedAllies = sortByRole(mergedAllies);
-  const sortedEnemies = sortByRole(enemies);
+  // BOTTOM → UTILITY). Unknown / missing roles fall to the bottom while
+  // preserving original relative order (stable sort).
+  const sortedBlue = sortByRole(fullRoster.filter((p) => p.teamId === 100));
+  const sortedRed = sortByRole(fullRoster.filter((p) => p.teamId === 200));
+  const hasSideData = sortedBlue.length > 0 || sortedRed.length > 0;
+  const bluePlayers = hasSideData ? sortedBlue : sortByRole(fullRoster.slice(0, MAX_ROWS));
+  const redPlayers = hasSideData ? sortedRed : sortByRole(fullRoster.slice(MAX_ROWS, MAX_ROWS * 2));
 
   // Single TooltipProvider wraps both columns so all 9 tooltips share one
   // delay timer — feels snappier than the default 700ms per-trigger delay
@@ -213,18 +209,20 @@ export function RosterColumns({
     <TooltipProvider delayDuration={150} skipDelayDuration={50}>
       <div className="flex gap-3">
         <RosterColumn
-          label="Allies"
-          players={sortedAllies}
+          label="Blue Team"
+          players={bluePlayers}
           accent="text-hex-blue"
           onPlayerClick={onPlayerClick}
           formatChampionName={formatChampionName}
+          highlightedPlayerKey={highlightedPlayerKey}
         />
         <RosterColumn
-          label="Enemies"
-          players={sortedEnemies}
+          label="Red Team"
+          players={redPlayers}
           accent="text-destructive"
           onPlayerClick={onPlayerClick}
           formatChampionName={formatChampionName}
+          highlightedPlayerKey={highlightedPlayerKey}
         />
       </div>
     </TooltipProvider>

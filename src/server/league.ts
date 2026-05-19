@@ -55,8 +55,13 @@ export async function getLeagueEntriesByPuuid(
 
 /**
  * Pick the player's RANKED_SOLO_5x5 entry from a league-v4 response.
- * Returns `null` if they're unranked in solo queue (even if they have flex).
+ * Returns `null` if they're unranked in solo queue.
  */
 export function pickSoloEntry(entries: LeagueEntry[]): LeagueEntry | null {
   return entries.find((e) => e.queueType === "RANKED_SOLO_5x5") ?? null;
+}
+
+/** Pick the player's RANKED_FLEX_SR entry, or null if unranked in Flex. */
+export function pickFlexEntry(entries: LeagueEntry[]): LeagueEntry | null {
+  return entries.find((e) => e.queueType === "RANKED_FLEX_SR") ?? null;
 }

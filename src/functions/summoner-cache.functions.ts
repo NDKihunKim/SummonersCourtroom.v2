@@ -26,9 +26,21 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { Match } from "@/lib/match-types";
 import { shardToPlatform, shardToRouting } from "@/lib/regions";
-import { parseDivision, parseTier, type Division, type Tier } from "@/lib/tier";
+import {
+  parseDivision,
+  parseTier,
+  type Division,
+  type RankedEntries,
+  type RankedEntry,
+  type Tier,
+} from "@/lib/tier";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { getLeagueEntriesByPuuid, pickSoloEntry } from "@/server/league";
+import {
+  getLeagueEntriesByPuuid,
+  pickFlexEntry,
+  pickSoloEntry,
+  type LeagueEntry,
+} from "@/server/league";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 import {
@@ -82,6 +94,7 @@ const RiotIdSchema = z.object({
   tagLine: z.string().min(2).max(8),
   turnstileToken: TurnstileTokenSchema,
 });
+const CachedRiotIdSchema = RiotIdSchema.omit({ turnstileToken: true });
 
 /** What the result page renders. Matches `GetMatchHistoryResult` in shape. */
 export interface CachedSummonerPayload {
@@ -89,6 +102,8 @@ export interface CachedSummonerPayload {
   matches: Match[];
   /** Ranked solo info; null when unranked. */
   ranked: { tier: Tier; division: Division | null; lp: number } | null;
+  /** Queue-specific ranked entries. `ranked` remains the Solo Queue alias. */
+  rankedEntries: RankedEntries;
   /**
    * Riot summoner-v4 profileIconId — drives the real Data Dragon avatar in
    * the result-page header. Null when the upstream summoner-v4 call failed
@@ -136,6 +151,40 @@ function displayName(p: RiotMatchParticipant): string {
   if (p.riotIdGameName && p.riotIdTagline) return `${p.riotIdGameName}#${p.riotIdTagline}`;
   if (p.riotIdGameName) return p.riotIdGameName;
   return p.summonerName || "Unknown";
+}
+
+function leagueEntryToRanked(entry: LeagueEntry | null): RankedEntry | null {
+  if (!entry) return null;
+  const tier = parseTier(entry.tier);
+  if (!tier) return null;
+  return {
+    tier,
+    division: parseDivision(entry.rank),
+    lp: entry.leaguePoints ?? 0,
+  };
+}
+
+function parseRankedEntry(value: unknown): RankedEntry | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entry = value as Record<string, unknown>;
+  const tier = parseTier(entry.tier);
+  if (!tier) return null;
+  return {
+    tier,
+    division: parseDivision(entry.division),
+    lp: typeof entry.lp === "number" ? entry.lp : 0,
+  };
+}
+
+function parseRankedEntries(value: unknown, soloFallback: RankedEntry | null): RankedEntries {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { solo: soloFallback, flex: null };
+  }
+  const entries = value as Record<string, unknown>;
+  return {
+    solo: parseRankedEntry(entries.solo) ?? soloFallback,
+    flex: parseRankedEntry(entries.flex),
+  };
 }
 
 function extractRunes(
@@ -257,20 +306,16 @@ async function fetchFreshFromRiot(
     if (m) matches.push(m);
   }
 
-  const solo = pickSoloEntry(leagueEntries);
-  const ranked =
-    solo && parseTier(solo.tier)
-      ? {
-          tier: parseTier(solo.tier)!,
-          division: parseDivision(solo.rank),
-          lp: solo.leaguePoints ?? 0,
-        }
-      : null;
+  const rankedEntries: RankedEntries = {
+    solo: leagueEntryToRanked(pickSoloEntry(leagueEntries)),
+    flex: leagueEntryToRanked(pickFlexEntry(leagueEntries)),
+  };
 
   return {
     account,
     matches,
-    ranked,
+    ranked: rankedEntries.solo,
+    rankedEntries,
     profileIconId: summoner?.profileIconId ?? null,
   };
 }
@@ -291,6 +336,7 @@ function rowToPayload(
     tier: string | null;
     division: string | null;
     lp: number | null;
+    ranked_entries: unknown;
     matches: unknown;
     cached_at: string;
     last_refresh_at: string;
@@ -300,6 +346,7 @@ function rowToPayload(
 ): CachedSummonerPayload {
   const tier = parseTier(row.tier);
   const ranked = tier ? { tier, division: parseDivision(row.division), lp: row.lp ?? 0 } : null;
+  const rankedEntries = parseRankedEntries(row.ranked_entries, ranked);
 
   // `matches` is JSONB — could in theory be malformed if hand-edited.
   const matches = Array.isArray(row.matches) ? (row.matches as Match[]) : [];
@@ -310,6 +357,7 @@ function rowToPayload(
     account: { gameName: row.game_name, tagLine: row.tag_line, puuid: row.puuid },
     matches,
     ranked,
+    rankedEntries,
     profileIconId: row.profile_icon_id,
     cachedAt,
     refreshAvailableAt: lastRefresh + REFRESH_COOLDOWN_MS,
@@ -327,7 +375,7 @@ async function findCachedByRiotId(shard: string, gameName: string, tagLine: stri
   const { data, error } = await supabaseAdmin
     .from("cached_summoners")
     .select(
-      "puuid, game_name, tag_line, tier, division, lp, matches, cached_at, last_refresh_at, profile_icon_id",
+      "puuid, game_name, tag_line, tier, division, lp, ranked_entries, matches, cached_at, last_refresh_at, profile_icon_id",
     )
     .eq("shard", shard)
     // ilike on the indexed lower(game_name) — tag check is cheap in JS below.
@@ -375,6 +423,7 @@ async function upsertCache(
       tier: fresh.ranked?.tier ?? null,
       division: fresh.ranked?.division ?? null,
       lp: fresh.ranked?.lp ?? null,
+      ranked_entries: fresh.rankedEntries as unknown as never,
       queue_type: "RANKED_SOLO_5x5",
       search_count: nextCount,
       cached_at: now,
@@ -421,6 +470,28 @@ async function bumpSearchCount(shard: string, puuid: string) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Cache-only profile lookup for dedicated/shareable profile routes.
+ *
+ * This intentionally never falls through to Riot. If the row is missing, the
+ * client must ask the user to explicitly fetch the player through
+ * `getOrFetchMatchHistory`, which is Turnstile-protected on cache misses.
+ */
+export const getCachedMatchHistory = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => CachedRiotIdSchema.parse(input))
+  .handler(async ({ data }): Promise<CachedSummonerPayload | null> => {
+    assertRateLimit({
+      scope: "summoner-cache-read",
+      limit: 60,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many profile requests. Please wait a minute and try again.",
+    });
+
+    const row = await findCachedByRiotId(data.shard, data.gameName, data.tagLine);
+    if (!row || !Array.isArray(row.matches) || row.matches.length === 0) return null;
+    return rowToPayload(row, /* fromCache */ true);
+  });
+
+/**
  * Cache-first match-history fetch. Used by the search form's submit handler.
  * Always returns a payload — falls back to a fresh Riot fetch when the cache
  * is empty or the cache row is unusable.
@@ -460,6 +531,7 @@ export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
       account: fresh.account,
       matches: fresh.matches,
       ranked: fresh.ranked,
+      rankedEntries: fresh.rankedEntries,
       profileIconId: fresh.profileIconId,
       cachedAt: cachedAtMs,
       refreshAvailableAt: cachedAtMs + REFRESH_COOLDOWN_MS,
@@ -501,6 +573,7 @@ export const refreshSummoner = createServerFn({ method: "POST" })
       account: fresh.account,
       matches: fresh.matches,
       ranked: fresh.ranked,
+      rankedEntries: fresh.rankedEntries,
       profileIconId: fresh.profileIconId,
       cachedAt: cachedAtMs,
       refreshAvailableAt: cachedAtMs + REFRESH_COOLDOWN_MS,

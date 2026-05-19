@@ -16,7 +16,7 @@ interface Props {
   className?: string;
 }
 
-const EMBLEM_ZOOM = 4.5;
+const EMBLEM_ZOOM = 4.8;
 
 function emblemUrl(tier: Tier): string {
   const slug = tier.toLowerCase();

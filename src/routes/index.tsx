@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import {
   useEffect,
@@ -10,7 +10,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ArrowLeft, Loader2, Search, Star, Swords, Trophy } from "lucide-react";
+import { ArrowLeft, Loader2, Search, Star, Swords, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { MatchCard } from "@/components/MatchCard";
 import { AdFrame } from "@/components/AdFrame";
@@ -28,7 +28,7 @@ import { useSavedPlayers } from "@/hooks/useSavedPlayers";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { RefreshButton } from "@/components/RefreshButton";
 import { TierEmblem } from "@/components/TierEmblem";
-import { tierLabel } from "@/lib/tier";
+import { tierLabel, type RankedEntry } from "@/lib/tier";
 import { ProfileIcon } from "@/components/ProfileIcon";
 import type { Participant } from "@/lib/match-types";
 import { SampleSizeSelector } from "@/components/SampleSizeSelector";
@@ -36,6 +36,8 @@ import { useSampleSize } from "@/hooks/useSampleSize";
 import { computeMatchStats } from "@/lib/match-stats";
 import { useLocale, type Locale, type TranslationKey } from "@/i18n";
 import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
+
+const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -78,22 +80,15 @@ function isKnownShard(value: string): value is Shard {
 }
 
 /**
- * Build the same-origin URL used to deep-link a player into a fresh tab.
- * Encapsulated so the new-tab opener and any future share/copy-link feature
- * stay in sync. The `autosearch=1` flag is what tells the index route to
- * auto-trigger the search on mount (see the URL-param effect in `Index`).
+ * Build the same-origin dedicated profile URL used for shareable player links.
  */
-function buildPlayerSearchUrl(riotId: string, shard: Shard): string {
-  const params = new URLSearchParams({
-    riotId,
-    shard,
-    autosearch: "1",
-  });
-  return `/?${params.toString()}`;
+export function buildPlayerProfileUrl(shard: Shard, gameName: string, tagLine: string): string {
+  return `/summoner/${encodeURIComponent(shard)}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
 }
 
 function Index() {
   const { locale, setLocale, t } = useLocale();
+  const navigate = useNavigate();
   const [riotId, setRiotId] = useState("");
   // Per-shard selection (e.g. "NA", "EUW", "KR"). The hook auto-detects from
   // the visitor's IANA timezone on first visit, then persists their choice
@@ -169,8 +164,6 @@ function Index() {
       return getOrFetchMatchHistory({ data: vars });
     },
     onSuccess: (result, vars) => {
-      setData(result);
-      setViewedShard(vars.shard);
       setShard(vars.shard);
       // Persist this successful lookup for future autocomplete suggestions.
       // Source the canonical name/tag from the server response so casing
@@ -179,6 +172,14 @@ function Index() {
         gameName: result.account.gameName,
         tagLine: result.account.tagLine,
         shard: vars.shard,
+      });
+      void navigate({
+        to: "/summoner/$shard/$gameName/$tagLine",
+        params: {
+          shard: vars.shard,
+          gameName: result.account.gameName,
+          tagLine: result.account.tagLine,
+        },
       });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : t("failedToLoadMatches")),
@@ -286,7 +287,7 @@ function Index() {
       return;
     }
     if (typeof window === "undefined") return; // SSR safety
-    const url = buildPlayerSearchUrl(rawRiotId, viewedShard ?? shard);
+    const url = buildPlayerProfileUrl(viewedShard ?? shard, parsed.gameName, parsed.tagLine);
     // `noopener,noreferrer` — see security note above.
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -492,6 +493,19 @@ function Index() {
                   autoComplete="off"
                   className="min-w-0 w-full bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
                 />
+                {riotId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRiotId("");
+                      setIsSuggestOpen(false);
+                    }}
+                    aria-label={t("clearRiotId")}
+                    className="mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
               <button
                 type="submit"
@@ -554,7 +568,7 @@ function Index() {
   );
 }
 
-function MatchHistory({
+export function MatchHistory({
   result,
   shard,
   isSaved,
@@ -576,7 +590,19 @@ function MatchHistory({
   locale: Locale;
   t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
-  const { account, matches, ranked, cachedAt, refreshAvailableAt, profileIconId } = result;
+  const {
+    account,
+    matches,
+    ranked,
+    rankedEntries: rawRankedEntries,
+    cachedAt,
+    refreshAvailableAt,
+    profileIconId,
+  } = result;
+  const rankedEntries = rawRankedEntries ?? { solo: ranked, flex: null };
+  const [rankedQueue, setRankedQueue] = useState<"solo" | "flex">("solo");
+  const displayedRanked: RankedEntry | null =
+    SHOW_DEV_CONTEXT && rankedQueue === "flex" ? rankedEntries.flex : rankedEntries.solo ?? ranked;
   // ─── Stats vs. visible split ─────────────────────────────────────────
   // We cache up to 30 matches server-side (see `MATCH_COUNT`) so the
   // Performance Block selector (10 / 20 / 30) can slice locally with no
@@ -593,6 +619,7 @@ function MatchHistory({
   // is cheaper and more correct than keying off `matches` identity.
   useEffect(() => {
     setExpanded(false);
+    setRankedQueue("solo");
   }, [account.puuid]);
 
   // Cap defensively — if the cache somehow holds <10, slice() handles it;
@@ -664,7 +691,7 @@ function MatchHistory({
         </button>
 
         <div
-          className="rounded-2xl border border-border bg-card p-6"
+          className="rounded-2xl border border-border bg-card px-6 py-3"
           style={{ boxShadow: "var(--shadow-elegant)" }}
         >
           {/*
@@ -728,47 +755,71 @@ function MatchHistory({
                 gracefully renders the inline SVG fallback when `tier` is
                 null so the column doesn't collapse on unranked accounts. */}
             <div className="flex flex-col items-center gap-1">
-              <TierEmblem tier={ranked?.tier ?? null} size={88} />
+              <TierEmblem tier={displayedRanked?.tier ?? null} size={88} />
               <div className="text-sm font-semibold text-foreground">
-                {tierLabel(ranked)}
+                {tierLabel(displayedRanked)}
               </div>
-              {/* LP only when the player is actually ranked — otherwise a
-                  blank line would make the unranked state look broken. */}
-              {ranked ? (
+              {/* LP only when the selected queue is actually ranked —
+                  otherwise a blank line would make the unranked state look broken. */}
+              {displayedRanked?.tier ? (
                 <div className="text-xs uppercase tracking-wider text-gold">
-                  {ranked.lp ?? 0} LP
+                  {displayedRanked.lp ?? 0} LP
+                </div>
+              ) : null}
+              {SHOW_DEV_CONTEXT ? (
+                <div className="mt-1 inline-flex rounded-full border border-border bg-background/50 p-0.5 text-[10px] font-semibold text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setRankedQueue("solo")}
+                    className={`rounded-full px-2 py-0.5 transition-colors ${
+                      rankedQueue === "solo" ? "bg-gold/20 text-gold" : "hover:text-foreground"
+                    }`}
+                  >
+                    {t("queueRankedSolo")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRankedQueue("flex")}
+                    className={`rounded-full px-2 py-0.5 transition-colors ${
+                      rankedQueue === "flex" ? "bg-gold/20 text-gold" : "hover:text-foreground"
+                    }`}
+                  >
+                    {t("queueRankedFlex")}
+                  </button>
                 </div>
               ) : null}
             </div>
 
             {/* ── RIGHT: Performance Block ─────────────────────────────── */}
-            {/* The trophy line + selector are horizontally CENTERED above
-                the 3-stat row (items-center on the column) so the label
-                visually balances the stats group beneath it. The stats row
-                itself keeps its own internal alignment. */}
-            <div className="flex flex-col items-center gap-2">
-              {/* Trophy line — uses `sampleUsed` (not the requested
-                  `sampleSize`) so the count is always truthful. If the
-                  user picked 30 but the cache only has 17, we show
-                  "Last 17 matches" instead of lying about it. */}
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Trophy className="h-4 w-4 text-gold" />
-                <span>{t("lastMatches", { count: sampleUsed })}</span>
-              </div>
-              {/* Hide the selector for tiny histories; otherwise expose only
-                  the sample sizes that make sense for the cached match count. */}
-              {showSampleSizeSelector ? (
-                <SampleSizeSelector
-                  value={sampleSize}
-                  onChange={setSampleSize}
-                  options={sampleSizeOptions}
-                  t={t}
-                />
-              ) : null}
-              <div className="flex gap-6 text-center">
-                <Stat label={t("winRate")} value={`${wr}%`} accent />
-                <Stat label={t("winLoss")} value={`${wins}W ${losses}L`} />
-                <Stat label={t("avgKda")} value={avgKda} />
+            {/* Center the title + stat row as one group so the performance
+                numbers remain vertically balanced against the neighboring
+                profile/tier columns. */}
+            <div className="flex min-h-[150px] flex-col items-center justify-center">
+              <div className="flex flex-col items-center gap-2">
+                {/* Trophy line — when the selector is hidden for tiny
+                    histories, use `sampleUsed` so the count stays truthful. */}
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Trophy className="h-4 w-4 text-gold" />
+                  {showSampleSizeSelector ? (
+                    <>
+                      <span>{t("lastMatchesPrefix")}</span>
+                      <SampleSizeSelector
+                        value={sampleSize}
+                        onChange={setSampleSize}
+                        options={sampleSizeOptions}
+                        t={t}
+                      />
+                      <span>{t("lastMatchesSuffix")}</span>
+                    </>
+                  ) : (
+                    <span>{t("lastMatches", { count: sampleUsed })}</span>
+                  )}
+                </div>
+                <div className="flex gap-6 text-center">
+                  <Stat label={t("winRate")} value={`${wr}%`} accent />
+                  <Stat label={t("winLoss")} value={`${wins}W ${losses}L`} />
+                  <Stat label={t("avgKda")} value={avgKda} />
+                </div>
               </div>
             </div>
           </div>

@@ -5,9 +5,6 @@
 //   - The autocomplete dropdown (tier badge + sort)
 //   - The match-history page header (tier badge next to the Riot ID)
 //
-// We intentionally only model RANKED_SOLO_5x5 in v1. Flex queue could be added
-// later by extending RankedEntry to be queue-tagged.
-
 /** Riot tier names. `null` = unranked. */
 export type Tier =
   | "CHALLENGER"
@@ -29,6 +26,11 @@ export interface RankedEntry {
   division: Division | null;
   /** League points 0–99 (or higher in apex tiers). */
   lp: number | null;
+}
+
+export interface RankedEntries {
+  solo: RankedEntry | null;
+  flex: RankedEntry | null;
 }
 
 /** Apex tiers omit divisions. */

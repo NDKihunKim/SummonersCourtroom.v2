@@ -170,7 +170,7 @@ export function MatchCard({
   const formatChampionName = useChampionNameFormatter(locale);
   const resultLabel = win ? t("victory") : t("defeat");
   const queueLabel = formatQueue(match.queue, locale, t);
-  const isRankedSolo = match.queue === "Ranked Solo";
+  const isRankedGame = match.queue === "Ranked Solo" || match.queue === "Ranked Flex";
   const durationLabel = formatDuration(match.duration, locale, t);
   const matchDurationMs = parseMatchDurationToMs(match.duration);
   const playedAtLabel = formatPlayedAt(match.playedAt, locale, t);
@@ -288,7 +288,7 @@ export function MatchCard({
   async function runJudge(scope: Scope, windowRange?: [number, number]) {
     if (!pickedAlly) return;
     clearMockLoadingTimers();
-    if (!isRankedSolo) {
+    if (!isRankedGame) {
       toast.warning(t("rankedSoloVerdictOnly"));
       return;
     }
@@ -469,7 +469,7 @@ export function MatchCard({
               can stay dumb/reusable. */}
           {stage === "closed" && (
             <div className="ml-auto flex flex-1 justify-center">
-              {isRankedSolo ? (
+              {isRankedGame ? (
                 <ExpandToggle onClick={() => setStage("pickAlly")} />
               ) : (
                 <button

@@ -26,6 +26,7 @@ export type Database = {
           profile_icon_id: number | null
           puuid: string
           queue_type: string
+          ranked_entries: Json | null
           search_count: number
           shard: string
           tag_line: string
@@ -44,6 +45,7 @@ export type Database = {
           profile_icon_id?: number | null
           puuid: string
           queue_type?: string
+          ranked_entries?: Json | null
           search_count?: number
           shard: string
           tag_line: string
@@ -62,6 +64,7 @@ export type Database = {
           profile_icon_id?: number | null
           puuid?: string
           queue_type?: string
+          ranked_entries?: Json | null
           search_count?: number
           shard?: string
           tag_line?: string

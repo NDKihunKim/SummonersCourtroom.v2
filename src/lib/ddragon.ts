@@ -281,6 +281,7 @@ const KEYSTONE_PATHS: Record<number, string> = {
   8214: "Styles/Sorcery/SummonAery/SummonAery.png",
   8229: "Styles/Sorcery/ArcaneComet/ArcaneComet.png",
   8230: "Styles/Sorcery/PhaseRush/PhaseRush.png",
+  8992: "Styles/Sorcery/DeathfireTouch/DEATHFIRE_TOUCH_KEYSTONE.png",
   // Resolve (8400)
   8437: "Styles/Resolve/GraspOfTheUndying/GraspOfTheUndying.png",
   8439: "Styles/Resolve/VeteranAftershock/VeteranAftershock.png",
