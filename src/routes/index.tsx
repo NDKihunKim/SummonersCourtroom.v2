@@ -35,6 +35,7 @@ import { SampleSizeSelector } from "@/components/SampleSizeSelector";
 import { useSampleSize } from "@/hooks/useSampleSize";
 import { computeMatchStats } from "@/lib/match-stats";
 import { useLocale, type Locale, type TranslationKey } from "@/i18n";
+import type { SharedVerdictPayload } from "@/functions/shared-verdict.functions";
 import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
@@ -576,6 +577,8 @@ export function MatchHistory({
   onRefreshed,
   onBack,
   onSearchPlayer,
+  shareNotice,
+  sharedVerdict,
   locale,
   t,
 }: {
@@ -587,6 +590,8 @@ export function MatchHistory({
   onBack: () => void;
   /** Called when a roster row is clicked — searches that player same-tab. */
   onSearchPlayer: (rawRiotId: string) => void;
+  shareNotice?: string;
+  sharedVerdict?: SharedVerdictPayload | null;
   locale: Locale;
   t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
@@ -689,6 +694,12 @@ export function MatchHistory({
         >
           <ArrowLeft className="h-4 w-4" /> {t("newSearch")}
         </button>
+
+        {shareNotice && (
+          <div className="mb-4 rounded-xl border border-gold/60 bg-gold/10 p-4 text-sm text-gold">
+            {shareNotice}
+          </div>
+        )}
 
         <div
           className="rounded-2xl border border-border bg-card px-6 py-3"
@@ -828,6 +839,7 @@ export function MatchHistory({
         <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           {t("recentMatches")}
         </h2>
+        {sharedVerdict && <SharedVerdictPanel verdict={sharedVerdict} />}
         {visibleMatches.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
             {t("noRecentMatches")}
@@ -882,6 +894,9 @@ export function MatchHistory({
                     onPlayerClick={onSearchPlayer}
                     locale={locale}
                     t={t}
+                    profileShard={shard}
+                    profileGameName={account.gameName}
+                    profileTagLine={account.tagLine}
                   />
                 </div>
               );
@@ -905,6 +920,39 @@ export function MatchHistory({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function SharedVerdictPanel({ verdict }: { verdict: SharedVerdictPayload }) {
+  return (
+    <div className="mb-4 rounded-xl border border-gold/60 bg-card p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm font-semibold uppercase tracking-wider text-gold">
+          Shared Verdict
+        </div>
+        {verdict.scopeLabel && (
+          <div className="text-sm font-semibold uppercase tracking-wider text-gold">
+            {verdict.scopeLabel}
+          </div>
+        )}
+      </div>
+      <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
+          More at fault
+        </div>
+        <div className="mt-1 text-2xl font-bold text-gold">
+          {verdict.verdictDisplay.championName}
+        </div>
+        {verdict.verdictDisplay.summonerName && (
+          <div className="mt-1 text-xs font-medium text-muted-foreground">
+            {verdict.verdictDisplay.summonerName}
+          </div>
+        )}
+      </div>
+      <p className="whitespace-pre-wrap rounded-lg border border-border bg-background p-4 text-sm leading-relaxed text-foreground">
+        {verdict.reasoning}
+      </p>
     </div>
   );
 }

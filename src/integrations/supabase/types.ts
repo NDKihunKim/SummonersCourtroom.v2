@@ -81,6 +81,9 @@ export type Database = {
           id: string
           locale: string
           match_id: string | null
+          profile_game_name: string | null
+          profile_shard: string | null
+          profile_tag_line: string | null
           reasoning: string
           scope_label: string | null
           selected_players: Json
@@ -93,6 +96,9 @@ export type Database = {
           id: string
           locale?: string
           match_id?: string | null
+          profile_game_name?: string | null
+          profile_shard?: string | null
+          profile_tag_line?: string | null
           reasoning: string
           scope_label?: string | null
           selected_players?: Json
@@ -105,6 +111,9 @@ export type Database = {
           id?: string
           locale?: string
           match_id?: string | null
+          profile_game_name?: string | null
+          profile_shard?: string | null
+          profile_tag_line?: string | null
           reasoning?: string
           scope_label?: string | null
           selected_players?: Json

@@ -1,14 +1,18 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Gavel, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { AdFrame } from "@/components/AdFrame";
-import { ChampionIcon } from "@/components/ChampionIcon";
+import {
+  getCachedMatchHistory,
+  type CachedSummonerPayload,
+} from "@/functions/summoner-cache.functions";
 import {
   getSharedVerdict,
   type SharedVerdictPayload,
-  type SharedVerdictPlayer,
 } from "@/functions/shared-verdict.functions";
+import { SHARDS, type Shard } from "@/lib/regions";
 import { useLocale } from "@/i18n";
+import { buildPlayerProfileUrl, MatchHistory } from "./index";
 
 export const Route = createFileRoute("/share/$shareId")({
   head: () => ({
@@ -24,21 +28,47 @@ export const Route = createFileRoute("/share/$shareId")({
   component: SharePage,
 });
 
+function isKnownShard(value: string): value is Shard {
+  return SHARDS.some((shard) => shard.code === value);
+}
+
 function SharePage() {
   const { locale, setLocale, t } = useLocale();
+  const navigate = useNavigate();
   const { shareId } = Route.useParams();
   const [verdict, setVerdict] = useState<SharedVerdictPayload | null>(null);
+  const [profile, setProfile] = useState<CachedSummonerPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profileUnavailable, setProfileUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setVerdict(null);
+    setProfile(null);
     setError(null);
+    setProfileUnavailable(false);
 
     async function loadShare() {
       try {
-        const data = await getSharedVerdict({ data: { id: shareId } });
-        if (!cancelled) setVerdict(data);
+        const shared = await getSharedVerdict({ data: { id: shareId } });
+        if (cancelled) return;
+        setVerdict(shared);
+
+        if (!shared.profile || !isKnownShard(shared.profile.shard)) {
+          setProfileUnavailable(true);
+          return;
+        }
+
+        const cached = await getCachedMatchHistory({
+          data: {
+            shard: shared.profile.shard,
+            gameName: shared.profile.gameName,
+            tagLine: shared.profile.tagLine,
+          },
+        });
+        if (cancelled) return;
+        if (cached) setProfile(cached);
+        else setProfileUnavailable(true);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Shared verdict not found or expired.");
@@ -52,105 +82,107 @@ function SharePage() {
     };
   }, [shareId]);
 
+  if (error) {
+    return (
+      <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+        <UnavailableCard title="Shared verdict unavailable" message={error} />
+      </AdFrame>
+    );
+  }
+
+  if (!verdict) {
+    return (
+      <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+        <main className="min-h-dvh px-4 py-16" style={{ background: "var(--gradient-hero)" }}>
+          <div className="mx-auto max-w-xl rounded-xl border border-border bg-card p-6 text-center text-muted-foreground">
+            <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-gold" />
+            {t("loading")}
+          </div>
+        </main>
+      </AdFrame>
+    );
+  }
+
+  if (!profile || !verdict.profile || !isKnownShard(verdict.profile.shard)) {
+    return (
+      <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+        <UnavailableCard
+          title="Shared profile unavailable"
+          message={
+            profileUnavailable
+              ? "This shared player profile is not available from cache. Start a new search to view current match history."
+              : "Loading shared player profile..."
+          }
+          loading={!profileUnavailable}
+        />
+      </AdFrame>
+    );
+  }
+
+  const matchStillVisible = Boolean(
+    verdict.matchId &&
+      profile.matches
+        .slice(0, 20)
+        .some((match) => match.riotMatchId === verdict.matchId || match.id === verdict.matchId),
+  );
+
   return (
     <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
-      <main className="min-h-dvh px-4 py-16" style={{ background: "var(--gradient-hero)" }}>
-        <div className="mx-auto max-w-5xl">
-          {!verdict && !error ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-center text-muted-foreground">
-              <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-gold" />
-              {t("loading")}
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-center">
-              <h1 className="text-xl font-bold text-foreground">Shared verdict unavailable</h1>
-              <p className="mt-2 text-sm text-muted-foreground">{error}</p>
-              <Link
-                to="/"
-                className="mt-4 inline-flex rounded-md border border-gold bg-gold/10 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/20"
-              >
-                Back home
-              </Link>
-            </div>
-          ) : null}
-
-          {verdict ? <SharedVerdictView verdict={verdict} /> : null}
-        </div>
-      </main>
+      <MatchHistory
+        result={profile}
+        shard={verdict.profile.shard}
+        isSaved={false}
+        onToggleSaved={() => undefined}
+        onRefreshed={setProfile}
+        onBack={() => void navigate({ to: "/" })}
+        onSearchPlayer={(rawRiotId) => {
+          const hash = rawRiotId.lastIndexOf("#");
+          if (hash < 1 || hash === rawRiotId.length - 1) return;
+          const gameName = rawRiotId.slice(0, hash).trim();
+          const tagLine = rawRiotId.slice(hash + 1).trim();
+          window.open(
+            buildPlayerProfileUrl(verdict.profile!.shard, gameName, tagLine),
+            "_blank",
+            "noopener,noreferrer",
+          );
+        }}
+        shareNotice={
+          matchStillVisible
+            ? "This page was opened from a shared verdict link."
+            : "This shared match is no longer in this player's recent match history. It may have been pushed out by newer games."
+        }
+        sharedVerdict={matchStillVisible ? verdict : null}
+        locale={locale}
+        t={t}
+      />
     </AdFrame>
   );
 }
 
-function SharedVerdictView({ verdict }: { verdict: SharedVerdictPayload }) {
+function UnavailableCard({
+  title,
+  message,
+  loading,
+}: {
+  title: string;
+  message: string;
+  loading?: boolean;
+}) {
   return (
-    <section className="rounded-xl border border-border bg-card/95 p-5 shadow-lg">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Gavel className="h-4 w-4 text-gold" />
-          <h1 className="text-sm font-semibold uppercase tracking-wider text-gold">
-            Shared Verdict
-          </h1>
-        </div>
-        {verdict.scopeLabel && (
-          <div className="text-right text-sm font-semibold uppercase tracking-wider text-gold">
-            {verdict.scopeLabel}
-          </div>
+    <main className="min-h-dvh px-4 py-16" style={{ background: "var(--gradient-hero)" }}>
+      <div className="mx-auto max-w-xl rounded-xl border border-border bg-card p-6 text-center">
+        {loading ? <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-gold" /> : null}
+        <h1 className="text-xl font-bold text-foreground">{title}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+        {!loading && (
+          <Link
+            to="/"
+            className="mt-4 inline-flex rounded-md border border-gold bg-gold/10 px-4 py-2 text-sm font-semibold text-gold hover:bg-gold/20"
+          >
+            Back home
+          </Link>
         )}
       </div>
-
-      <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
-        {verdict.selectedPlayers.map((player, index) => (
-          <div key={`${player.summoner ?? player.champion}-${index}`} className="flex items-center gap-3">
-            {index > 0 ? <span className="text-lg font-bold text-muted-foreground">vs</span> : null}
-            <SharedPlayerTile player={player} />
-          </div>
-        ))}
-      </div>
-
-      <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
-          More at fault
-        </div>
-        <div className="mt-1 text-2xl font-bold text-gold">
-          {verdict.verdictDisplay.championName}
-        </div>
-        {verdict.verdictDisplay.summonerName && (
-          <div className="mt-1 text-xs font-medium text-muted-foreground">
-            {verdict.verdictDisplay.summonerName}
-          </div>
-        )}
-      </div>
-
-      <p className="whitespace-pre-wrap rounded-lg border border-border bg-background p-4 text-sm leading-relaxed text-foreground">
-        {verdict.reasoning}
-      </p>
-    </section>
-  );
-}
-
-function SharedPlayerTile({ player }: { player: SharedVerdictPlayer }) {
-  const kda =
-    typeof player.kills === "number" && typeof player.deaths === "number" && typeof player.assists === "number"
-      ? `${player.kills}/${player.deaths}/${player.assists}`
-      : null;
-
-  return (
-    <div className="flex w-28 shrink-0 flex-col items-center gap-1 overflow-hidden rounded-lg border border-border bg-card p-2">
-      <ChampionIcon champion={player.champion} size={48} />
-      <span className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground">
-        {player.championLabel ?? player.champion}
-      </span>
-      {player.summoner && (
-        <span
-          className="block w-full min-w-0 truncate text-center text-[10px] text-muted-foreground"
-          title={player.summoner}
-        >
-          {player.summoner}
-        </span>
-      )}
-      {kda && <span className="text-[10px] text-muted-foreground">{kda}</span>}
-    </div>
+    </main>
   );
 }

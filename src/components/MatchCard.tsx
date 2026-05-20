@@ -14,6 +14,7 @@ import { getJudgeVerdict } from "@/functions/timeline-window.functions";
 import { createSharedVerdict } from "@/functions/shared-verdict.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import { sortByRole } from "@/lib/role-order";
+import type { Shard } from "@/lib/regions";
 import type { Locale, TranslationKey } from "@/i18n";
 import { TurnstileWidget, type TurnstileHandle } from "./TurnstileWidget";
 
@@ -171,6 +172,9 @@ export function MatchCard({
   match,
   you,
   onPlayerClick,
+  profileShard,
+  profileGameName,
+  profileTagLine,
   locale = "en",
   t = defaultT,
 }: {
@@ -186,6 +190,9 @@ export function MatchCard({
    * raw Riot ID string. Optional — when omitted roster rows are read-only.
    */
   onPlayerClick?: (summoner: string) => void;
+  profileShard?: Shard;
+  profileGameName?: string;
+  profileTagLine?: string;
   locale?: Locale;
   t?: Translate;
 }) {
@@ -462,6 +469,15 @@ export function MatchCard({
       const result = await createSharedVerdict({
         data: {
           matchId: match.riotMatchId,
+          ...(profileShard && profileGameName && profileTagLine
+            ? {
+                profile: {
+                  shard: profileShard,
+                  gameName: profileGameName,
+                  tagLine: profileTagLine,
+                },
+              }
+            : {}),
           locale,
           verdictMode: faultMode,
           scopeLabel: verdictWindowLabel,

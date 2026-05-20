@@ -21,6 +21,13 @@ const VerdictDisplaySchema = z.object({
 
 const CreateSharedVerdictInputSchema = z.object({
   matchId: z.string().max(64).optional(),
+  profile: z
+    .object({
+      shard: z.string().min(1).max(8),
+      gameName: z.string().min(1).max(128),
+      tagLine: z.string().min(1).max(32),
+    })
+    .optional(),
   locale: z.enum(["en", "ko"]),
   verdictMode: z.string().min(1).max(32),
   scopeLabel: z.string().max(64).nullable().optional(),
@@ -38,6 +45,11 @@ export type SharedVerdictPayload = {
   id: string;
   expiresAt: string;
   matchId: string | null;
+  profile: {
+    shard: string;
+    gameName: string;
+    tagLine: string;
+  } | null;
   locale: Locale;
   verdictMode: string;
   scopeLabel: string | null;
@@ -64,6 +76,9 @@ function normalizeSharedVerdict(row: {
   id: string;
   expires_at: string;
   match_id: string | null;
+  profile_shard: string | null;
+  profile_game_name: string | null;
+  profile_tag_line: string | null;
   locale: string;
   verdict_mode: string;
   scope_label: string | null;
@@ -77,6 +92,14 @@ function normalizeSharedVerdict(row: {
     id: row.id,
     expiresAt: row.expires_at,
     matchId: row.match_id,
+    profile:
+      row.profile_shard && row.profile_game_name && row.profile_tag_line
+        ? {
+            shard: row.profile_shard,
+            gameName: row.profile_game_name,
+            tagLine: row.profile_tag_line,
+          }
+        : null,
     locale: row.locale === "ko" ? "ko" : "en",
     verdictMode: row.verdict_mode,
     scopeLabel: row.scope_label,
@@ -98,6 +121,9 @@ export const createSharedVerdict = createServerFn({ method: "POST" })
         id,
         expires_at: expiresAt,
         match_id: data.matchId ?? null,
+        profile_shard: data.profile?.shard ?? null,
+        profile_game_name: data.profile?.gameName ?? null,
+        profile_tag_line: data.profile?.tagLine ?? null,
         locale: data.locale,
         verdict_mode: data.verdictMode,
         scope_label: data.scopeLabel ?? null,
@@ -128,7 +154,9 @@ export const getSharedVerdict = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { data: row, error } = await supabaseAdmin
       .from("shared_verdicts")
-      .select("id, expires_at, match_id, locale, verdict_mode, scope_label, selected_players, verdict_display, reasoning")
+      .select(
+        "id, expires_at, match_id, profile_shard, profile_game_name, profile_tag_line, locale, verdict_mode, scope_label, selected_players, verdict_display, reasoning",
+      )
       .eq("id", data.id)
       .maybeSingle();
 
