@@ -74,6 +74,45 @@ export type Database = {
         }
         Relationships: []
       }
+      shared_verdicts: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          locale: string
+          match_id: string | null
+          reasoning: string
+          scope_label: string | null
+          selected_players: Json
+          verdict_display: Json
+          verdict_mode: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id: string
+          locale?: string
+          match_id?: string | null
+          reasoning: string
+          scope_label?: string | null
+          selected_players?: Json
+          verdict_display: Json
+          verdict_mode: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          locale?: string
+          match_id?: string | null
+          reasoning?: string
+          scope_label?: string | null
+          selected_players?: Json
+          verdict_display?: Json
+          verdict_mode?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

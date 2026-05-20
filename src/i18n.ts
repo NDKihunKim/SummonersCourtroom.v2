@@ -87,6 +87,9 @@ const translations = {
     previewOnlyWarning:
       "Preview only — this is an example of how the verdict will be displayed. No AI was used to generate this output.",
     moreAtFault: "More at fault",
+    share: "Share",
+    shareLinkCopied: "Share link copied.",
+    shareFailed: "Failed to create share link.",
     judgeAnother: "Judge another",
     close: "Close",
     judgeDeliberating: "The Judge is deliberating",
@@ -195,6 +198,9 @@ const translations = {
     previewOnlyWarning:
       "미리보기 전용입니다. 판결이 표시되는 방식의 예시이며, 이 결과 생성에는 AI가 사용되지 않았습니다.",
     moreAtFault: "더 큰 잘못이 있는 플레이어",
+    share: "공유",
+    shareLinkCopied: "공유 링크가 복사되었습니다.",
+    shareFailed: "공유 링크를 만들지 못했습니다.",
     judgeAnother: "새 판결",
     close: "닫기",
     judgeDeliberating: "게임 내용 분석 및 심의 중",

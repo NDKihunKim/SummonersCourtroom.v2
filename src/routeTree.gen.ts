@@ -15,6 +15,7 @@ import { Route as LegalRouteImport } from './routes/legal'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ShareShareIdRouteImport } from './routes/share.$shareId'
 import { Route as DevContextMatchIdRouteImport } from './routes/dev.context.$matchId'
 import { Route as SummonerShardGameNameTagLineRouteImport } from './routes/summoner.$shard.$gameName.$tagLine'
 
@@ -48,6 +49,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareShareIdRoute = ShareShareIdRouteImport.update({
+  id: '/share/$shareId',
+  path: '/share/$shareId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DevContextMatchIdRoute = DevContextMatchIdRouteImport.update({
   id: '/dev/context/$matchId',
   path: '/dev/context/$matchId',
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/legal': typeof LegalRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/dev/context/$matchId': typeof DevContextMatchIdRoute
   '/summoner/$shard/$gameName/$tagLine': typeof SummonerShardGameNameTagLineRoute
 }
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/legal': typeof LegalRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/dev/context/$matchId': typeof DevContextMatchIdRoute
   '/summoner/$shard/$gameName/$tagLine': typeof SummonerShardGameNameTagLineRoute
 }
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/legal': typeof LegalRoute
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/dev/context/$matchId': typeof DevContextMatchIdRoute
   '/summoner/$shard/$gameName/$tagLine': typeof SummonerShardGameNameTagLineRoute
 }
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/legal'
     | '/privacy'
     | '/terms'
+    | '/share/$shareId'
     | '/dev/context/$matchId'
     | '/summoner/$shard/$gameName/$tagLine'
   fileRoutesByTo: FileRoutesByTo
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/legal'
     | '/privacy'
     | '/terms'
+    | '/share/$shareId'
     | '/dev/context/$matchId'
     | '/summoner/$shard/$gameName/$tagLine'
   id:
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/legal'
     | '/privacy'
     | '/terms'
+    | '/share/$shareId'
     | '/dev/context/$matchId'
     | '/summoner/$shard/$gameName/$tagLine'
   fileRoutesById: FileRoutesById
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   LegalRoute: typeof LegalRoute
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
+  ShareShareIdRoute: typeof ShareShareIdRoute
   DevContextMatchIdRoute: typeof DevContextMatchIdRoute
   SummonerShardGameNameTagLineRoute: typeof SummonerShardGameNameTagLineRoute
 }
@@ -179,6 +192,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/$shareId': {
+      id: '/share/$shareId'
+      path: '/share/$shareId'
+      fullPath: '/share/$shareId'
+      preLoaderRoute: typeof ShareShareIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dev/context/$matchId': {
       id: '/dev/context/$matchId'
       path: '/dev/context/$matchId'
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   LegalRoute: LegalRoute,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
+  ShareShareIdRoute: ShareShareIdRoute,
   DevContextMatchIdRoute: DevContextMatchIdRoute,
   SummonerShardGameNameTagLineRoute: SummonerShardGameNameTagLineRoute,
 }

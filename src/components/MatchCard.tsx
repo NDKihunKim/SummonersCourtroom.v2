@@ -11,6 +11,7 @@ import { RosterColumns } from "./RosterColumns";
 import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
 import { getJudgeVerdict } from "@/functions/timeline-window.functions";
+import { createSharedVerdict } from "@/functions/shared-verdict.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import { sortByRole } from "@/lib/role-order";
 import type { Locale, TranslationKey } from "@/i18n";
@@ -210,6 +211,8 @@ export function MatchCard({
   const [completed, setCompleted] = useState<Set<PipelineStep>>(new Set());
   const [verdictScope, setVerdictScope] = useState<Scope | null>(null);
   const [verdictWindow, setVerdictWindow] = useState<[number, number] | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
@@ -277,11 +280,15 @@ export function MatchCard({
     setActiveStep("contextualize");
     setVerdictScope(null);
     setVerdictWindow(null);
+    setShareUrl(null);
+    setSharing(false);
   }
 
   function showMockWindowResult(windowRange: [number, number]) {
     if (!pickedAlly) return;
     clearMockLoadingTimers();
+    setShareUrl(null);
+    setSharing(false);
     setReasoning(
       [
         `${formatChampionName(pickedAlly.champion)} created avoidable pressure loss during the selected window; for example, they were late to the key fight and gave the enemy team time to convert the advantage.`,
@@ -305,6 +312,8 @@ export function MatchCard({
     clearMockLoadingTimers();
     setReasoning(null);
     setVerdictDisplay(null);
+    setShareUrl(null);
+    setSharing(false);
     setCompleted(new Set());
     setActiveStep("contextualize");
     setVerdictScope("window");
@@ -344,6 +353,8 @@ export function MatchCard({
     setStage("loading");
     setReasoning(null);
     setVerdictDisplay(null);
+    setShareUrl(null);
+    setSharing(false);
     setCompleted(new Set());
     setActiveStep("contextualize");
 
@@ -430,6 +441,50 @@ export function MatchCard({
       reset();
     } finally {
       resetTurnstile();
+    }
+  }
+
+  async function shareVerdict() {
+    if (!reasoning || !verdictDisplay) return;
+
+    try {
+      setSharing(true);
+      if (shareUrl) {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success(t("shareLinkCopied"));
+        return;
+      }
+
+      const selectedPlayers =
+        faultMode === "free-for-all"
+          ? visibleTeamMembers
+          : [subjectA, pickedAlly].filter((player): player is Participant => player !== null);
+      const result = await createSharedVerdict({
+        data: {
+          matchId: match.riotMatchId,
+          locale,
+          verdictMode: faultMode,
+          scopeLabel: verdictWindowLabel,
+          selectedPlayers: selectedPlayers.map((player) => ({
+            champion: player.champion,
+            championLabel: formatChampionName(player.champion),
+            summoner: player.summoner,
+            kills: player.kills,
+            deaths: player.deaths,
+            assists: player.assists,
+          })),
+          verdictDisplay,
+          reasoning,
+        },
+      });
+      const nextShareUrl = new URL(result.path, window.location.origin).toString();
+      setShareUrl(nextShareUrl);
+      await navigator.clipboard.writeText(nextShareUrl);
+      toast.success(t("shareLinkCopied"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("shareFailed"));
+    } finally {
+      setSharing(false);
     }
   }
 
@@ -708,6 +763,8 @@ export function MatchCard({
                 windowLabel={verdictWindowLabel}
                 onClose={reset}
                 onAgain={() => setStage("pickAlly")}
+                onShare={() => void shareVerdict()}
+                sharing={sharing}
                 onViewContext={() => {
                   const params = new URLSearchParams();
                   params.set("scope", verdictScope ?? "full");
@@ -1128,6 +1185,8 @@ function Verdict({
   windowLabel,
   onClose,
   onAgain,
+  onShare,
+  sharing,
   onViewContext,
   t,
 }: {
@@ -1136,6 +1195,8 @@ function Verdict({
   windowLabel: string | null;
   onClose: () => void;
   onAgain: () => void;
+  onShare: () => void;
+  sharing: boolean;
   onViewContext: () => void;
   t: Translate;
 }) {
@@ -1171,6 +1232,13 @@ function Verdict({
         {reasoning}
       </p>
       <div className="mt-3 flex justify-end gap-2">
+        <button
+          onClick={onShare}
+          disabled={sharing}
+          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {sharing ? t("loading") : t("share")}
+        </button>
         {SHOW_DEV_CONTEXT && (
           <button
             onClick={onViewContext}
