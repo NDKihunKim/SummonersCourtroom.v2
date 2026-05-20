@@ -40,6 +40,11 @@ function decodeParam(value: string): string {
   }
 }
 
+function readOpenVerdictMatchId(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("openVerdictMatch");
+}
+
 function SummonerProfilePage() {
   const { locale, setLocale, t } = useLocale();
   const navigate = useNavigate();
@@ -50,6 +55,9 @@ function SummonerProfilePage() {
   const [data, setData] = useState<CachedSummonerPayload | null>(null);
   const [isLoadingCache, setIsLoadingCache] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
+  const [openVerdictMatchId, setOpenVerdictMatchId] = useState<string | null>(
+    readOpenVerdictMatchId,
+  );
   const turnstileRef = useRef<TurnstileHandle>(null);
   const autoFetchAttemptedRef = useRef(false);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
@@ -108,6 +116,20 @@ function SummonerProfilePage() {
   useEffect(() => {
     let cancelled = false;
     autoFetchAttemptedRef.current = false;
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const nextOpenVerdictMatchId = params.get("openVerdictMatch");
+      if (nextOpenVerdictMatchId) setOpenVerdictMatchId(nextOpenVerdictMatchId);
+      if (params.has("openVerdictMatch")) {
+        params.delete("openVerdictMatch");
+        const nextSearch = params.toString();
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`,
+        );
+      }
+    }
 
     async function loadCachedProfile() {
       if (!shard) {
@@ -198,6 +220,7 @@ function SummonerProfilePage() {
           onRefreshed={setData}
           onBack={() => void navigate({ to: "/" })}
           onSearchPlayer={openPlayer}
+          openVerdictMatchId={openVerdictMatchId}
           locale={locale}
           t={t}
         />

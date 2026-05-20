@@ -11,7 +11,7 @@ import { RosterColumns } from "./RosterColumns";
 import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
 import { getJudgeVerdict } from "@/functions/timeline-window.functions";
-import { createSharedVerdict } from "@/functions/shared-verdict.functions";
+import { createSharedVerdict, type SharedVerdictPayload } from "@/functions/shared-verdict.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import { sortByRole } from "@/lib/role-order";
 import type { Shard } from "@/lib/regions";
@@ -175,6 +175,10 @@ export function MatchCard({
   profileShard,
   profileGameName,
   profileTagLine,
+  openJudgeRequest = 0,
+  onProfileInteraction,
+  sharedVerdict,
+  onSharedNewVerdict,
   locale = "en",
   t = defaultT,
 }: {
@@ -193,6 +197,10 @@ export function MatchCard({
   profileShard?: Shard;
   profileGameName?: string;
   profileTagLine?: string;
+  openJudgeRequest?: number;
+  onProfileInteraction?: (matchId: string) => void;
+  sharedVerdict?: SharedVerdictPayload | null;
+  onSharedNewVerdict?: () => void;
   locale?: Locale;
   t?: Translate;
 }) {
@@ -224,6 +232,7 @@ export function MatchCard({
   const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const lastOpenJudgeRequestRef = useRef(0);
   const resetTurnstile = useCallback(() => {
     turnstileRef.current?.reset();
     setTurnstileResetKey((key) => key + 1);
@@ -244,7 +253,7 @@ export function MatchCard({
     };
   }, []);
 
-  const expanded = stage !== "closed";
+  const expanded = stage !== "closed" || Boolean(sharedVerdict);
   const verdictWindowLabel =
     verdictScope === "window" && verdictWindow
       ? `[${formatMsClock(verdictWindow[0])}-${formatMsClock(verdictWindow[1])}] ${formatWindowLength(
@@ -290,6 +299,29 @@ export function MatchCard({
     setShareUrl(null);
     setSharing(false);
   }
+
+  function startFreshVerdict() {
+    clearMockLoadingTimers();
+    setStage("pickAlly");
+    setFaultMode("me-vs-1");
+    setShowEnemyTeam(false);
+    setPickedSubjectA(null);
+    setPickedAlly(null);
+    setReasoning(null);
+    setVerdictDisplay(null);
+    setCompleted(new Set());
+    setActiveStep("contextualize");
+    setVerdictScope(null);
+    setVerdictWindow(null);
+    setShareUrl(null);
+    setSharing(false);
+  }
+
+  useEffect(() => {
+    if (openJudgeRequest === lastOpenJudgeRequestRef.current) return;
+    lastOpenJudgeRequestRef.current = openJudgeRequest;
+    if (openJudgeRequest > 0) startFreshVerdict();
+  }, [openJudgeRequest]);
 
   function showMockWindowResult(windowRange: [number, number]) {
     if (!pickedAlly) return;
@@ -603,10 +635,15 @@ export function MatchCard({
               Only rendered on Defeat rows whose Judge slide is still
               closed — the parent owns this gating so <ExpandToggle />
               can stay dumb/reusable. */}
-          {stage === "closed" && (
+          {stage === "closed" && !sharedVerdict && (
             <div className="ml-auto flex flex-1 justify-center">
               {isRankedGame ? (
-                <ExpandToggle onClick={() => setStage("pickAlly")} />
+                <ExpandToggle
+                  onClick={() => {
+                    onProfileInteraction?.(match.riotMatchId ?? match.id);
+                    setStage("pickAlly");
+                  }}
+                />
               ) : (
                 <button
                   type="button"
@@ -626,7 +663,15 @@ export function MatchCard({
       {/* Expanded Judge slide */}
       {expanded && (
         <div className="border-t border-border bg-background/40 px-4 py-5 animate-fade-in">
-          {(stage === "pickAlly" || (stage === "pickScope" && pickedAlly)) && (
+          {sharedVerdict && stage === "closed" && (
+            <SharedVerdictResult
+              verdict={sharedVerdict}
+              t={t}
+              onNewVerdict={onSharedNewVerdict}
+            />
+          )}
+
+          {!sharedVerdict && (stage === "pickAlly" || (stage === "pickScope" && pickedAlly)) && (
             <PickAlly
               mode={faultMode}
               onModeChange={(nextMode) => {
@@ -691,7 +736,7 @@ export function MatchCard({
             />
           )}
 
-          {stage === "pickScope" && pickedAlly && (
+          {!sharedVerdict && stage === "pickScope" && pickedAlly && (
             <ScopeActions
               onFullGame={() => runJudge("full")}
               isWin={showEnemyTeam ? !win : win}
@@ -704,7 +749,7 @@ export function MatchCard({
             />
           )}
 
-          {stage === "specifyTime" && pickedAlly && match.riotMatchId && match.userPuuid && (
+          {!sharedVerdict && stage === "specifyTime" && pickedAlly && match.riotMatchId && match.userPuuid && (
             <ScopeSpecifyTime
               matchId={match.riotMatchId}
               userPuuid={match.userPuuid}
@@ -733,7 +778,7 @@ export function MatchCard({
             />
           )}
 
-          {stage === "loading" && (
+          {!sharedVerdict && stage === "loading" && (
             <>
               {/* Pinned "You vs Ally" matchup card so the user always knows
                   which two subjects the Judge is comparing while the
@@ -757,7 +802,7 @@ export function MatchCard({
             </>
           )}
 
-          {stage === "verdict" && reasoning && (
+          {!sharedVerdict && stage === "verdict" && reasoning && (
             <>
               {/* Same matchup header on the verdict screen so the ruling
                   is always read in the context of the two compared
@@ -1194,6 +1239,78 @@ function JudgeLoading({
           );
         })}
       </ol>
+    </div>
+  );
+}
+
+function SharedVerdictResult({
+  verdict,
+  t,
+  onNewVerdict,
+}: {
+  verdict: SharedVerdictPayload;
+  t: Translate;
+  onNewVerdict?: () => void;
+}) {
+  const sharedPlayers = verdict.selectedPlayers.map((player): Participant => ({
+    champion: player.champion,
+    summoner: player.summoner ?? player.championLabel ?? player.champion,
+    kills: player.kills ?? 0,
+    deaths: player.deaths ?? 0,
+    assists: player.assists ?? 0,
+  }));
+  const championLabels = new Map(
+    verdict.selectedPlayers.map((player) => [player.champion, player.championLabel ?? player.champion]),
+  );
+
+  return (
+    <div>
+      {sharedPlayers.length >= 2 ? (
+        <MatchupHeader
+          you={sharedPlayers[0]}
+          ally={sharedPlayers[1]}
+          players={sharedPlayers.length > 2 ? sharedPlayers : undefined}
+          formatChampionName={(champion) => championLabels.get(champion) ?? champion}
+        />
+      ) : null}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Gavel className="h-4 w-4 text-gold" />
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
+            Shared Verdict
+          </h3>
+        </div>
+        {verdict.scopeLabel && (
+          <div className="text-right text-sm font-semibold uppercase tracking-wider text-gold">
+            {verdict.scopeLabel}
+          </div>
+        )}
+      </div>
+      <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
+          {t("moreAtFault")}
+        </div>
+        <div className="mt-1 text-2xl font-bold text-gold">
+          {verdict.verdictDisplay.championName}
+        </div>
+        {verdict.verdictDisplay.summonerName && (
+          <div className="mt-1 text-xs font-medium text-muted-foreground">
+            {verdict.verdictDisplay.summonerName}
+          </div>
+        )}
+      </div>
+      <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
+        {verdict.reasoning}
+      </p>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={onNewVerdict}
+          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {t("newVerdict")}
+        </button>
+      </div>
     </div>
   );
 }

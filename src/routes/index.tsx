@@ -579,6 +579,8 @@ export function MatchHistory({
   onSearchPlayer,
   shareNotice,
   sharedVerdict,
+  onProfileInteraction,
+  openVerdictMatchId,
   locale,
   t,
 }: {
@@ -592,6 +594,8 @@ export function MatchHistory({
   onSearchPlayer: (rawRiotId: string) => void;
   shareNotice?: string;
   sharedVerdict?: SharedVerdictPayload | null;
+  onProfileInteraction?: (matchId: string) => void;
+  openVerdictMatchId?: string | null;
   locale: Locale;
   t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
@@ -627,10 +631,25 @@ export function MatchHistory({
     setRankedQueue("solo");
   }, [account.puuid]);
 
+  const sharedMatchIndex = sharedVerdict?.matchId
+    ? matches.findIndex((match) => match.riotMatchId === sharedVerdict.matchId || match.id === sharedVerdict.matchId)
+    : -1;
+  const sharedMatchVisibleCount =
+    sharedMatchIndex >= 0 && sharedMatchIndex < EXPANDED_VISIBLE ? sharedMatchIndex + 1 : 0;
+  const directMatchIndex = openVerdictMatchId
+    ? matches.findIndex((match) => match.riotMatchId === openVerdictMatchId || match.id === openVerdictMatchId)
+    : -1;
+  const directMatchVisibleCount =
+    directMatchIndex >= 0 && directMatchIndex < EXPANDED_VISIBLE ? directMatchIndex + 1 : 0;
+
   // Cap defensively — if the cache somehow holds <10, slice() handles it;
   // if it ever holds >20, we still respect the 20-match product cap.
   const visibleCount = Math.min(
-    expanded ? EXPANDED_VISIBLE : INITIAL_VISIBLE,
+    Math.max(
+      expanded ? EXPANDED_VISIBLE : INITIAL_VISIBLE,
+      sharedMatchVisibleCount,
+      directMatchVisibleCount,
+    ),
     matches.length,
   );
   const visibleMatches = matches.slice(0, visibleCount);
@@ -646,7 +665,21 @@ export function MatchHistory({
   // Scroll it into view after expansion so the user immediately sees the
   // new content rather than having to hunt for it down-page.
   const firstNewMatchRef = useRef<HTMLDivElement | null>(null);
+  const sharedMatchRef = useRef<HTMLDivElement | null>(null);
+  const directMatchRef = useRef<HTMLDivElement | null>(null);
   const justExpandedRef = useRef(false);
+  const didScrollToSharedRef = useRef(false);
+  const didScrollToDirectRef = useRef(false);
+  const [directJudgeRequest, setDirectJudgeRequest] = useState(0);
+  const lastOpenVerdictMatchRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    didScrollToSharedRef.current = false;
+  }, [sharedVerdict?.id, sharedVerdict?.matchId]);
+
+  useEffect(() => {
+    didScrollToDirectRef.current = false;
+  }, [openVerdictMatchId]);
   useEffect(() => {
     if (expanded && justExpandedRef.current && firstNewMatchRef.current) {
       firstNewMatchRef.current.scrollIntoView({
@@ -656,6 +689,32 @@ export function MatchHistory({
       justExpandedRef.current = false;
     }
   }, [expanded]);
+
+  useEffect(() => {
+    if (!sharedVerdict || didScrollToSharedRef.current || !sharedMatchRef.current) return;
+    sharedMatchRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    didScrollToSharedRef.current = true;
+  }, [sharedVerdict, visibleMatches]);
+
+  useEffect(() => {
+    if (!openVerdictMatchId || openVerdictMatchId === lastOpenVerdictMatchRef.current) return;
+    if (directMatchIndex < 0 || directMatchIndex >= EXPANDED_VISIBLE) return;
+    if (directMatchIndex >= INITIAL_VISIBLE) setExpanded(true);
+    lastOpenVerdictMatchRef.current = openVerdictMatchId;
+    setDirectJudgeRequest((request) => request + 1);
+  }, [directMatchIndex, openVerdictMatchId]);
+
+  useEffect(() => {
+    if (!openVerdictMatchId || didScrollToDirectRef.current || !directMatchRef.current) return;
+    directMatchRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    didScrollToDirectRef.current = true;
+  }, [openVerdictMatchId, visibleMatches]);
 
   // ─── Performance Block sample size ───────────────────────────────────
   // The user picks 10 / 20 / 30 via `SampleSizeSelector`. Their choice
@@ -839,7 +898,6 @@ export function MatchHistory({
         <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           {t("recentMatches")}
         </h2>
-        {sharedVerdict && <SharedVerdictPanel verdict={sharedVerdict} />}
         {visibleMatches.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
             {t("noRecentMatches")}
@@ -883,10 +941,26 @@ export function MatchHistory({
               // after the user clicks "Show more". Only the card at index
               // === INITIAL_VISIBLE qualifies; everything else gets no ref.
               const isFirstNewMatch = idx === INITIAL_VISIBLE;
+              const isSharedMatch = Boolean(
+                sharedVerdict?.matchId &&
+                  (m.riotMatchId === sharedVerdict.matchId || m.id === sharedVerdict.matchId),
+              );
+              const shouldOpenDirectVerdict = Boolean(
+                openVerdictMatchId &&
+                  (m.riotMatchId === openVerdictMatchId || m.id === openVerdictMatchId),
+              );
               return (
                 <div
                   key={m.id}
-                  ref={isFirstNewMatch ? firstNewMatchRef : undefined}
+                  ref={
+                    isSharedMatch
+                      ? sharedMatchRef
+                      : shouldOpenDirectVerdict
+                        ? directMatchRef
+                      : isFirstNewMatch
+                        ? firstNewMatchRef
+                        : undefined
+                  }
                 >
                   <MatchCard
                     match={m}
@@ -897,6 +971,20 @@ export function MatchHistory({
                     profileShard={shard}
                     profileGameName={account.gameName}
                     profileTagLine={account.tagLine}
+                    openJudgeRequest={
+                      shouldOpenDirectVerdict
+                        ? directJudgeRequest
+                        : 0
+                    }
+                    onProfileInteraction={onProfileInteraction}
+                    sharedVerdict={isSharedMatch ? sharedVerdict : null}
+                    onSharedNewVerdict={
+                      isSharedMatch && sharedVerdict
+                        ? () => {
+                            onProfileInteraction?.(sharedVerdict.matchId ?? "");
+                          }
+                        : undefined
+                    }
                   />
                 </div>
               );
@@ -920,39 +1008,6 @@ export function MatchHistory({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function SharedVerdictPanel({ verdict }: { verdict: SharedVerdictPayload }) {
-  return (
-    <div className="mb-4 rounded-xl border border-gold/60 bg-card p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold uppercase tracking-wider text-gold">
-          Shared Verdict
-        </div>
-        {verdict.scopeLabel && (
-          <div className="text-sm font-semibold uppercase tracking-wider text-gold">
-            {verdict.scopeLabel}
-          </div>
-        )}
-      </div>
-      <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
-          More at fault
-        </div>
-        <div className="mt-1 text-2xl font-bold text-gold">
-          {verdict.verdictDisplay.championName}
-        </div>
-        {verdict.verdictDisplay.summonerName && (
-          <div className="mt-1 text-xs font-medium text-muted-foreground">
-            {verdict.verdictDisplay.summonerName}
-          </div>
-        )}
-      </div>
-      <p className="whitespace-pre-wrap rounded-lg border border-border bg-background p-4 text-sm leading-relaxed text-foreground">
-        {verdict.reasoning}
-      </p>
     </div>
   );
 }

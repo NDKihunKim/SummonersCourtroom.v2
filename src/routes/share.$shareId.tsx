@@ -41,6 +41,26 @@ function SharePage() {
   const [error, setError] = useState<string | null>(null);
   const [profileUnavailable, setProfileUnavailable] = useState(false);
 
+  const canonicalProfileUrl =
+    verdict?.profile && isKnownShard(verdict.profile.shard)
+      ? buildPlayerProfileUrl(verdict.profile.shard, verdict.profile.gameName, verdict.profile.tagLine)
+      : null;
+
+  const sharedMatchIndex =
+    verdict?.matchId && profile
+      ? profile.matches
+          .slice(0, 20)
+          .findIndex((match) => match.riotMatchId === verdict.matchId || match.id === verdict.matchId)
+      : -1;
+  const sharedMatchInRecent = sharedMatchIndex >= 0;
+
+  function replaceWithCanonicalProfile(openVerdictMatchId?: string) {
+    if (!canonicalProfileUrl || typeof window === "undefined") return;
+    const url = new URL(canonicalProfileUrl, window.location.origin);
+    if (openVerdictMatchId) url.searchParams.set("openVerdictMatch", openVerdictMatchId);
+    window.location.replace(url.toString());
+  }
+
   useEffect(() => {
     let cancelled = false;
     setVerdict(null);
@@ -52,6 +72,7 @@ function SharePage() {
       try {
         const shared = await getSharedVerdict({ data: { id: shareId } });
         if (cancelled) return;
+        if (shared.locale !== locale) setLocale(shared.locale);
         setVerdict(shared);
 
         if (!shared.profile || !isKnownShard(shared.profile.shard)) {
@@ -119,13 +140,6 @@ function SharePage() {
     );
   }
 
-  const matchStillVisible = Boolean(
-    verdict.matchId &&
-      profile.matches
-        .slice(0, 20)
-        .some((match) => match.riotMatchId === verdict.matchId || match.id === verdict.matchId),
-  );
-
   return (
     <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
       <MatchHistory
@@ -133,7 +147,10 @@ function SharePage() {
         shard={verdict.profile.shard}
         isSaved={false}
         onToggleSaved={() => undefined}
-        onRefreshed={setProfile}
+        onRefreshed={(fresh) => {
+          setProfile(fresh);
+          replaceWithCanonicalProfile();
+        }}
         onBack={() => void navigate({ to: "/" })}
         onSearchPlayer={(rawRiotId) => {
           const hash = rawRiotId.lastIndexOf("#");
@@ -146,12 +163,13 @@ function SharePage() {
             "noopener,noreferrer",
           );
         }}
+        onProfileInteraction={replaceWithCanonicalProfile}
         shareNotice={
-          matchStillVisible
-            ? "This page was opened from a shared verdict link."
+          sharedMatchInRecent
+            ? undefined
             : "This shared match is no longer in this player's recent match history. It may have been pushed out by newer games."
         }
-        sharedVerdict={matchStillVisible ? verdict : null}
+        sharedVerdict={sharedMatchInRecent ? verdict : null}
         locale={locale}
         t={t}
       />
