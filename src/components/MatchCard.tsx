@@ -466,8 +466,10 @@ export function MatchCard({
         faultMode === "free-for-all"
           ? visibleTeamMembers
           : [subjectA, pickedAlly].filter((player): player is Participant => player !== null);
+      const turnstileToken = await executeTurnstile();
       const result = await createSharedVerdict({
         data: {
+          turnstileToken,
           matchId: match.riotMatchId,
           ...(profileShard && profileGameName && profileTagLine
             ? {
@@ -501,6 +503,7 @@ export function MatchCard({
       toast.error(error instanceof Error ? error.message : t("shareFailed"));
     } finally {
       setSharing(false);
+      resetTurnstile();
     }
   }
 

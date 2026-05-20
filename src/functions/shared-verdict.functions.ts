@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 import type { Locale } from "@/i18n";
 
 const SHARE_TTL_HOURS = 72;
@@ -20,6 +21,7 @@ const VerdictDisplaySchema = z.object({
 });
 
 const CreateSharedVerdictInputSchema = z.object({
+  turnstileToken: TurnstileTokenSchema,
   matchId: z.string().max(64).optional(),
   profile: z
     .object({
@@ -112,6 +114,7 @@ function normalizeSharedVerdict(row: {
 export const createSharedVerdict = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CreateSharedVerdictInputSchema.parse(input))
   .handler(async ({ data }) => {
+    await assertTurnstile(data.turnstileToken);
     await deleteExpiredShares();
 
     const expiresAt = new Date(Date.now() + SHARE_TTL_HOURS * 60 * 60_000).toISOString();
