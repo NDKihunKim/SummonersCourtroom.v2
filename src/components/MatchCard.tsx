@@ -698,6 +698,7 @@ export function MatchCard({
                     assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
+                  players={faultMode === "free-for-all" ? visibleTeamMembers : undefined}
                   formatChampionName={formatChampionName}
                 />
               )}
