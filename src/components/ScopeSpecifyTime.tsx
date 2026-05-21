@@ -122,6 +122,7 @@ export function ScopeSpecifyTime({
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   const gameDurationMs = useMemo(() => parseDurationToMs(durationStr), [durationStr]);
+  const gameTooShort = gameDurationMs < MIN_WINDOW_MS;
 
   // Initial window: first 1 minute, clamped to game length. We cap the
   // initial end at MAX so very long games still default to a sane slice.
@@ -180,10 +181,12 @@ export function ScopeSpecifyTime({
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             onClick={() => {
+              if (gameTooShort) return;
               if (onRun) onRun(range);
               else setRunToken((t) => t + 1);
             }}
-            disabled={!validSpan}
+            disabled={!validSpan || gameTooShort}
+            title={gameTooShort ? t?.("verdictGameTooShortWarning") : undefined}
             className="rounded-lg border border-gold bg-gold/10 px-5 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t?.("verdict") ?? "Verdict"}
@@ -193,13 +196,14 @@ export function ScopeSpecifyTime({
             <>
               <button
                 onClick={() => openContext("full")}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold"
+                disabled={gameTooShort}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Full Context
               </button>
               <button
                 onClick={() => openContext("window")}
-                disabled={!validSpan}
+                disabled={!validSpan || gameTooShort}
                 className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Window Context
@@ -207,7 +211,7 @@ export function ScopeSpecifyTime({
               {onMockResult && (
                 <button
                   onClick={() => onMockResult(range)}
-                  disabled={!validSpan}
+                  disabled={!validSpan || gameTooShort}
                   className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Mock Results
@@ -216,7 +220,7 @@ export function ScopeSpecifyTime({
               {onMockLoading && (
                 <button
                   onClick={() => onMockLoading(range)}
-                  disabled={!validSpan}
+                  disabled={!validSpan || gameTooShort}
                   className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Mock Loading

@@ -1671,6 +1671,9 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       riotGet<TimelinePayload>(`${base}/timeline`),
     ]);
     const timelineEnd = timelineEndMs(timeline);
+    if (timelineEnd < MIN_WINDOW_MS) {
+      throw new Error("[GAME_TOO_SHORT] AI verdicts are unavailable for games under 5 minutes.");
+    }
     const requestedWindowMs =
       data.scope === "window" ? (data.endMs as number) - (data.startMs as number) : undefined;
     const actualContextStartMs =

@@ -32,6 +32,7 @@ type FreeForAllContextPlayer = {
 };
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
+const MIN_VERDICT_GAME_MS = 5 * 60_000;
 const MAX_FULL_GAME_VERDICT_MS = 60 * 60_000;
 
 function toFreeForAllContextPlayer(player: Participant): FreeForAllContextPlayer {
@@ -212,6 +213,7 @@ export function MatchCard({
   const isRankedGame = match.queue === "Ranked Solo" || match.queue === "Ranked Flex";
   const durationLabel = formatDuration(match.duration, locale, t);
   const matchDurationMs = parseMatchDurationToMs(match.duration);
+  const isShortVerdictGame = matchDurationMs != null && matchDurationMs < MIN_VERDICT_GAME_MS;
   const playedAtLabel = formatPlayedAt(match.playedAt, locale, t);
   const championLabel = formatChampionName(match.champion);
 
@@ -277,6 +279,12 @@ export function MatchCard({
   };
   const visibleTeamMembers = sortByRole(showEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
   const subjectA = pickedSubjectA ?? viewedParticipant;
+  const subjectsReady =
+    faultMode === "free-for-all"
+      ? visibleTeamMembers.length >= 2
+      : faultMode === "me-vs-1"
+        ? Boolean(pickedAlly)
+        : Boolean(pickedSubjectA && pickedAlly);
 
   function clearMockLoadingTimers() {
     mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
@@ -381,8 +389,12 @@ export function MatchCard({
       toast.warning(t("rankedSoloVerdictOnly"));
       return;
     }
+    const durationMs = parseMatchDurationToMs(match.duration);
+    if (durationMs != null && durationMs < MIN_VERDICT_GAME_MS) {
+      toast.warning(t("verdictGameTooShortWarning"));
+      return;
+    }
     if (scope === "full") {
-      const durationMs = parseMatchDurationToMs(match.duration);
       if (durationMs != null && durationMs > MAX_FULL_GAME_VERDICT_MS) {
         toast.warning(t("fullGameTooLongWarning"));
         return;
@@ -469,7 +481,7 @@ export function MatchCard({
       setCompleted((s) => new Set(s).add("judge"));
       setActiveStep("parse");
 
-      await wait(200);
+      await wait(2000);
       setCompleted((s) => new Set(s).add("parse"));
 
       setVerdictScope(scope);
@@ -583,7 +595,7 @@ export function MatchCard({
             <RuneIcons runes={match.runes} locale={locale} />
           </div>
 
-          <div className="ml-2 min-w-[110px]">
+          <div className="ml-2 min-w-[110px] text-center">
             <div className="text-lg font-bold text-foreground">
               {match.kills} <span className="text-muted-foreground">/</span>{" "}
               <span className="text-destructive">{match.deaths}</span>{" "}
@@ -637,7 +649,7 @@ export function MatchCard({
               can stay dumb/reusable. */}
           {stage === "closed" && !sharedVerdict && (
             <div className="ml-auto flex flex-1 justify-center">
-              {isRankedGame ? (
+              {isRankedGame && !isShortVerdictGame ? (
                 <ExpandToggle
                   onClick={() => {
                     onProfileInteraction?.(match.riotMatchId ?? match.id);
@@ -648,9 +660,9 @@ export function MatchCard({
                 <button
                   type="button"
                   disabled
-                  title={t("rankedSoloVerdictOnly")}
+                  title={isShortVerdictGame ? t("verdictGameTooShortWarning") : t("rankedSoloVerdictOnly")}
                   className="inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground opacity-60"
-                  aria-label={t("rankedSoloVerdictOnly")}
+                  aria-label={isShortVerdictGame ? t("verdictGameTooShortWarning") : t("rankedSoloVerdictOnly")}
                 >
                   <Gavel className="h-4 w-4" />
                 </button>
@@ -671,7 +683,7 @@ export function MatchCard({
             />
           )}
 
-          {!sharedVerdict && (stage === "pickAlly" || (stage === "pickScope" && pickedAlly)) && (
+          {!sharedVerdict && (stage === "pickAlly" || stage === "pickScope") && (
             <PickAlly
               mode={faultMode}
               onModeChange={(nextMode) => {
@@ -733,16 +745,24 @@ export function MatchCard({
                 setPickedAlly(b);
                 setStage("pickScope");
               }}
+              onDuelSelectionChange={(players) => {
+                if (faultMode !== "one-vs-one" && !showEnemyTeam) return;
+                setPickedSubjectA(players[0] ?? null);
+                setPickedAlly(players.length >= 2 ? players[1] : null);
+                setStage("pickScope");
+              }}
             />
           )}
 
-          {!sharedVerdict && stage === "pickScope" && pickedAlly && (
+          {!sharedVerdict && stage === "pickScope" && (
             <ScopeActions
               onFullGame={() => runJudge("full")}
               isWin={showEnemyTeam ? !win : win}
+              isShortGame={isShortVerdictGame}
+              subjectsReady={subjectsReady}
               t={t}
               onSpecifyTime={
-                match.riotMatchId && match.userPuuid
+                match.riotMatchId && match.userPuuid && !isShortVerdictGame && subjectsReady
                   ? () => setStage("specifyTime")
                   : undefined
               }
@@ -799,6 +819,9 @@ export function MatchCard({
                 />
               )}
               <JudgeLoading active={activeStep} completed={completed} t={t} />
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                {t("judgeLoadingNotice")}
+              </p>
             </>
           )}
 
@@ -873,6 +896,7 @@ function PickAlly({
   freeForAllPlayers,
   onPick,
   onPickDuel,
+  onDuelSelectionChange,
   onClearSelection,
   onCancel,
   selectedA,
@@ -890,6 +914,7 @@ function PickAlly({
   freeForAllPlayers: Participant[];
   onPick: (a: Participant) => void;
   onPickDuel: (a: Participant, b: Participant) => void;
+  onDuelSelectionChange: (players: Participant[]) => void;
   onClearSelection: () => void;
   onCancel: () => void;
   selectedA?: Participant;
@@ -899,6 +924,12 @@ function PickAlly({
 }) {
   const [duelPicks, setDuelPicks] = useState<Participant[]>([]);
   const teamMembers = sortByRole(showEnemyTeam ? enemies : [...allies, you]);
+  const pickHint =
+    mode === "free-for-all"
+      ? t("verdictPickFreeForAllHint")
+      : showEnemyTeam || mode === "one-vs-one"
+        ? t("verdictPickOneVsOneHint")
+        : t("verdictPickMeVsOneHint");
 
   function playerKey(player: Participant): string {
     return player.puuid ?? player.summoner?.toLowerCase() ?? player.champion;
@@ -913,8 +944,13 @@ function PickAlly({
     setDuelPicks((current) => {
       const key = playerKey(player);
       const existing = current.findIndex((pick) => playerKey(pick) === key);
-      if (existing >= 0) return current.filter((_, index) => index !== existing);
+      if (existing >= 0) {
+        const next = current.filter((_, index) => index !== existing);
+        onDuelSelectionChange(next);
+        return next;
+      }
       const next = [...current, player];
+      onDuelSelectionChange(next.slice(0, 2));
       if (next.length === 2) onPickDuel(next[0], next[1]);
       return next.slice(0, 2);
     });
@@ -959,6 +995,10 @@ function PickAlly({
           </button>
         </div>
       </div>
+
+      <p className="mb-3 text-center text-xs text-muted-foreground">
+        {pickHint}
+      </p>
 
       {mode === "free-for-all" ? (
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -1098,6 +1138,8 @@ function ScopeActions({
   onFullGame,
   onSpecifyTime,
   isWin,
+  isShortGame,
+  subjectsReady,
   t,
 }: {
   onFullGame: () => void;
@@ -1105,8 +1147,10 @@ function ScopeActions({
    * When provided, the "Specify Time" button is enabled and triggers this
    * callback. Omitted (undefined) for matches that lack the matchId/puuid
    * needed to fetch a timeline window — button stays disabled in that case.
-   */
+  */
   onSpecifyTime?: () => void;
+  isShortGame: boolean;
+  subjectsReady: boolean;
   /**
    * True when this match is a Victory. On wins we hide the "Full game"
    * button entirely — full-game judging is intentionally Defeat-only,
@@ -1116,17 +1160,33 @@ function ScopeActions({
   isWin: boolean;
   t: Translate;
 }) {
+  const fullGameDisabled = isWin || isShortGame || !subjectsReady;
+  const fullGameTitle = isShortGame
+    ? t("verdictGameTooShortWarning")
+    : !subjectsReady
+      ? undefined
+    : isWin
+      ? t("fullGameVictoryUnavailable")
+      : undefined;
+  const specifyTimeTitle = isShortGame
+    ? t("verdictGameTooShortWarning")
+    : !subjectsReady
+      ? undefined
+    : onSpecifyTime
+      ? "Pick a 5-10 min slice of the game"
+      : "Match metadata unavailable";
+
   return (
     <div className="mt-4 animate-fade-in">
       <div className="flex flex-wrap justify-center gap-3">
         {/* Full-game scope is Defeat-only. Victory rows still show the
             option disabled so users understand the feature boundary. */}
         <button
-          onClick={isWin ? undefined : onFullGame}
-          disabled={isWin}
-          title={isWin ? t("fullGameVictoryUnavailable") : undefined}
+          onClick={fullGameDisabled ? undefined : onFullGame}
+          disabled={fullGameDisabled}
+          title={fullGameTitle}
           className={
-            isWin
+            fullGameDisabled
               ? "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
               : "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
           }
@@ -1135,13 +1195,13 @@ function ScopeActions({
         </button>
         <button
           onClick={onSpecifyTime}
-          disabled={!onSpecifyTime}
+          disabled={!onSpecifyTime || !subjectsReady}
           className={
-            onSpecifyTime
+            onSpecifyTime && subjectsReady
               ? "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
               : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
           }
-          title={onSpecifyTime ? "Pick a 5-10 min slice of the game" : "Match metadata unavailable"}
+          title={specifyTimeTitle}
         >
           {t("specifyTime")}
         </button>
@@ -1367,34 +1427,38 @@ function Verdict({
       <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
         {reasoning}
       </p>
-      <div className="mt-3 flex justify-end gap-2">
-        <button
-          onClick={onShare}
-          disabled={sharing}
-          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {sharing ? t("loading") : t("share")}
-        </button>
-        {SHOW_DEV_CONTEXT && (
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
           <button
-            onClick={onViewContext}
+            onClick={onShare}
+            disabled={sharing}
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {sharing ? t("loading") : t("share")}
+          </button>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          {SHOW_DEV_CONTEXT && (
+            <button
+              onClick={onViewContext}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              View context
+            </button>
+          )}
+          <button
+            onClick={onAgain}
             className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
-            View context
+            {t("newVerdict")}
           </button>
-        )}
-        <button
-          onClick={onAgain}
-          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {t("judgeAnother")}
-        </button>
-        <button
-          onClick={onClose}
-          className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20"
-        >
-          {t("close")}
-        </button>
+          <button
+            onClick={onClose}
+            className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20"
+          >
+            {t("close")}
+          </button>
+        </div>
       </div>
     </div>
   );
