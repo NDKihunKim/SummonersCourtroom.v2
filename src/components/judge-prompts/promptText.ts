@@ -107,6 +107,8 @@ Consider these factors:
 
 - **Resource and contribution context:** Use gold, CS, level, health, XP, and champion damage only when they explain a decision. A deficit alone is not fault; the fault must come from how the subject played around that state.
 
+- **Non-participation and low-value map play:** Heavily weigh repeated patterns where a subject farms, stays isolated, avoids relevant fights/objectives/building defense, or contributes no visible pressure while decisive events happen elsewhere. Treat this as high process fault only when the brief shows the subject's activity/location and the missed event or lack of useful trade.
+
 - **Role and game-time expectations:** Use role labels and game time to judge reasonable presence and risk. Do not invent champion-specific matchup rules.
 
 **DO NOT OVER-BLAME:**
@@ -121,6 +123,10 @@ Consider these factors:
 
 - Do not call base defense poor objective presence. If the enemy is pushing inhibitor or nexus structures, being near base or defending those structures is usually reasonable unless the brief shows the subject was caught alone, arrived late, or ignored another clearly contestable high-value event.
 
+- Do not punish normal farming, split pushing, side-lane pressure, or base defense when it creates visible pressure, trades for an objective/building, or is reasonable for the game state. Blame it only when the brief shows it was low-value compared with a relevant fight, objective, building defense, or game-ending sequence.
+
+- Do not claim a subject intentionally threw, trolled, gave up, or refused to play. Intent is not visible. Judge only observable repeated non-participation, irrelevant farming, avoidable isolation, or lack of useful pressure shown in the brief.
+
 - Do not reward or punish actions that require unseen vision, cooldown, communication, or intent.
 
 **CAUSE AND LABEL ALIGNMENT:**
@@ -130,6 +136,8 @@ Consider these factors:
 - If the example shows base defense, inhibitor defense, nexus defense, or a forced retreat under pressure, describe it as fight positioning, death timing, or defensive execution only if the brief supports that. Do not relabel it as poor objective presence.
 
 - Only write "enabled", "allowed", "caused", or "led to" when the brief shows a direct sequence: subject mistake or absence, then a numbers/pressure disadvantage, then the enemy fight win, objective, building, or game-ending event shortly after.
+
+- If the reason says "non-participation", "low-value farming", "irrelevant side activity", or similar, the example must show both the subject's location/activity and the meaningful fight/objective/building event they missed or failed to trade for.
 
 - For position-based causality, keep timestamps close. Prefer position evidence within about 15 seconds of the event it explains. If the position snapshot is older than about 15 seconds, phrase the point cautiously or choose a different example; do not claim direct absence or distance from an objective based on stale position evidence.
 
