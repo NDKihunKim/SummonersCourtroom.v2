@@ -287,6 +287,7 @@ export function MatchCard({
     faultMode === "free-for-all"
       ? freeForAllSelection
       : visibleTeamMembers;
+  const orderedSelectedFreeForAllPlayers = sortByRole(selectedFreeForAllPlayers);
   const subjectA = pickedSubjectA ?? viewedParticipant;
   const subjectsReady =
     faultMode === "free-for-all"
@@ -428,7 +429,7 @@ export function MatchCard({
 
     const subjectAChampionLabel = formatChampionName(subjectA.champion);
     const subjectBChampionLabel = formatChampionName(pickedAlly.champion);
-    const freeForAllTeam = faultMode === "free-for-all" ? selectedFreeForAllPlayers : undefined;
+    const freeForAllTeam = faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined;
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
@@ -519,7 +520,7 @@ export function MatchCard({
 
       const selectedPlayers =
         faultMode === "free-for-all"
-          ? selectedFreeForAllPlayers
+          ? orderedSelectedFreeForAllPlayers
           : [subjectA, pickedAlly].filter((player): player is Participant => player !== null);
       const turnstileToken = await executeTurnstile();
       const result = await createSharedVerdict({
@@ -814,7 +815,7 @@ export function MatchCard({
               verdictMode={faultMode === "free-for-all" ? "free-for-all" : "duel"}
               freeForAllTeam={
                 faultMode === "free-for-all"
-                  ? selectedFreeForAllPlayers.map(toFreeForAllContextPlayer)
+                  ? orderedSelectedFreeForAllPlayers.map(toFreeForAllContextPlayer)
                   : undefined
               }
             />
@@ -836,7 +837,8 @@ export function MatchCard({
                     assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
-                  players={faultMode === "free-for-all" ? selectedFreeForAllPlayers : undefined}
+                  players={faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined}
+                  highlightChampionName={verdictDisplay?.championName}
                   formatChampionName={formatChampionName}
                 />
               )}
@@ -862,7 +864,7 @@ export function MatchCard({
                     assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
-                  players={faultMode === "free-for-all" ? selectedFreeForAllPlayers : undefined}
+                  players={faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined}
                   formatChampionName={formatChampionName}
                 />
               )}
@@ -883,7 +885,7 @@ export function MatchCard({
                   params.set("subjectA", subjectA.champion);
                   if (pickedAlly) params.set("subjectB", pickedAlly.champion);
                   if (faultMode === "free-for-all") {
-                    addFreeForAllContextParams(params, selectedFreeForAllPlayers);
+                    addFreeForAllContextParams(params, orderedSelectedFreeForAllPlayers);
                   }
                   if (verdictScope === "window" && verdictWindow) {
                     params.set("startMs", String(verdictWindow[0]));
@@ -1372,6 +1374,7 @@ function SharedVerdictResult({
           you={sharedPlayers[0]}
           ally={sharedPlayers[1]}
           players={sharedPlayers.length > 2 ? sharedPlayers : undefined}
+          highlightChampionName={verdict.verdictDisplay.championName}
           formatChampionName={(champion) => championLabels.get(champion) ?? champion}
         />
       ) : null}

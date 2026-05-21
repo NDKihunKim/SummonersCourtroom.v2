@@ -80,6 +80,7 @@ export interface MatchupHeaderProps {
   /** The ally chosen on the PickAlly screen. */
   ally: Participant;
   players?: Participant[];
+  highlightChampionName?: string | null;
   formatChampionName?: (champion: string) => string;
 }
 
@@ -87,8 +88,17 @@ export function MatchupHeader({
   you,
   ally,
   players,
+  highlightChampionName,
   formatChampionName = (champion) => champion,
 }: MatchupHeaderProps) {
+  function isHighlightedChampion(champion: string): boolean {
+    if (!highlightChampionName) return false;
+    const target = normalizeChampionToken(highlightChampionName);
+    return [champion, formatChampionName(champion)]
+      .map(normalizeChampionToken)
+      .some((candidate) => candidate.length > 0 && candidate === target);
+  }
+
   if (players?.length) {
     return (
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
@@ -100,6 +110,7 @@ export function MatchupHeader({
               champion={player.champion}
               championLabel={formatChampionName(player.champion)}
               kda={`${safeNum(player.kills)}/${safeNum(player.deaths)}/${safeNum(player.assists)}`}
+              highlighted={isHighlightedChampion(player.champion)}
             />
           </div>
         ))}
@@ -120,6 +131,7 @@ export function MatchupHeader({
         champion={you.champion}
         championLabel={formatChampionName(you.champion)}
         kda={youKda}
+        highlighted={isHighlightedChampion(you.champion)}
       />
       <span className="text-lg font-bold text-muted-foreground">vs</span>
       <Tile
@@ -127,7 +139,12 @@ export function MatchupHeader({
         champion={ally.champion}
         championLabel={formatChampionName(ally.champion)}
         kda={allyKda}
+        highlighted={isHighlightedChampion(ally.champion)}
       />
     </div>
   );
+}
+
+function normalizeChampionToken(value: string): string {
+  return value.replace(/[^a-z0-9가-힣]/gi, "").toLowerCase();
 }
