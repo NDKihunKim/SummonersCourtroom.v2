@@ -242,10 +242,8 @@ export function buildFreeForAllLowerPrompt(
 
 **FREE FOR ALL MODE OVERRIDE:**
 
-Judge only these selected defeated-team players:
+Judge only these selected defeated-team players with name of champions only:
 ${teamRoster}
 
-Compare all selected defeated-team players against each other. The winner of the verdict must be one champion from this list. Do not output a player from the winning team or from outside this list.
-
-When explaining the verdict, make clear why the chosen player was more at fault than the other selected teammates when the Structured Context Brief supports that comparison. Keep every other evidence, wording, location, language, and output-format rule above.`;
+The verdict must be one champion from this list. Do not judge players from the winning team or outside this list.`;
 }

@@ -44,6 +44,10 @@ function toFreeForAllContextPlayer(player: Participant): FreeForAllContextPlayer
   };
 }
 
+function participantKey(player: Participant): string {
+  return player.puuid ?? player.summoner?.toLowerCase() ?? player.champion;
+}
+
 function addFreeForAllContextParams(params: URLSearchParams, team: Participant[]) {
   if (team.length === 0) return;
   params.set("verdictMode", "free-for-all");
@@ -222,6 +226,7 @@ export function MatchCard({
   const [showEnemyTeam, setShowEnemyTeam] = useState(false);
   const [pickedSubjectA, setPickedSubjectA] = useState<Participant | null>(null);
   const [pickedAlly, setPickedAlly] = useState<Participant | null>(null);
+  const [freeForAllSelection, setFreeForAllSelection] = useState<Participant[]>([]);
   const [reasoning, setReasoning] = useState<string | null>(null);
   const [verdictDisplay, setVerdictDisplay] = useState<VerdictDisplay | null>(null);
   const [activeStep, setActiveStep] = useState<PipelineStep>("contextualize");
@@ -278,10 +283,14 @@ export function MatchCard({
     teamPosition: match.userTeamPosition,
   };
   const visibleTeamMembers = sortByRole(showEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+  const selectedFreeForAllPlayers =
+    faultMode === "free-for-all"
+      ? freeForAllSelection
+      : visibleTeamMembers;
   const subjectA = pickedSubjectA ?? viewedParticipant;
   const subjectsReady =
     faultMode === "free-for-all"
-      ? visibleTeamMembers.length >= 2
+      ? selectedFreeForAllPlayers.length >= 3 && selectedFreeForAllPlayers.length <= 5
       : faultMode === "me-vs-1"
         ? Boolean(pickedAlly)
         : Boolean(pickedSubjectA && pickedAlly);
@@ -298,6 +307,7 @@ export function MatchCard({
     setShowEnemyTeam(false);
     setPickedSubjectA(null);
     setPickedAlly(null);
+    setFreeForAllSelection([]);
     setReasoning(null);
     setVerdictDisplay(null);
     setCompleted(new Set());
@@ -315,6 +325,7 @@ export function MatchCard({
     setShowEnemyTeam(false);
     setPickedSubjectA(null);
     setPickedAlly(null);
+    setFreeForAllSelection([]);
     setReasoning(null);
     setVerdictDisplay(null);
     setCompleted(new Set());
@@ -417,7 +428,7 @@ export function MatchCard({
 
     const subjectAChampionLabel = formatChampionName(subjectA.champion);
     const subjectBChampionLabel = formatChampionName(pickedAlly.champion);
-    const freeForAllTeam = faultMode === "free-for-all" ? visibleTeamMembers : undefined;
+    const freeForAllTeam = faultMode === "free-for-all" ? selectedFreeForAllPlayers : undefined;
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
@@ -508,7 +519,7 @@ export function MatchCard({
 
       const selectedPlayers =
         faultMode === "free-for-all"
-          ? visibleTeamMembers
+          ? selectedFreeForAllPlayers
           : [subjectA, pickedAlly].filter((player): player is Participant => player !== null);
       const turnstileToken = await executeTurnstile();
       const result = await createSharedVerdict({
@@ -691,8 +702,10 @@ export function MatchCard({
                 if (nextMode === "me-vs-1") setShowEnemyTeam(false);
                 setPickedSubjectA(null);
                 setPickedAlly(null);
+                setFreeForAllSelection([]);
                 if (nextMode === "free-for-all") {
                   const members = sortByRole(showEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+                  setFreeForAllSelection(members);
                   setPickedSubjectA(members[0] ?? null);
                   setPickedAlly(members[1] ?? null);
                   setStage(members.length >= 2 ? "pickScope" : "pickAlly");
@@ -712,8 +725,10 @@ export function MatchCard({
                 setFaultMode(nextMode);
                 setPickedSubjectA(null);
                 setPickedAlly(null);
+                setFreeForAllSelection([]);
                 if (nextMode === "free-for-all") {
                   const members = sortByRole(nextShowEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+                  setFreeForAllSelection(members);
                   setPickedSubjectA(members[0] ?? null);
                   setPickedAlly(members[1] ?? null);
                   setStage(members.length >= 2 ? "pickScope" : "pickAlly");
@@ -730,6 +745,7 @@ export function MatchCard({
               allies={match.team}
               enemies={match.enemies}
               freeForAllPlayers={visibleTeamMembers}
+              selectedFreeForAllPlayers={selectedFreeForAllPlayers}
               onCancel={reset}
               selectedA={stage === "pickScope" ? subjectA : undefined}
               selectedB={stage === "pickScope" ? pickedAlly ?? undefined : undefined}
@@ -749,6 +765,12 @@ export function MatchCard({
                 if (faultMode !== "one-vs-one" && !showEnemyTeam) return;
                 setPickedSubjectA(players[0] ?? null);
                 setPickedAlly(players.length >= 2 ? players[1] : null);
+                setStage("pickScope");
+              }}
+              onFreeForAllSelectionChange={(players) => {
+                setFreeForAllSelection(players);
+                setPickedSubjectA(players[0] ?? null);
+                setPickedAlly(players[1] ?? null);
                 setStage("pickScope");
               }}
             />
@@ -792,7 +814,7 @@ export function MatchCard({
               verdictMode={faultMode === "free-for-all" ? "free-for-all" : "duel"}
               freeForAllTeam={
                 faultMode === "free-for-all"
-                  ? visibleTeamMembers.map(toFreeForAllContextPlayer)
+                  ? selectedFreeForAllPlayers.map(toFreeForAllContextPlayer)
                   : undefined
               }
             />
@@ -814,7 +836,7 @@ export function MatchCard({
                     assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
-                  players={faultMode === "free-for-all" ? visibleTeamMembers : undefined}
+                  players={faultMode === "free-for-all" ? selectedFreeForAllPlayers : undefined}
                   formatChampionName={formatChampionName}
                 />
               )}
@@ -840,7 +862,7 @@ export function MatchCard({
                     assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
-                  players={faultMode === "free-for-all" ? visibleTeamMembers : undefined}
+                  players={faultMode === "free-for-all" ? selectedFreeForAllPlayers : undefined}
                   formatChampionName={formatChampionName}
                 />
               )}
@@ -861,7 +883,7 @@ export function MatchCard({
                   params.set("subjectA", subjectA.champion);
                   if (pickedAlly) params.set("subjectB", pickedAlly.champion);
                   if (faultMode === "free-for-all") {
-                    addFreeForAllContextParams(params, visibleTeamMembers);
+                    addFreeForAllContextParams(params, selectedFreeForAllPlayers);
                   }
                   if (verdictScope === "window" && verdictWindow) {
                     params.set("startMs", String(verdictWindow[0]));
@@ -894,9 +916,11 @@ function PickAlly({
   allies,
   enemies,
   freeForAllPlayers,
+  selectedFreeForAllPlayers,
   onPick,
   onPickDuel,
   onDuelSelectionChange,
+  onFreeForAllSelectionChange,
   onClearSelection,
   onCancel,
   selectedA,
@@ -912,9 +936,11 @@ function PickAlly({
   allies: Participant[];
   enemies: Participant[];
   freeForAllPlayers: Participant[];
+  selectedFreeForAllPlayers: Participant[];
   onPick: (a: Participant) => void;
   onPickDuel: (a: Participant, b: Participant) => void;
   onDuelSelectionChange: (players: Participant[]) => void;
+  onFreeForAllSelectionChange: (players: Participant[]) => void;
   onClearSelection: () => void;
   onCancel: () => void;
   selectedA?: Participant;
@@ -932,12 +958,26 @@ function PickAlly({
         : t("verdictPickMeVsOneHint");
 
   function playerKey(player: Participant): string {
-    return player.puuid ?? player.summoner?.toLowerCase() ?? player.champion;
+    return participantKey(player);
   }
 
   function isPicked(player: Participant): boolean {
     const key = playerKey(player);
     return duelPicks.some((pick) => playerKey(pick) === key);
+  }
+
+  function isFreeForAllPicked(player: Participant): boolean {
+    const key = playerKey(player);
+    return selectedFreeForAllPlayers.some((pick) => playerKey(pick) === key);
+  }
+
+  function toggleFreeForAllPick(player: Participant) {
+    const key = playerKey(player);
+    const exists = selectedFreeForAllPlayers.some((pick) => playerKey(pick) === key);
+    const next = exists
+      ? selectedFreeForAllPlayers.filter((pick) => playerKey(pick) !== key)
+      : [...selectedFreeForAllPlayers, player].slice(0, 5);
+    onFreeForAllSelectionChange(next);
   }
 
   function toggleDuelPick(player: Participant) {
@@ -1005,13 +1045,15 @@ function PickAlly({
           {freeForAllPlayers.map((player, i) => (
             <Fragment key={`${player.summoner}-${i}`}>
               {i > 0 ? <span className="text-xl font-bold text-muted-foreground">vs</span> : null}
-              <PlayerTile
-                highlighted
-                name={player.summoner}
-                champion={player.champion}
-                championLabel={formatChampionName(player.champion)}
-                kda={`${player.kills}/${player.deaths}/${player.assists}`}
-              />
+              <button onClick={() => toggleFreeForAllPick(player)} className="group">
+                <PlayerTile
+                  highlighted={isFreeForAllPicked(player)}
+                  name={player.summoner}
+                  champion={player.champion}
+                  championLabel={formatChampionName(player.champion)}
+                  kda={`${player.kills}/${player.deaths}/${player.assists}`}
+                />
+              </button>
             </Fragment>
           ))}
         </div>

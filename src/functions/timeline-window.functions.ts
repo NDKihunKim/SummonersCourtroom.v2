@@ -1353,11 +1353,7 @@ function buildJudgePrompt({
   };
   const teamRoster = freeForAllTeam.length
     ? freeForAllTeam
-        .map((player, index) => {
-          const role = player.role ? `${player.role}: ` : "";
-          const summoner = player.summoner ? ` (${player.summoner})` : "";
-          return `- ${role}${player.champion}${summoner}`;
-        })
+        .map((player) => `- ${player.champion}`)
         .join("\n")
     : "- Selected defeated-team roster unavailable.";
   const upperPrompt =

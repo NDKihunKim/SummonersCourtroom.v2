@@ -448,10 +448,6 @@ ${rows.join("\n")}`;
 function buildFreeForAllRoster(freeForAllTeam?: FreeForAllContextPlayer[]): string {
   if (!freeForAllTeam?.length) return "- Selected defeated-team roster unavailable.";
   return freeForAllTeam
-    .map((player) => {
-      const role = player.role ? `${player.role}: ` : "";
-      const summoner = player.summoner ? ` (${player.summoner})` : "";
-      return `- ${role}${player.champion}${summoner}`;
-    })
+    .map((player) => `- ${player.champion}`)
     .join("\n");
 }
