@@ -110,6 +110,8 @@ const JudgeVerdictInputSchema = z.object({
   locale: z.enum(["en", "ko"]).optional(),
   includeRaw: z.boolean().optional(),
   turnstileToken: TurnstileTokenSchema,
+  accessToken: z.string().min(1).optional(),
+  anonymousId: z.string().min(8).max(128).optional(),
   subjects: TimelineWindowInputSchema.shape.subjects,
   verdictMode: z.enum(["duel", "free-for-all"]).optional(),
   freeForAllTeam: z
@@ -1647,6 +1649,13 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       message: "Too many AI verdict requests. Please wait a minute and try again.",
     });
     if (!data.includeRaw) await assertTurnstile(data.turnstileToken);
+    if (!data.includeRaw) {
+      const { consumeVerdictQuota } = await import("@/functions/verdict-quota.server");
+      await consumeVerdictQuota({
+        accessToken: data.accessToken,
+        anonymousId: data.anonymousId,
+      });
+    }
 
     if (data.scope === "window") {
       if (data.startMs == null || data.endMs == null) {

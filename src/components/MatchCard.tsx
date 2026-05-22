@@ -17,6 +17,8 @@ import { sortByRole } from "@/lib/role-order";
 import type { Shard } from "@/lib/regions";
 import type { Locale, TranslationKey } from "@/i18n";
 import { TurnstileWidget, type TurnstileHandle } from "./TurnstileWidget";
+import { supabase } from "@/integrations/supabase/client";
+import { getAnonymousId } from "@/lib/anonymous-id";
 
 type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "verdict";
 type PipelineStep = "contextualize" | "judge" | "parse";
@@ -434,6 +436,8 @@ export function MatchCard({
 
     try {
       const turnstileToken = await executeTurnstile();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
       await wait(250);
       setCompleted((s) => new Set(s).add("contextualize"));
       setActiveStep("judge");
@@ -449,6 +453,7 @@ export function MatchCard({
             : {}),
           locale,
           turnstileToken,
+          ...(accessToken ? { accessToken } : { anonymousId: getAnonymousId() }),
           verdictMode: faultMode === "free-for-all" ? "free-for-all" : "duel",
           ...(freeForAllTeam
             ? {
@@ -617,12 +622,12 @@ export function MatchCard({
           </div>
 
           {/* Items + trinket */}
-          <div className="hidden items-center md:flex">
+          <div className="hidden items-center min-[820px]:flex">
             <ItemGrid items={match.items} trinket={match.trinket} locale={locale} />
           </div>
 
           {/* Stats */}
-          <div className="hidden flex-col text-xs text-muted-foreground md:flex">
+          <div className="hidden flex-col text-xs text-muted-foreground min-[940px]:flex">
             <span>CS {match.cs}</span>
             <span>{match.gold.toLocaleString()} gold</span>
             <span>{match.damage.toLocaleString()} dmg</span>
@@ -636,7 +641,7 @@ export function MatchCard({
               all the way to the right edge — making rows with a Defeat
               down-arrow shift the roster slightly left vs. Victory rows
               and creating visible misalignment between adjacent cards. */}
-          <div className="ml-6 hidden lg:block">
+          <div className="ml-6 hidden min-[1060px]:block">
             <RosterColumns
               allies={match.team}
               enemies={match.enemies}

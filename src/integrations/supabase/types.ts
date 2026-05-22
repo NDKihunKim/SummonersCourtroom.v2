@@ -122,6 +122,60 @@ export type Database = {
         }
         Relationships: []
       }
+      user_profiles: {
+        Row: {
+          created_at: string
+          plan: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          plan?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          plan?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      verdict_usage_daily: {
+        Row: {
+          anonymous_id: string | null
+          created_at: string
+          id: number
+          ip_hash: string
+          updated_at: string
+          usage_date: string
+          user_id: string | null
+          verdict_count: number
+        }
+        Insert: {
+          anonymous_id?: string | null
+          created_at?: string
+          id?: number
+          ip_hash: string
+          updated_at?: string
+          usage_date?: string
+          user_id?: string | null
+          verdict_count?: number
+        }
+        Update: {
+          anonymous_id?: string | null
+          created_at?: string
+          id?: number
+          ip_hash?: string
+          updated_at?: string
+          usage_date?: string
+          user_id?: string | null
+          verdict_count?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

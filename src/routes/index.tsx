@@ -215,6 +215,7 @@ function Index() {
   async function selectSuggestion(item: Suggestion) {
     const value = `${item.gameName}#${item.tagLine}`;
     setRiotId(value);
+    setShard(item.shard);
     setIsSuggestOpen(false);
     // Use the suggestion's parsed parts directly — avoids re-parsing the
     // string we just constructed and dodges any stale-state edge cases

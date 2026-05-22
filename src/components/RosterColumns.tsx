@@ -208,22 +208,26 @@ export function RosterColumns({
   return (
     <TooltipProvider delayDuration={150} skipDelayDuration={50}>
       <div className="flex gap-3">
-        <RosterColumn
-          label="Blue Team"
-          players={bluePlayers}
-          accent="text-hex-blue"
-          onPlayerClick={onPlayerClick}
-          formatChampionName={formatChampionName}
-          highlightedPlayerKey={highlightedPlayerKey}
-        />
-        <RosterColumn
-          label="Red Team"
-          players={redPlayers}
-          accent="text-destructive"
-          onPlayerClick={onPlayerClick}
-          formatChampionName={formatChampionName}
-          highlightedPlayerKey={highlightedPlayerKey}
-        />
+        <div className="hidden min-[1060px]:block">
+          <RosterColumn
+            label="Blue Team"
+            players={bluePlayers}
+            accent="text-hex-blue"
+            onPlayerClick={onPlayerClick}
+            formatChampionName={formatChampionName}
+            highlightedPlayerKey={highlightedPlayerKey}
+          />
+        </div>
+        <div className="hidden min-[1180px]:block">
+          <RosterColumn
+            label="Red Team"
+            players={redPlayers}
+            accent="text-destructive"
+            onPlayerClick={onPlayerClick}
+            formatChampionName={formatChampionName}
+            highlightedPlayerKey={highlightedPlayerKey}
+          />
+        </div>
       </div>
     </TooltipProvider>
   );
