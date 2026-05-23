@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Gavel, ArrowLeft, Check } from "lucide-react";
+import { Loader2, Gavel, ArrowLeft, Check, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
 import { ChampionIcon } from "./ChampionIcon";
@@ -868,10 +868,11 @@ export function MatchCard({
                     deaths: subjectA.deaths,
                     assists: subjectA.assists,
                   }}
-                  ally={pickedAlly}
-                  players={faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined}
-                  formatChampionName={formatChampionName}
-                />
+	                  ally={pickedAlly}
+	                  players={faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined}
+	                  highlightChampionName={verdictDisplay?.championName}
+	                  formatChampionName={formatChampionName}
+	                />
               )}
               <Verdict
                 verdictDisplay={verdictDisplay}
@@ -1482,8 +1483,9 @@ function Verdict({
           <button
             onClick={onShare}
             disabled={sharing}
-            className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
+            <Share2 className="h-3.5 w-3.5" />
             {sharing ? t("loading") : t("share")}
           </button>
         </div>
