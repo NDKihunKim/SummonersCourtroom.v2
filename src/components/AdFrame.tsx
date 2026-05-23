@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Home, Languages, Settings, User, X } from "lucide-react";
-import type { Session } from "@supabase/supabase-js";
+import {
+  Check,
+  ChevronDown,
+  Gauge,
+  Home,
+  Languages,
+  LogOut,
+  Mail,
+  Settings,
+  User,
+  X,
+} from "lucide-react";
+import type { Provider, Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { LOCALES, type Locale, type TranslationKey } from "@/i18n";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,6 +31,40 @@ const FOOTER_LINKS = [
   { href: "/contact", label: "Contact", key: "footerContact" },
   { href: "/legal", label: "Legal", key: "footerLegal" },
 ] as const;
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        fill="#4285F4"
+        d="M21.6 12.23c0-.78-.07-1.53-.2-2.23H12v4.22h5.38a4.6 4.6 0 0 1-1.99 3.02v2.51h3.23c1.89-1.74 2.98-4.3 2.98-7.52Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 22c2.7 0 4.97-.9 6.62-2.44l-3.23-2.51c-.9.6-2.04.95-3.39.95-2.6 0-4.8-1.76-5.59-4.12H3.07v2.59A10 10 0 0 0 12 22Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M6.41 13.88A6.01 6.01 0 0 1 6.1 12c0-.65.11-1.28.31-1.88V7.53H3.07A10 10 0 0 0 2 12c0 1.61.39 3.13 1.07 4.47l3.34-2.59Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 6c1.47 0 2.79.51 3.82 1.5l2.87-2.87C16.96 3.01 14.7 2 12 2a10 10 0 0 0-8.93 5.53l3.34 2.59C7.2 7.76 9.4 6 12 6Z"
+      />
+    </svg>
+  );
+}
+
+function DiscordIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        fill="currentColor"
+        d="M20.32 4.37A19.8 19.8 0 0 0 15.36 3a13.8 13.8 0 0 0-.64 1.32 18.2 18.2 0 0 0-5.44 0A13.8 13.8 0 0 0 8.64 3c-1.73.3-3.4.76-4.96 1.37C.54 9.06-.31 13.63.11 18.13A20 20 0 0 0 6.2 21.2c.49-.66.92-1.36 1.3-2.1-.72-.27-1.4-.6-2.04-.98.17-.13.34-.26.5-.4a14.2 14.2 0 0 0 12.08 0c.16.14.33.27.5.4-.64.38-1.32.71-2.04.98.38.74.81 1.44 1.3 2.1a20 20 0 0 0 6.09-3.07c.5-5.22-.86-9.75-3.57-13.76ZM8.02 15.36c-1.18 0-2.15-1.08-2.15-2.41 0-1.33.95-2.42 2.15-2.42 1.2 0 2.17 1.09 2.15 2.42 0 1.33-.95 2.41-2.15 2.41Zm7.96 0c-1.18 0-2.15-1.08-2.15-2.41 0-1.33.95-2.42 2.15-2.42 1.2 0 2.17 1.09 2.15 2.42 0 1.33-.95 2.41-2.15 2.41Z"
+      />
+    </svg>
+  );
+}
 
 /**
  * Mock ad slots (north/south leaderboards + east/west skyscrapers) have
@@ -56,6 +101,7 @@ export function AdFrame({
   const [languageOpen, setLanguageOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authEmail, setAuthEmail] = useState("");
+  const [emailLoginOpen, setEmailLoginOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [quota, setQuota] = useState<VerdictQuotaStatus | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
@@ -85,6 +131,7 @@ export function AdFrame({
 
   useEffect(() => {
     if (!dashboardOpen) setLanguageOpen(false);
+    if (!dashboardOpen) setEmailLoginOpen(false);
   }, [dashboardOpen]);
 
   useEffect(() => {
@@ -152,6 +199,23 @@ export function AdFrame({
     }
   }
 
+  async function signInWithProvider(provider: Extract<Provider, "discord" | "google">) {
+    setAuthLoading(true);
+    try {
+      const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo,
+        },
+      });
+      if (error) throw error;
+    } catch (error) {
+      setAuthLoading(false);
+      toast.error(error instanceof Error ? error.message : "Sign in failed.");
+    }
+  }
+
   async function signOut() {
     setAuthLoading(true);
     try {
@@ -172,12 +236,43 @@ export function AdFrame({
     }
     return (
       t?.("dashboardQuota", {
-        used: status.used,
+        remaining: status.remaining ?? 0,
         limit: status.limit ?? 0,
         plan: status.plan,
-      }) ?? `${status.used}/${status.limit ?? 0} verdicts used today`
+      }) ?? `${status.remaining ?? 0}/${status.limit ?? 0} verdicts available today`
     );
   }
+
+  function quotaPercent(status: VerdictQuotaStatus): number {
+    if (status.plan === "unli") return 100;
+    if (!status.limit) return 0;
+    return Math.max(0, Math.min(100, ((status.remaining ?? 0) / status.limit) * 100));
+  }
+
+  function quotaFillClass(status: VerdictQuotaStatus): string {
+    if (status.plan === "unli") return "bg-gold";
+    const percent = quotaPercent(status);
+    if (percent <= 0) return "bg-destructive";
+    if (percent <= 34) return "bg-destructive";
+    if (percent <= 67) return "bg-amber-400";
+    return "bg-gold";
+  }
+
+  function authProviderLabel(): string {
+    const provider = session?.user.app_metadata?.provider;
+    if (provider === "google") return t?.("dashboardProviderGoogle") ?? "Google";
+    if (provider === "discord") return t?.("dashboardProviderDiscord") ?? "Discord";
+    return t?.("dashboardProviderEmail") ?? "Email";
+  }
+
+  const authButtonClass =
+    "group inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-md border border-border bg-background/50 px-2 text-xs font-semibold text-foreground transition-all duration-300 ease-out hover:flex-[2] hover:border-gold hover:text-gold focus-visible:flex-[2] focus-visible:border-gold focus-visible:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-60";
+  const authButtonLabelClass =
+    "max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 group-hover:max-w-24 group-hover:opacity-100 group-focus-visible:max-w-24 group-focus-visible:opacity-100";
+  const headerActionClass =
+    "group inline-flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-md border border-border bg-background/40 px-2 text-xs font-semibold text-muted-foreground transition-colors duration-300 ease-out hover:border-gold hover:text-gold focus-visible:border-gold focus-visible:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-60";
+  const headerActionLabelClass =
+    "ml-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 group-hover:ml-1.5 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-1.5 group-focus-visible:max-w-20 group-focus-visible:opacity-100";
 
   return (
     <div className={outer}>
@@ -207,89 +302,168 @@ export function AdFrame({
               <a
                 href={homeHref}
                 aria-label={t?.("home") ?? "Go to Summoner's Courtroom home"}
-                className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-background/40 px-3 text-xs font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold"
+                className={headerActionClass}
               >
                 <Home className="h-3.5 w-3.5" />
-                {t?.("dashboardHome") ?? "Home"}
+                <span className={headerActionLabelClass}>{t?.("dashboardHome") ?? "Home"}</span>
               </a>
-              <button
-                type="button"
-                aria-label={t?.("dashboardClose") ?? "Close dashboard"}
-                onClick={() => setDashboardOpen(false)}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                {session && (
+                  <button
+                    type="button"
+                    disabled={authLoading}
+                    onClick={signOut}
+                    className={headerActionClass}
+                    aria-label={t?.("dashboardSignOut") ?? "Sign out"}
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    <span className={headerActionLabelClass}>
+                      {t?.("dashboardSignOut") ?? "Sign out"}
+                    </span>
+                  </button>
+                )}
+                {session && (
+                  <button
+                    type="button"
+                    className={headerActionClass}
+                    aria-label={t?.("dashboardOptions") ?? "Options"}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    <span className={headerActionLabelClass}>
+                      {t?.("dashboardOptions") ?? "Options"}
+                    </span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={t?.("dashboardClose") ?? "Close dashboard"}
+                  onClick={() => setDashboardOpen(false)}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
               <section className="rounded-lg border border-border bg-background/40 p-3">
-                <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
-                  <User className="h-3.5 w-3.5" />
-                  {t?.("dashboardProfile") ?? "Profile"}
-                </div>
                 {session ? (
-                  <div className="space-y-2">
-                    <p className="truncate text-xs font-semibold text-foreground">
-                      {session.user.email}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+                      <User className="h-3.5 w-3.5" />
+                      {t?.("dashboardProfile") ?? "Profile"}
+                    </div>
+                    <p className="min-w-0 truncate text-xs font-semibold text-foreground">
+                      {t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
+                        `Signed in with ${authProviderLabel()}`}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {quotaLoading
-                        ? t?.("dashboardQuotaLoading") ?? "Loading verdict quota..."
-                        : quota
-                          ? quotaText(quota)
-                          : quotaError
-                            ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
-                            : t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."}
-                    </p>
-                    <button
-                      type="button"
-                      disabled={authLoading}
-                      onClick={signOut}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {t?.("dashboardSignOut") ?? "Sign out"}
-                    </button>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      {quotaLoading
-                        ? t?.("dashboardQuotaLoading") ?? "Loading verdict quota..."
-                        : quota
-                          ? quotaText(quota)
-                          : quotaError
-                            ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
-                            : t?.("dashboardAnonymousQuotaHelp") ??
-                              "Sign in for a higher daily verdict limit."}
-                    </p>
-                    <input
-                      type="email"
-                      value={authEmail}
-                      onChange={(event) => setAuthEmail(event.target.value)}
-                      placeholder={t?.("dashboardEmail") ?? "Email"}
-                      className="h-8 w-full rounded-md border border-border bg-background/60 px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
-                    />
-                    <button
-                      type="button"
-                      disabled={authLoading || !authEmail}
-                      onClick={sendMagicLink}
-                      className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {t?.("dashboardSendMagicLink") ?? "Send magic link"}
-                    </button>
+                    <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+                      <User className="h-3.5 w-3.5" />
+                      {t?.("dashboardProfile") ?? "Profile"}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={authLoading}
+                        onClick={() => signInWithProvider("google")}
+                        className={authButtonClass}
+                        aria-label={t?.("dashboardContinueGoogle") ?? "Google"}
+                      >
+                        <GoogleIcon className="h-4 w-4 shrink-0" />
+                        <span className={authButtonLabelClass}>
+                          {t?.("dashboardContinueGoogle") ?? "Google"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={authLoading}
+                        onClick={() => signInWithProvider("discord")}
+                        className={authButtonClass}
+                        aria-label={t?.("dashboardContinueDiscord") ?? "Discord"}
+                      >
+                        <DiscordIcon className="h-4 w-4 shrink-0 text-[#5865F2]" />
+                        <span className={authButtonLabelClass}>
+                          {t?.("dashboardContinueDiscord") ?? "Discord"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={authLoading}
+                        onClick={() => setEmailLoginOpen((open) => !open)}
+                        className={authButtonClass}
+                        aria-expanded={emailLoginOpen}
+                        aria-label={t?.("dashboardProviderEmail") ?? "Email"}
+                      >
+                        <Mail className="h-4 w-4 shrink-0" />
+                        <span className={authButtonLabelClass}>
+                          {t?.("dashboardProviderEmail") ?? "Email"}
+                        </span>
+                      </button>
+                    </div>
+                    {emailLoginOpen && (
+                      <div className="grid gap-2 animate-fade-in">
+                        <input
+                          type="email"
+                          value={authEmail}
+                          onChange={(event) => setAuthEmail(event.target.value)}
+                          placeholder={t?.("dashboardEmail") ?? "Email"}
+                          className="h-8 w-full rounded-md border border-border bg-background/60 px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
+                        />
+                        <button
+                          type="button"
+                          disabled={authLoading || !authEmail}
+                          onClick={sendMagicLink}
+                          className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {t?.("dashboardSendMagicLink") ?? "Register"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </section>
 
               <section className="rounded-lg border border-border bg-background/40 p-3">
                 <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
-                  <Settings className="h-3.5 w-3.5" />
-                  {t?.("dashboardOptions") ?? "Options"}
+                  <Gauge className="h-3.5 w-3.5" />
+                  {t?.("dashboardQuotaTitle") ?? "Verdict quota"}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {t?.("dashboardOptionsComingSoon") ?? "More settings will be added here."}
-                </p>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {quotaLoading
+                      ? t?.("dashboardQuotaLoading") ?? "Loading verdict quota..."
+                      : quota
+                        ? quotaText(quota)
+                        : quotaError
+                          ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
+                          : session
+                            ? t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."
+                            : t?.("dashboardAnonymousQuotaHelp") ??
+                              "Sign in for a higher daily verdict limit."}
+                  </p>
+                  <div
+                    role="meter"
+                    aria-valuemin={0}
+                    aria-valuemax={quota?.limit ?? 100}
+                    aria-valuenow={quota?.remaining ?? (quota?.plan === "unli" ? 100 : 0)}
+                    aria-valuetext={quota ? quotaText(quota) : undefined}
+                    className="h-2.5 overflow-hidden rounded-full border border-border bg-background/70"
+                  >
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ease-out ${
+                        quotaLoading
+                          ? "w-1/2 animate-pulse bg-muted-foreground/30"
+                          : quota
+                            ? quotaFillClass(quota)
+                            : "bg-muted-foreground/20"
+                      }`}
+                      style={{ width: quotaLoading ? "45%" : quota ? `${quotaPercent(quota)}%` : "0%" }}
+                    />
+                  </div>
+                </div>
               </section>
 
               <section className="rounded-lg border border-border bg-background/40 p-3">

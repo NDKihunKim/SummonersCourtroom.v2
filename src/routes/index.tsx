@@ -1,31 +1,18 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
 import {
   useEffect,
-  useId,
-  useCallback,
   useMemo,
   useRef,
   useState,
-  type FormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
-import { ArrowLeft, Loader2, Search, Star, Swords, Trophy, X } from "lucide-react";
+import { Star, Swords, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { MatchCard } from "@/components/MatchCard";
 import { AdFrame } from "@/components/AdFrame";
-import { RegionPicker } from "@/components/RegionPicker";
 import { ShowMoreMatchesButton } from "@/components/ShowMoreMatchesButton";
-import { SHARDS, type Shard } from "@/lib/regions";
-import { useShard } from "@/hooks/useShard";
-import {
-  getOrFetchMatchHistory,
-  type CachedSummonerPayload,
-} from "@/functions/summoner-cache.functions";
-import { SearchSuggestions } from "@/components/SearchSuggestions";
-import { useRecentSearches } from "@/hooks/useRecentSearches";
-import { useSavedPlayers } from "@/hooks/useSavedPlayers";
-import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
+import type { Shard } from "@/lib/regions";
+import type { CachedSummonerPayload } from "@/functions/summoner-cache.functions";
 import { RefreshButton } from "@/components/RefreshButton";
 import { TierEmblem } from "@/components/TierEmblem";
 import { tierLabel, type RankedEntry } from "@/lib/tier";
@@ -36,7 +23,7 @@ import { useSampleSize } from "@/hooks/useSampleSize";
 import { computeMatchStats } from "@/lib/match-stats";
 import { useLocale, type Locale, type TranslationKey } from "@/i18n";
 import type { SharedVerdictPayload } from "@/functions/shared-verdict.functions";
-import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
+import { SummonerSearchBar } from "@/components/SummonerSearchBar";
 
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
 
@@ -59,27 +46,6 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-function parseRiotId(input: string): { gameName: string; tagLine: string } | null {
-  const trimmed = input.trim();
-  const hash = trimmed.lastIndexOf("#");
-  if (hash < 1 || hash === trimmed.length - 1) return null;
-  return {
-    gameName: trimmed.slice(0, hash).trim(),
-    tagLine: trimmed.slice(hash + 1).trim(),
-  };
-}
-
-/**
- * Type-guard for shard codes received from URL query params. We never trust
- * `?shard=` blindly — an attacker (or a stale bookmark) could pass any
- * string, and the cache function will reject unknown shards with a 500.
- * Using the canonical SHARDS list keeps this in sync automatically when
- * new shards are added in `src/lib/regions.ts`.
- */
-function isKnownShard(value: string): value is Shard {
-  return SHARDS.some((s) => s.code === value);
-}
-
 /**
  * Build the same-origin dedicated profile URL used for shareable player links.
  */
@@ -89,355 +55,6 @@ export function buildPlayerProfileUrl(shard: Shard, gameName: string, tagLine: s
 
 function Index() {
   const { locale, setLocale, t } = useLocale();
-  const navigate = useNavigate();
-  const [riotId, setRiotId] = useState("");
-  // Per-shard selection (e.g. "NA", "EUW", "KR"). The hook auto-detects from
-  // the visitor's IANA timezone on first visit, then persists their choice
-  // (or any later manual override) to localStorage. On submit we translate
-  // to the routing cluster the backend expects (handled inside the cache fn).
-  const { shard, setShard } = useShard();
-  const [data, setData] = useState<CachedSummonerPayload | null>(null);
-  const [viewedShard, setViewedShard] = useState<Shard | null>(null);
-
-  // ─── Autocomplete (recent searches) ────────────────────────────────────
-  // Owned here so the form's submit + keyboard handlers can drive it.
-  const { recents, addRecent, removeRecent, clearAll } = useRecentSearches();
-  const { savedPlayers, addSavedPlayer, removeSavedPlayer, isSaved } = useSavedPlayers();
-  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [isSearchVerifying, setIsSearchVerifying] = useState(false);
-  const listboxId = useId();
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-  const turnstileRef = useRef<TurnstileHandle>(null);
-  const [suggestionsHeight, setSuggestionsHeight] = useState(0);
-  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
-  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
-  const resetTurnstile = useCallback(() => {
-    turnstileRef.current?.reset();
-    setTurnstileResetKey((key) => key + 1);
-  }, []);
-  const executeTurnstile = useCallback(async () => {
-    if (!turnstileSiteKey) return undefined;
-    if (!turnstileRef.current) {
-      throw new Error("Human verification is not ready. Please try again.");
-    }
-    const token = await turnstileRef.current.execute();
-    if (!token) throw new Error("Human verification did not complete. Please try again.");
-    return token;
-  }, [turnstileSiteKey]);
-
-  // Composed suggestions: local recents first, then shared backend index
-  // (sorted Challenger -> Iron). Debounces the server call internally.
-  const suggestions = useSuggestions({ savedPlayers, recents, query: riotId, shard, limit: 20 });
-
-  // Reset highlight whenever the visible list changes so we never point at
-  // a stale index (which would otherwise read as "selected" via aria).
-  useEffect(() => {
-    setHighlightedIndex(-1);
-  }, [suggestions]);
-
-  // Suggestions are shard-scoped; switching shard mid-type would otherwise
-  // show stale results from the previous shard for a frame.
-  useEffect(() => {
-    setIsSuggestOpen(false);
-  }, [shard]);
-
-  // Outside-click → close. Listens at the document level but ignores clicks
-  // inside our wrapper (input + dropdown).
-  useEffect(() => {
-    if (!isSuggestOpen) return;
-    function onDocClick(e: MouseEvent) {
-      if (!wrapperRef.current) return;
-      if (!wrapperRef.current.contains(e.target as Node)) setIsSuggestOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [isSuggestOpen]);
-
-  const mutation = useMutation({
-    mutationFn: async (vars: {
-      gameName: string;
-      tagLine: string;
-      shard: Shard;
-      turnstileToken?: string;
-    }) => {
-      return getOrFetchMatchHistory({ data: vars });
-    },
-    onSuccess: (result, vars) => {
-      setShard(vars.shard);
-      // Persist this successful lookup for future autocomplete suggestions.
-      // Source the canonical name/tag from the server response so casing
-      // matches Riot's record (the user may have typed it differently).
-      addRecent({
-        gameName: result.account.gameName,
-        tagLine: result.account.tagLine,
-        shard: vars.shard,
-      });
-      void navigate({
-        to: "/summoner/$shard/$gameName/$tagLine",
-        params: {
-          shard: vars.shard,
-          gameName: result.account.gameName,
-          tagLine: result.account.tagLine,
-        },
-      });
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : t("failedToLoadMatches")),
-    onSettled: () => {
-      setIsSearchVerifying(false);
-      resetTurnstile();
-    },
-  });
-  const isSearching = isSearchVerifying || mutation.isPending;
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    const parsed = parseRiotId(riotId);
-    if (!parsed) {
-      toast.error(t("invalidRiotId"));
-      return;
-    }
-    // Close the dropdown on submit so it doesn't linger over the result view.
-    setIsSuggestOpen(false);
-    // Cache function takes the raw shard and handles routing internally.
-    try {
-      setIsSearchVerifying(true);
-      const turnstileToken = await executeTurnstile();
-      mutation.mutate({ ...parsed, shard, turnstileToken });
-    } catch (error) {
-      setIsSearchVerifying(false);
-      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
-    }
-  }
-
-  /** Apply a clicked / Enter-selected suggestion: fill input + submit. */
-  async function selectSuggestion(item: Suggestion) {
-    const value = `${item.gameName}#${item.tagLine}`;
-    setRiotId(value);
-    setShard(item.shard);
-    setIsSuggestOpen(false);
-    // Use the suggestion's parsed parts directly — avoids re-parsing the
-    // string we just constructed and dodges any stale-state edge cases
-    // around setRiotId not being applied before mutation.mutate runs.
-    try {
-      setIsSearchVerifying(true);
-      const turnstileToken = await executeTurnstile();
-      mutation.mutate({
-        gameName: item.gameName,
-        tagLine: item.tagLine,
-        shard: item.shard,
-        turnstileToken,
-      });
-    } catch (error) {
-      setIsSearchVerifying(false);
-      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
-    }
-  }
-
-  /** Footer "Clear all history" — wipes local recents only. */
-  function handleClearAll() {
-    const cleared = clearAll();
-    if (cleared > 0) {
-      toast.success(t("clearedRecentSearches", { count: cleared, plural: cleared === 1 ? "" : "es" }));
-    }
-  }
-
-  function closeSuggestions() {
-    setIsSuggestOpen(false);
-    setHighlightedIndex(-1);
-  }
-
-  function handleShardChange(nextShard: Shard) {
-    closeSuggestions();
-    setShard(nextShard);
-  }
-
-  function handleRegionOpenChange(open: boolean) {
-    if (open) closeSuggestions();
-  }
-
-  /**
-   * Open a player's match history in a NEW tab.
-   *
-   * Used by the in-row roster click handler — clicking any ally/enemy name
-   * (or your own "you" row) opens that player in a fresh browser tab so the
-   * current tab stays anchored on the original lookup.
-   *
-   * Implementation notes:
-   *   - We use `window.open(url, "_blank", "noopener,noreferrer")`. The
-   *     `noopener` flag is critical for both security and performance:
-   *     without it the new tab gets a `window.opener` reference back into
-   *     this tab, which (a) lets the new page navigate this tab via
-   *     `opener.location` (tabnabbing), and (b) prevents the browser from
-   *     running the two tabs in separate processes.
-   *   - SSR-safe: guards against `window` being undefined.
-   *   - Uses the CURRENT shard. Cross-region lookups would require a shard
-   *     hint we don't have for arbitrary roster names; sticking to the
-   *     active shard matches op.gg-style tools and avoids surprising the
-   *     user. The deep-link URL carries the shard so the new tab inherits
-   *     it instead of falling back to the visitor's stored preference.
-   *   - Validates the Riot ID up front so a malformed roster entry never
-   *     opens a useless blank tab.
-   */
-  function searchPlayerById(rawRiotId: string) {
-    const parsed = parseRiotId(rawRiotId);
-    if (!parsed) {
-      // Should be unreachable from the roster (every Riot ID has a tag) but
-      // we surface a friendly toast instead of silently failing.
-      toast.error(t("couldntParse", { riotId: rawRiotId }));
-      return;
-    }
-    if (typeof window === "undefined") return; // SSR safety
-    const url = buildPlayerProfileUrl(viewedShard ?? shard, parsed.gameName, parsed.tagLine);
-    // `noopener,noreferrer` — see security note above.
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-
-  // ─── Deep-link auto-search (?riotId=...&shard=...&autosearch=1) ───────
-  // When this route is opened with the deep-link query params (set by
-  // `searchPlayerById` when a roster row is clicked in another tab), we
-  // pre-fill the input, sync the shard, and trigger the same mutation the
-  // form's submit handler uses. Then we strip the params so a manual
-  // refresh later doesn't repeatedly re-trigger the search.
-  //
-  // Runs once on mount only (`[]` deps) — subsequent in-tab navigations
-  // are driven by user input, not URL params.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const shardParam = params.get("shard");
-    if (shardParam && isKnownShard(shardParam) && shardParam !== shard) {
-      setShard(shardParam);
-    }
-
-    const rawRiotId = params.get("riotId");
-    const auto = params.get("autosearch");
-    if (!rawRiotId || auto !== "1") {
-      if (shardParam && isKnownShard(shardParam)) {
-        window.history.replaceState(null, "", window.location.pathname);
-      }
-      return;
-    }
-
-    const parsed = parseRiotId(rawRiotId);
-    if (!parsed) {
-      // Bad deep link — silently strip the params and let the user retype.
-      window.history.replaceState(null, "", window.location.pathname);
-      return;
-    }
-
-    // Optional shard override from the URL. Falls back to the user's stored
-    // shard preference (already loaded by `useShard`) when missing or unknown.
-    const effectiveShard: Shard =
-      shardParam && isKnownShard(shardParam) ? shardParam : shard;
-
-    // Mirror the form's submit behavior so caching / recent searches /
-    // toasts all behave identically to a manual lookup.
-    setRiotId(rawRiotId);
-    setIsSuggestOpen(false);
-    mutation.mutate({ ...parsed, shard: effectiveShard });
-
-    // Clean the URL so a refresh doesn't re-fire (we already have `data`
-    // in state and don't need the params anymore).
-    window.history.replaceState(null, "", window.location.pathname);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** Keyboard navigation inside the input when the dropdown is open. */
-  function onInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
-    // Open the dropdown on first arrow key even if it was closed.
-    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !isSuggestOpen && suggestions.length > 0) {
-      setIsSuggestOpen(true);
-      e.preventDefault();
-      return;
-    }
-    if (!isSuggestOpen || suggestions.length === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedIndex((i) => (i + 1) % suggestions.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
-    } else if (e.key === "Enter") {
-      // Only intercept Enter when a suggestion is highlighted; otherwise
-      // let the form submit normally with the typed text.
-      if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
-        e.preventDefault();
-        selectSuggestion(suggestions[highlightedIndex]);
-      }
-    } else if (e.key === "Escape") {
-      setIsSuggestOpen(false);
-    }
-  }
-
-  const hasVisibleSuggestions = isSuggestOpen && suggestions.length > 0;
-
-  useEffect(() => {
-    if (!hasVisibleSuggestions) {
-      setSuggestionsHeight(0);
-      return;
-    }
-
-    const measure = () => {
-      const element = suggestionsRef.current;
-      if (!element) return;
-      setSuggestionsHeight(element.offsetHeight);
-    };
-
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [hasVisibleSuggestions, suggestions.length, recents.length]);
-
-  if (data) {
-    const resultShard = viewedShard ?? shard;
-
-    return (
-      <AdFrame homeHref={`/?shard=${resultShard}`} locale={locale} t={t}>
-        <MatchHistory
-          result={data}
-          shard={resultShard}
-          isSaved={isSaved({
-            gameName: data.account.gameName,
-            tagLine: data.account.tagLine,
-            shard: resultShard,
-          })}
-          onToggleSaved={() => {
-            const player = {
-              gameName: data.account.gameName,
-              tagLine: data.account.tagLine,
-              shard: resultShard,
-            };
-            if (isSaved(player)) {
-              removeSavedPlayer(`${resultShard}|${data.account.gameName.toLowerCase()}#${data.account.tagLine.toLowerCase()}`);
-              toast.success(t("unsavedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }));
-            } else {
-              addSavedPlayer({
-                ...player,
-                profileIconId: data.profileIconId ?? null,
-                tier: data.ranked?.tier ?? null,
-                division: data.ranked?.division ?? null,
-                lp: data.ranked?.lp ?? null,
-              });
-              toast.success(t("savedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }));
-            }
-          }}
-          onRefreshed={(fresh) => setData(fresh)}
-          onBack={() => {
-            setData(null);
-            setViewedShard(null);
-            mutation.reset();
-          }}
-          onSearchPlayer={searchPlayerById}
-          locale={locale}
-          t={t}
-        />
-      </AdFrame>
-    );
-  }
-
   return (
     <AdFrame fitViewport locale={locale} onLocaleChange={setLocale} t={t}>
       {/* h-full lets the hero fill the leftover space between the
@@ -454,112 +71,11 @@ function Index() {
             alt="Summoner's Courtroom"
             className="mt-1 h-auto max-h-24 w-full max-w-xl object-contain sm:max-h-28 md:max-h-36"
           />
-          <form onSubmit={onSubmit} className="mt-8 w-full max-w-xl sm:mt-10">
-            {/* Wrapper is `relative` so the suggestions dropdown can stack
-                directly under the input row without affecting layout. */}
-            <div ref={wrapperRef} className="relative">
-            <div
-              className="flex flex-col gap-2 rounded-xl border border-border bg-card/80 p-2 backdrop-blur transition-all focus-within:border-gold sm:flex-row"
-              style={{ boxShadow: "var(--shadow-elegant)" }}
-            >
-              {/* Shard picker sits on the LEFT, separated by a subtle divider */}
-              <div className="flex items-center border-b border-border pb-1 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-1">
-                <RegionPicker
-                  value={shard}
-                  onChange={handleShardChange}
-                  onOpenChange={handleRegionOpenChange}
-                  t={t}
-                />
-              </div>
-              <div className="flex min-w-0 flex-1 items-center">
-                <Search className="ml-3 h-5 w-5 shrink-0 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={riotId}
-                  onChange={(e) => {
-                    setRiotId(e.target.value);
-                    // Re-open as the user types so suggestions re-appear
-                    // even if they previously dismissed via Esc.
-                    setIsSuggestOpen(true);
-                  }}
-                  onFocus={() => setIsSuggestOpen(true)}
-                  onKeyDown={onInputKeyDown}
-                  role="combobox"
-                  aria-expanded={hasVisibleSuggestions}
-                  aria-controls={listboxId}
-                  aria-autocomplete="list"
-                  aria-activedescendant={
-                    highlightedIndex >= 0 ? `recent-option-${highlightedIndex}` : undefined
-                  }
-                  placeholder={t("riotIdPlaceholder")}
-                  autoComplete="off"
-                  className="min-w-0 w-full bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
-                />
-                {riotId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRiotId("");
-                      setIsSuggestOpen(false);
-                    }}
-                    aria-label={t("clearRiotId")}
-                    className="mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <button
-                type="submit"
-                disabled={isSearching}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
-              >
-                {isSearching ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
-                  </>
-                ) : (
-                  t("search")
-                )}
-              </button>
-            </div>
-
-            {/* Dropdown — only mounted when there's something to show, so
-                the listbox isn't announced empty by screen readers.
-                We require `suggestions.length > 0` (not just `recents.length`)
-                so that immediately after "Clear all history" the dropdown
-                disappears instead of lingering with backend index entries
-                that look identical to local history. */}
-            {hasVisibleSuggestions && (
-              <SearchSuggestions
-                items={suggestions}
-                highlightedIndex={highlightedIndex}
-                query={riotId}
-                listboxId={listboxId}
-                onHover={setHighlightedIndex}
-                onSelect={selectSuggestion}
-                onRemove={removeRecent}
-                onUnsave={removeSavedPlayer}
-                recentsCount={recents.length}
-                onClearAll={handleClearAll}
-                contentRef={suggestionsRef}
-                t={t}
-              />
-            )}
-            </div>
-            <div className="mt-3">
-              <TurnstileWidget
-                ref={turnstileRef}
-                siteKey={turnstileSiteKey}
-                resetKey={turnstileResetKey}
-              />
-            </div>
-            <div
-              className="overflow-hidden transition-[height] duration-300 ease-out"
-              style={{ height: suggestionsHeight }}
-              aria-hidden
-            />
-          </form>
+          <SummonerSearchBar
+            t={t}
+            reserveSuggestionSpace
+            className="mt-8 w-full max-w-xl sm:mt-10"
+          />
 
           <p className="mt-6 w-full max-w-2xl text-center text-sm text-muted-foreground">
             {t("heroHelper")}
@@ -576,8 +92,8 @@ export function MatchHistory({
   isSaved,
   onToggleSaved,
   onRefreshed,
-  onBack,
   onSearchPlayer,
+  topSlot,
   shareNotice,
   sharedVerdict,
   onProfileInteraction,
@@ -593,6 +109,7 @@ export function MatchHistory({
   onBack: () => void;
   /** Called when a roster row is clicked — searches that player same-tab. */
   onSearchPlayer: (rawRiotId: string) => void;
+  topSlot?: ReactNode;
   shareNotice?: string;
   sharedVerdict?: SharedVerdictPayload | null;
   onProfileInteraction?: (matchId: string) => void;
@@ -748,12 +265,7 @@ export function MatchHistory({
   return (
     <div style={{ background: "var(--gradient-hero)" }}>
       <div className="mx-auto max-w-5xl px-4 pb-8 pt-16 sm:pt-20">
-        <button
-          onClick={onBack}
-          className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-gold"
-        >
-          <ArrowLeft className="h-4 w-4" /> {t("newSearch")}
-        </button>
+        {topSlot && <div className="relative z-30 mb-6 flex justify-center">{topSlot}</div>}
 
         {shareNotice && (
           <div className="mb-4 rounded-xl border border-gold/60 bg-gold/10 p-4 text-sm text-gold">

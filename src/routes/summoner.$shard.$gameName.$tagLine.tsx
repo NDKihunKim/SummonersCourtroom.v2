@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AdFrame } from "@/components/AdFrame";
+import { SummonerSearchBar } from "@/components/SummonerSearchBar";
 import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
 import {
   getCachedMatchHistory,
@@ -220,6 +221,13 @@ function SummonerProfilePage() {
           onRefreshed={setData}
           onBack={() => void navigate({ to: "/" })}
           onSearchPlayer={openPlayer}
+          topSlot={
+            <SummonerSearchBar
+              t={t}
+              preferredShard={shard}
+              className="w-full max-w-xl"
+            />
+          }
           openVerdictMatchId={openVerdictMatchId}
           locale={locale}
           t={t}
