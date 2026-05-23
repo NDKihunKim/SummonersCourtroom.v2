@@ -200,7 +200,7 @@ const translations = {
     dashboardProfile: "프로필",
     dashboardProfileComingSoon: "사용자 프로필과 로그인은 추후 추가됩니다.",
     dashboardAnonymousQuotaHelp: "로그인하면 하루 AI 판결 한도가 늘어납니다.",
-    dashboardQuotaTitle: "AI 판결 한도",
+    dashboardQuotaTitle: "AI 롤재판 가능 횟수",
     dashboardQuota: "오늘 AI 판결 {remaining}/{limit}회 사용 가능 ({plan})",
     dashboardQuotaUnlimited: "오늘 AI 판결 무제한 사용 가능 (unli)",
     dashboardQuotaLoading: "AI 판결 한도를 불러오는 중...",

@@ -81,7 +81,7 @@ export function ChampionIcon({ champion, size = 48, className = "", ring = true 
         decoding="async"
         draggable={false}
         onError={() => setFailed(true)}
-        className="h-full w-full object-cover"
+        className="h-full w-full scale-[1.09] object-cover"
       />
     </div>
   );
