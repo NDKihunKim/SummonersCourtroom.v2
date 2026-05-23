@@ -341,20 +341,6 @@ export function AdFrame({
                 {session && (
                   <button
                     type="button"
-                    disabled={authLoading}
-                    onClick={signOut}
-                    className={headerActionClass}
-                    aria-label={t?.("dashboardSignOut") ?? "Sign out"}
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    <span className={headerActionLabelClass}>
-                      {t?.("dashboardSignOut") ?? "Sign out"}
-                    </span>
-                  </button>
-                )}
-                {session && (
-                  <button
-                    type="button"
                     className={headerActionClass}
                     aria-label={t?.("dashboardOptions") ?? "Options"}
                   >
@@ -378,15 +364,29 @@ export function AdFrame({
             <div className="space-y-3">
               <section className="rounded-lg border border-border bg-background/40 p-3">
                 {session ? (
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex shrink-0 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
-                      <User className="h-3.5 w-3.5" />
-                      {t?.("dashboardProfile") ?? "Profile"}
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+                        <User className="h-3.5 w-3.5" />
+                        {t?.("dashboardProfile") ?? "Profile"}
+                      </div>
+                      <p className="min-w-0 truncate text-xs font-semibold text-foreground">
+                        {t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
+                          `Signed in with ${authProviderLabel()}`}
+                      </p>
                     </div>
-                    <p className="min-w-0 truncate text-xs font-semibold text-foreground">
-                      {t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
-                        `Signed in with ${authProviderLabel()}`}
-                    </p>
+                    <button
+                      type="button"
+                      disabled={authLoading}
+                      onClick={signOut}
+                      className={`${headerActionClass} shrink-0`}
+                      aria-label={t?.("dashboardSignOut") ?? "Sign out"}
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      <span className={headerActionLabelClass}>
+                        {t?.("dashboardSignOut") ?? "Sign out"}
+                      </span>
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-2">
