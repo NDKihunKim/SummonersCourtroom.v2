@@ -23,6 +23,7 @@ import {
 
 const RIOT_DISCLAIMER =
   "Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
+const LAST_AUTH_PROVIDER_KEY = "summoners-courtroom:last-auth-provider";
 
 const FOOTER_LINKS = [
   { href: "/about", label: "About", key: "footerAbout" },
@@ -102,6 +103,7 @@ export function AdFrame({
   const [session, setSession] = useState<Session | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [emailLoginOpen, setEmailLoginOpen] = useState(false);
+  const [lastAuthProvider, setLastAuthProvider] = useState<"discord" | "email" | "google" | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [quota, setQuota] = useState<VerdictQuotaStatus | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
@@ -152,6 +154,17 @@ export function AdFrame({
   }, []);
 
   useEffect(() => {
+    try {
+      const provider = window.localStorage.getItem(LAST_AUTH_PROVIDER_KEY);
+      if (provider === "discord" || provider === "email" || provider === "google") {
+        setLastAuthProvider(provider);
+      }
+    } catch {
+      setLastAuthProvider(null);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!dashboardOpen) return;
     let cancelled = false;
 
@@ -183,6 +196,7 @@ export function AdFrame({
   async function sendMagicLink() {
     setAuthLoading(true);
     try {
+      rememberAuthProvider("email");
       const redirectTo = typeof window !== "undefined" ? window.location.href : undefined;
       const { error } = await supabase.auth.signInWithOtp({
         email: authEmail.trim(),
@@ -202,6 +216,7 @@ export function AdFrame({
   async function signInWithProvider(provider: Extract<Provider, "discord" | "google">) {
     setAuthLoading(true);
     try {
+      rememberAuthProvider(provider);
       const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -213,6 +228,15 @@ export function AdFrame({
     } catch (error) {
       setAuthLoading(false);
       toast.error(error instanceof Error ? error.message : "Sign in failed.");
+    }
+  }
+
+  function rememberAuthProvider(provider: "discord" | "email" | "google") {
+    setLastAuthProvider(provider);
+    try {
+      window.localStorage.setItem(LAST_AUTH_PROVIDER_KEY, provider);
+    } catch {
+      // Ignore storage failures; auth still works without the local hint.
     }
   }
 
@@ -265,10 +289,16 @@ export function AdFrame({
     return t?.("dashboardProviderEmail") ?? "Email";
   }
 
+  function providerLabel(provider: "discord" | "email" | "google"): string {
+    if (provider === "google") return t?.("dashboardProviderGoogle") ?? "Google";
+    if (provider === "discord") return t?.("dashboardProviderDiscord") ?? "Discord";
+    return t?.("dashboardProviderEmail") ?? "Email";
+  }
+
   const authButtonClass =
-    "group inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-md border border-border bg-background/50 px-2 text-xs font-semibold text-foreground transition-all duration-300 ease-out hover:flex-[2] hover:border-gold hover:text-gold focus-visible:flex-[2] focus-visible:border-gold focus-visible:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-60";
+    "group inline-flex h-9 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-md border border-border bg-background/50 px-2 text-xs font-semibold text-foreground transition-all duration-300 ease-out hover:flex-[2] hover:border-gold hover:text-gold focus-visible:flex-[2] focus-visible:border-gold focus-visible:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-60";
   const authButtonLabelClass =
-    "max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 group-hover:max-w-24 group-hover:opacity-100 group-focus-visible:max-w-24 group-focus-visible:opacity-100";
+    "ml-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 group-hover:ml-2 group-hover:max-w-24 group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-24 group-focus-visible:opacity-100";
   const headerActionClass =
     "group inline-flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-md border border-border bg-background/40 px-2 text-xs font-semibold text-muted-foreground transition-colors duration-300 ease-out hover:border-gold hover:text-gold focus-visible:border-gold focus-visible:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-60";
   const headerActionLabelClass =
@@ -403,6 +433,13 @@ export function AdFrame({
                         </span>
                       </button>
                     </div>
+                    {lastAuthProvider && (
+                      <p className="text-center text-[10px] font-medium text-muted-foreground">
+                        {t?.("dashboardLastLoginMethod", {
+                          provider: providerLabel(lastAuthProvider),
+                        }) ?? `Most recent login: ${providerLabel(lastAuthProvider)}`}
+                      </p>
+                    )}
                     {emailLoginOpen && (
                       <div className="grid gap-2 animate-fade-in">
                         <input
