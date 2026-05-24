@@ -13,6 +13,7 @@ export type VerdictQuotaStatus = {
   used: number;
   remaining: number | null;
   usageDate: string;
+  resetAt: string | null;
 };
 
 type AtomicQuotaResult = {
@@ -20,6 +21,7 @@ type AtomicQuotaResult = {
   used?: unknown;
   remaining?: unknown;
   limit?: unknown;
+  resetAt?: unknown;
 };
 
 function usageDate(): string {
@@ -85,38 +87,52 @@ async function profilePlan(userId: string): Promise<"free" | "paid" | "unli"> {
   return "free";
 }
 
-async function getUsageCount({
-  date,
+async function getActiveUsage({
   userId,
   anonymousId,
   ipHash,
 }: {
-  date: string;
   userId?: string;
   anonymousId?: string;
   ipHash: string;
-}): Promise<number> {
+}): Promise<{ used: number; resetAt: string | null }> {
+  const activeSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
   if (userId) {
     const { data, error } = await supabaseAdmin
       .from("verdict_usage_daily")
-      .select("verdict_count")
-      .eq("usage_date", date)
+      .select("verdict_count, window_started_at")
       .eq("user_id", userId)
+      .gt("window_started_at", activeSince)
+      .order("window_started_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (error) throw new Error("Failed to load verdict quota.");
-    return data?.verdict_count ?? 0;
+    return {
+      used: data?.verdict_count ?? 0,
+      resetAt: data?.window_started_at ? resetAtFromWindowStart(data.window_started_at) : null,
+    };
   }
 
   const { data, error } = await supabaseAdmin
     .from("verdict_usage_daily")
-    .select("verdict_count")
-    .eq("usage_date", date)
+    .select("verdict_count, window_started_at")
     .is("user_id", null)
     .eq("anonymous_id", anonymousId ?? "")
     .eq("ip_hash", ipHash)
+    .gt("window_started_at", activeSince)
+    .order("window_started_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw new Error("Failed to load verdict quota.");
-  return data?.verdict_count ?? 0;
+  return {
+    used: data?.verdict_count ?? 0,
+    resetAt: data?.window_started_at ? resetAtFromWindowStart(data.window_started_at) : null,
+  };
+}
+
+function resetAtFromWindowStart(windowStartedAt: string): string {
+  return new Date(Date.parse(windowStartedAt) + 24 * 60 * 60 * 1000).toISOString();
 }
 
 function parseAtomicQuotaResult(value: unknown): {
@@ -124,6 +140,7 @@ function parseAtomicQuotaResult(value: unknown): {
   used: number;
   remaining: number;
   limit: number;
+  resetAt: string | null;
 } {
   const result = value && typeof value === "object" ? (value as AtomicQuotaResult) : {};
   return {
@@ -131,6 +148,7 @@ function parseAtomicQuotaResult(value: unknown): {
     used: typeof result.used === "number" ? result.used : 0,
     remaining: typeof result.remaining === "number" ? result.remaining : 0,
     limit: typeof result.limit === "number" ? result.limit : 0,
+    resetAt: typeof result.resetAt === "string" ? result.resetAt : null,
   };
 }
 
@@ -148,24 +166,32 @@ export async function getVerdictQuota({
   if (user) {
     const plan = await profilePlan(user.id);
     if (plan === "unli") {
-      return { plan, limit: null, used: 0, remaining: null, usageDate: date };
+      return { plan, limit: null, used: 0, remaining: null, usageDate: date, resetAt: null };
     }
     const limit = plan === "paid" ? PAID_DAILY_LIMIT : FREE_DAILY_LIMIT;
-    const used = await getUsageCount({ date, userId: user.id, ipHash });
-    return { plan, limit, used, remaining: Math.max(0, limit - used), usageDate: date };
+    const usage = await getActiveUsage({ userId: user.id, ipHash });
+    return {
+      plan,
+      limit,
+      used: usage.used,
+      remaining: Math.max(0, limit - usage.used),
+      usageDate: date,
+      resetAt: usage.resetAt,
+    };
   }
 
   if (!anonymousId) {
     throw new Error("Anonymous usage id is missing. Please refresh and try again.");
   }
 
-  const used = await getUsageCount({ date, anonymousId, ipHash });
+  const usage = await getActiveUsage({ anonymousId, ipHash });
   return {
     plan: "anonymous",
     limit: ANONYMOUS_DAILY_LIMIT,
-    used,
-    remaining: Math.max(0, ANONYMOUS_DAILY_LIMIT - used),
+    used: usage.used,
+    remaining: Math.max(0, ANONYMOUS_DAILY_LIMIT - usage.used),
     usageDate: date,
+    resetAt: usage.resetAt,
   };
 }
 
@@ -179,7 +205,7 @@ export async function consumeVerdictQuota(identity: {
 
   const plan: AccountPlan = user ? await profilePlan(user.id) : "anonymous";
   if (plan === "unli") {
-    return { plan, limit: null, used: 0, remaining: null, usageDate: date };
+    return { plan, limit: null, used: 0, remaining: null, usageDate: date, resetAt: null };
   }
 
   const limit =
@@ -204,7 +230,14 @@ export async function consumeVerdictQuota(identity: {
     throw new Error(`Daily AI verdict limit reached (${result.used}/${result.limit || limit}).`);
   }
 
-  return { plan, limit, used: result.used, remaining: result.remaining, usageDate: date };
+  return {
+    plan,
+    limit,
+    used: result.used,
+    remaining: result.remaining,
+    usageDate: date,
+    resetAt: result.resetAt,
+  };
 }
 
 export async function refundVerdictQuota(identity: {

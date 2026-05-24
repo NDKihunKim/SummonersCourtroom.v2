@@ -153,6 +153,7 @@ export type Database = {
           usage_date: string
           user_id: string | null
           verdict_count: number
+          window_started_at: string | null
         }
         Insert: {
           anonymous_id?: string | null
@@ -163,6 +164,7 @@ export type Database = {
           usage_date?: string
           user_id?: string | null
           verdict_count?: number
+          window_started_at?: string | null
         }
         Update: {
           anonymous_id?: string | null
@@ -173,6 +175,7 @@ export type Database = {
           usage_date?: string
           user_id?: string | null
           verdict_count?: number
+          window_started_at?: string | null
         }
         Relationships: []
       }

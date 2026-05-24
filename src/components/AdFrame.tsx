@@ -108,6 +108,7 @@ export function AdFrame({
   const [quota, setQuota] = useState<VerdictQuotaStatus | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [quotaNow, setQuotaNow] = useState(() => Date.now());
   const dashboardRef = useRef<HTMLDivElement>(null);
   const activeLocaleLabel = LOCALES.find((option) => option.code === locale)?.label ?? "English";
 
@@ -192,6 +193,13 @@ export function AdFrame({
       cancelled = true;
     };
   }, [dashboardOpen, session?.access_token]);
+
+  useEffect(() => {
+    if (!dashboardOpen) return;
+    setQuotaNow(Date.now());
+    const id = window.setInterval(() => setQuotaNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, [dashboardOpen]);
 
   async function sendMagicLink() {
     setAuthLoading(true);
@@ -282,6 +290,25 @@ export function AdFrame({
     return "bg-gold";
   }
 
+  function quotaResetText(status: VerdictQuotaStatus): string | null {
+    if (status.plan === "unli" || status.remaining !== 0 || !status.limit || !status.resetAt) {
+      return null;
+    }
+
+    const resetAt = Date.parse(status.resetAt);
+    if (!Number.isFinite(resetAt)) return null;
+    const remainingMs = Math.max(0, resetAt - quotaNow);
+    const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const time =
+      hours > 0
+        ? t?.("dashboardQuotaResetHoursMinutes", { hours, minutes }) ?? `${hours}h ${minutes}m`
+        : t?.("dashboardQuotaResetMinutes", { minutes }) ?? `${minutes}m`;
+
+    return t?.("dashboardQuotaResetsIn", { time }) ?? `Resets in ${time}`;
+  }
+
   function authProviderLabel(): string {
     const provider = session?.user.app_metadata?.provider;
     if (provider === "google") return t?.("dashboardProviderGoogle") ?? "Google";
@@ -303,6 +330,7 @@ export function AdFrame({
     "group inline-flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-md border border-border bg-background/40 px-2 text-xs font-semibold text-muted-foreground transition-colors duration-300 ease-out hover:border-gold hover:text-gold focus-visible:border-gold focus-visible:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-60";
   const headerActionLabelClass =
     "ml-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 group-hover:ml-1.5 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-1.5 group-focus-visible:max-w-20 group-focus-visible:opacity-100";
+  const quotaResetHint = quota ? quotaResetText(quota) : null;
 
   return (
     <div className={outer}>
@@ -500,6 +528,9 @@ export function AdFrame({
                       style={{ width: quotaLoading ? "45%" : quota ? `${quotaPercent(quota)}%` : "0%" }}
                     />
                   </div>
+                  {quotaResetHint && (
+                    <p className="text-[10px] font-medium text-muted-foreground">{quotaResetHint}</p>
+                  )}
                 </div>
               </section>
 
