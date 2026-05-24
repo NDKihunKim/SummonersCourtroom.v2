@@ -28,6 +28,10 @@ function ContactPage() {
             </a>
             로 보내주세요.
           </p>
+          <p>
+            로그인 문제, 데이터 삭제 요청, 공유 판결 신고, AI 판결 또는 이용 제한 관련
+            질문도 같은 주소로 문의할 수 있습니다.
+          </p>
         </Section>
 
         <Section title="개발자 및 플랫폼 고지">
@@ -50,6 +54,10 @@ function ContactPage() {
             {CONTACT_EMAIL}
           </a>
           .
+        </p>
+        <p>
+          You can also use this address for login issues, data deletion requests,
+          shared verdict reports, AI verdict questions, or usage-limit questions.
         </p>
       </Section>
 

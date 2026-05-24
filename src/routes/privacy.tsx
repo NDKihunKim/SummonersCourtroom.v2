@@ -52,6 +52,26 @@ function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="로그인과 계정 데이터">
+          <p>
+            로그인은 Supabase Auth를 통해 처리되며 이메일 매직 링크, Google, Discord
+            로그인을 지원합니다. 로그인 과정에서 이메일 주소, 인증 제공자, Supabase
+            사용자 ID, 세션 정보가 처리될 수 있습니다.
+          </p>
+          <p>
+            Summoner's Courtroom은 계정별 판결 이용 횟수와 24시간 이용 창의 시작 및
+            초기화 시간을 저장해 과도한 사용을 제한합니다.
+          </p>
+        </Section>
+
+        <Section title="공유 판결 링크">
+          <p>
+            사용자가 공유 버튼을 누르면 선택된 플레이어, 판결 표시 정보, 판결 이유,
+            경기 및 프로필 참조, 언어 설정, 만료 시간이 Supabase에 저장됩니다. 공유
+            링크는 72시간 후 만료되며 만료된 공유 데이터는 삭제 대상이 됩니다.
+          </p>
+        </Section>
+
         <Section title="로컬 브라우저 저장소">
           <p>
             최근 검색과 저장한 플레이어는 사용자의 기기 브라우저 localStorage에
@@ -62,6 +82,18 @@ function PrivacyPage() {
             로컬 브라우저 저장소는 로그인 계정이 아니며 기기 간에 동기화되지 않습니다.
             사이트 UI에서 최근 검색을 삭제하거나 플레이어 저장을 해제할 수 있고,
             브라우저 설정에서도 데이터를 지울 수 있습니다.
+          </p>
+          <p>
+            localStorage에는 익명 판결 이용 횟수 식별자, 언어 설정, 마지막 로그인 방식
+            표시 힌트도 저장될 수 있습니다.
+          </p>
+        </Section>
+
+        <Section title="Cloudflare Turnstile">
+          <p>
+            검색, 새로고침, AI 판결, 공유 링크 생성 같은 기능의 남용을 줄이기 위해
+            Cloudflare Turnstile을 사용할 수 있습니다. Turnstile은 사람이 사용하는지
+            확인하기 위해 브라우저와 요청 관련 신호를 Cloudflare에 처리할 수 있습니다.
           </p>
         </Section>
 
@@ -139,6 +171,27 @@ function PrivacyPage() {
         </p>
       </Section>
 
+      <Section title="Sign-in and account data">
+        <p>
+          Sign-in is handled by Supabase Auth and may use email magic links,
+          Google, or Discord. During sign-in, email address, authentication
+          provider, Supabase user id, and session information may be processed.
+        </p>
+        <p>
+          Summoner's Courtroom stores account verdict usage counts and the start
+          and reset time of a rolling 24-hour usage window to limit excessive use.
+        </p>
+      </Section>
+
+      <Section title="Shared verdict links">
+        <p>
+          When you use the share button, selected players, verdict display
+          details, verdict reasoning, match and profile references, locale, and
+          expiration time are stored in Supabase. Shared links expire after 72
+          hours, and expired shared data is eligible for deletion.
+        </p>
+      </Section>
+
       <Section title="Local browser storage">
         <p>
           Recent searches and saved players are stored locally in your browser
@@ -149,6 +202,19 @@ function PrivacyPage() {
           Local browser storage is not a login account and does not sync across
           your devices. You can remove recent searches and unsave players in
           the site UI, or clear the data from your browser settings.
+        </p>
+        <p>
+          localStorage may also store an anonymous verdict usage identifier,
+          language preference, and a last-login-method display hint.
+        </p>
+      </Section>
+
+      <Section title="Cloudflare Turnstile">
+        <p>
+          Summoner's Courtroom may use Cloudflare Turnstile to reduce abuse of
+          search, refresh, AI verdict, and share-link creation features.
+          Turnstile may process browser and request signals through Cloudflare to
+          verify that requests are made by a human visitor.
         </p>
       </Section>
 

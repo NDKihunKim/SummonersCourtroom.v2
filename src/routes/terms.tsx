@@ -33,6 +33,10 @@ function TermsPage() {
             위한 서비스입니다. 사용자는 공개 Riot 경기 데이터를 검색하고, 경기 기록을
             검토하며, 게임이 끝난 뒤 AI 판결 결과를 확인할 수 있습니다.
           </p>
+          <p>
+            AI 판결은 경기 복기를 돕는 참고용 분석이며, 항상 완벽하거나 공식적인 판단을
+            의미하지 않습니다.
+          </p>
         </Section>
 
         <Section title="금지되는 이용">
@@ -44,7 +48,22 @@ function TermsPage() {
             <li>베팅, 도박, 암호화폐, NFT, 또는 배팅 관련 활동.</li>
             <li>계정 거래, 부스팅, 승부 조작, 또는 유사 서비스.</li>
             <li>숨겨진 MMR, ELO 계산기, 또는 Riot 공식 랭크 시스템의 대체 지표.</li>
+            <li>판결 이용 제한, Cloudflare Turnstile, 또는 남용 방지 장치를 우회하려는 행위.</li>
+            <li>공유 링크를 과도하게 생성하거나 다른 사용자를 괴롭히기 위해 AI 판결을 사용하는 행위.</li>
           </ul>
+        </Section>
+
+        <Section title="계정, 이용 제한, 공유">
+          <p>
+            일부 기능은 로그인, 사람 인증, 또는 24시간 기준 이용 제한이 적용될 수
+            있습니다. Summoner's Courtroom은 서비스 안정성, 비용 관리, 남용 방지를 위해
+            이러한 제한을 변경하거나 요청을 거부할 수 있습니다.
+          </p>
+          <p>
+            공유 판결 링크는 제한된 시간 동안 제공되며, 링크를 받은 사람이 같은 판결
+            결과를 볼 수 있습니다. 공유 기능은 괴롭힘이나 표적 비방 목적으로 사용할 수
+            없습니다.
+          </p>
         </Section>
 
         <Section title="Riot Games와의 관계">
@@ -92,6 +111,10 @@ function TermsPage() {
           review match history, and view AI-assisted verdict results after a
           game has ended.
         </p>
+        <p>
+          AI verdicts are reference analysis for post-game reflection. They may
+          be imperfect and are not official decisions.
+        </p>
       </Section>
 
       <Section title="Prohibited use">
@@ -103,7 +126,22 @@ function TermsPage() {
           <li>Betting, gambling, crypto, NFTs, or wagering-related activity.</li>
           <li>Account trading, boosting, win trading, or similar services.</li>
           <li>Hidden MMR, ELO calculators, or alternatives to Riot's official ranked ladder.</li>
+          <li>Bypassing verdict usage limits, Cloudflare Turnstile, or abuse-prevention systems.</li>
+          <li>Creating excessive share links or using AI verdicts to harass other users.</li>
         </ul>
+      </Section>
+
+      <Section title="Accounts, usage limits, and sharing">
+        <p>
+          Some features may require sign-in, human verification, or rolling
+          24-hour usage limits. Summoner's Courtroom may change these limits or
+          reject requests to protect reliability, manage cost, and prevent abuse.
+        </p>
+        <p>
+          Shared verdict links are available for a limited time and let link
+          recipients view the same verdict result. Sharing may not be used for
+          harassment or targeted abuse.
+        </p>
       </Section>
 
       <Section title="Riot Games relationship">

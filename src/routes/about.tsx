@@ -36,6 +36,22 @@ function AboutPage() {
             사용자는 Riot ID를 검색해 최근 경기 기록을 확인하고, 공개된 경기 종료
             데이터에 기반한 AI 판결 결과를 볼 수 있습니다.
           </p>
+          <p>
+            계정 로그인은 이메일 매직 링크, Google, Discord를 통해 지원되며, 로그인한
+            사용자는 동일한 브라우저 세션에서 계정 기반 기능을 사용할 수 있습니다.
+          </p>
+        </Section>
+
+        <Section title="현재 제공되는 기능">
+          <p>
+            이 서비스는 최근 완료 경기 조회, 랭크 경기 AI 판결, 24시간 기준 판결 이용
+            횟수 관리, 저장한 플레이어와 최근 검색, 72시간 동안 유지되는 공유 판결
+            링크를 제공합니다.
+          </p>
+          <p>
+            AI 판결은 경기 복기를 돕기 위한 분석 결과이며, Riot Games의 공식 판단이나
+            플레이어 제재 판단이 아닙니다.
+          </p>
         </Section>
 
         <Section title="이 제품이 제공하지 않는 것">
@@ -70,6 +86,23 @@ function AboutPage() {
           The product lets players search Riot IDs, inspect recent match
           history, and view AI-assisted verdict results based on public
           post-game match data.
+        </p>
+        <p>
+          Account sign-in is supported through email magic links, Google, and
+          Discord so signed-in users can access account-based features in the
+          same browser session.
+        </p>
+      </Section>
+
+      <Section title="Current features">
+        <p>
+          The service currently supports recent completed-match lookup, ranked
+          match AI verdicts, rolling 24-hour verdict usage limits, saved players,
+          recent searches, and shared verdict links that expire after 72 hours.
+        </p>
+        <p>
+          AI verdicts are review assistance for post-game reflection. They are
+          not official Riot decisions and are not player discipline decisions.
         </p>
       </Section>
 
