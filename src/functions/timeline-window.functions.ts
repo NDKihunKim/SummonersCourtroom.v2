@@ -1649,14 +1649,6 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       message: "Too many AI verdict requests. Please wait a minute and try again.",
     });
     if (!data.includeRaw) await assertTurnstile(data.turnstileToken);
-    if (!data.includeRaw) {
-      const { consumeVerdictQuota } = await import("@/functions/verdict-quota.server");
-      await consumeVerdictQuota({
-        accessToken: data.accessToken,
-        anonymousId: data.anonymousId,
-      });
-    }
-
     if (data.scope === "window") {
       if (data.startMs == null || data.endMs == null) {
         throw new Error("Specify Time verdict requires startMs and endMs.");
@@ -1731,10 +1723,34 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       verdictMode,
       freeForAllTeam: data.freeForAllTeam,
     });
+    let quotaReserved = false;
+    if (!data.includeRaw) {
+      const { consumeVerdictQuota } = await import("@/functions/verdict-quota.server");
+      await consumeVerdictQuota({
+        accessToken: data.accessToken,
+        anonymousId: data.anonymousId,
+      });
+      quotaReserved = true;
+    }
+
     let deepSeek: Awaited<ReturnType<typeof callDeepSeek>>;
     try {
       deepSeek = await callDeepSeek(promptPayload.prompt);
     } catch (error) {
+      if (quotaReserved) {
+        try {
+          const { refundVerdictQuota } = await import("@/functions/verdict-quota.server");
+          await refundVerdictQuota({
+            accessToken: data.accessToken,
+            anonymousId: data.anonymousId,
+          });
+        } catch (refundError) {
+          console.warn(
+            "Failed to refund verdict quota.",
+            refundError instanceof Error ? refundError.message : String(refundError),
+          );
+        }
+      }
       await writeVerdictAnalytics({
         success: false,
         matchId: data.matchId,

@@ -181,9 +181,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      consume_verdict_quota_atomic: {
+        Args: {
+          p_anonymous_id: string | null
+          p_ip_hash: string
+          p_limit: number
+          p_usage_date: string
+          p_user_id: string | null
+        }
+        Returns: Json
+      }
       compute_tier_rank: {
         Args: { p_division: string; p_lp: number; p_tier: string }
         Returns: number
+      }
+      refund_verdict_quota_atomic: {
+        Args: {
+          p_anonymous_id: string | null
+          p_ip_hash: string
+          p_usage_date: string
+          p_user_id: string | null
+        }
+        Returns: Json
       }
     }
     Enums: {

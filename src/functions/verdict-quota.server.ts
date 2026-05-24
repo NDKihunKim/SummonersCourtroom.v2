@@ -15,6 +15,13 @@ export type VerdictQuotaStatus = {
   usageDate: string;
 };
 
+type AtomicQuotaResult = {
+  consumed?: unknown;
+  used?: unknown;
+  remaining?: unknown;
+  limit?: unknown;
+};
+
 function usageDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -112,6 +119,21 @@ async function getUsageCount({
   return data?.verdict_count ?? 0;
 }
 
+function parseAtomicQuotaResult(value: unknown): {
+  consumed: boolean;
+  used: number;
+  remaining: number;
+  limit: number;
+} {
+  const result = value && typeof value === "object" ? (value as AtomicQuotaResult) : {};
+  return {
+    consumed: result.consumed === true,
+    used: typeof result.used === "number" ? result.used : 0,
+    remaining: typeof result.remaining === "number" ? result.remaining : 0,
+    limit: typeof result.limit === "number" ? result.limit : 0,
+  };
+}
+
 export async function getVerdictQuota({
   accessToken,
   anonymousId,
@@ -167,55 +189,42 @@ export async function consumeVerdictQuota(identity: {
     throw new Error("Anonymous usage id is missing. Please refresh and try again.");
   }
 
-  const used = await getUsageCount({
-    date,
-    userId: user?.id,
-    anonymousId: identity.anonymousId,
-    ipHash,
+  const { data, error } = await supabaseAdmin.rpc("consume_verdict_quota_atomic", {
+    p_usage_date: date,
+    p_user_id: user?.id ?? null,
+    p_anonymous_id: user ? null : identity.anonymousId,
+    p_ip_hash: ipHash,
+    p_limit: limit,
   });
-  if (used >= limit) {
-    throw new Error(`Daily AI verdict limit reached (${used}/${limit}).`);
+
+  if (error) throw new Error("Failed to update verdict quota.");
+
+  const result = parseAtomicQuotaResult(data);
+  if (!result.consumed) {
+    throw new Error(`Daily AI verdict limit reached (${result.used}/${result.limit || limit}).`);
   }
 
-  if (user) {
-    if (used === 0) {
-      const { error } = await supabaseAdmin.from("verdict_usage_daily").insert({
-        usage_date: date,
-        user_id: user.id,
-        ip_hash: ipHash,
-        verdict_count: 1,
-      });
-      if (error && error.code !== "23505") throw new Error("Failed to update verdict quota.");
-      if (error?.code === "23505") return consumeVerdictQuota(identity);
-    } else {
-      const { error } = await supabaseAdmin
-        .from("verdict_usage_daily")
-        .update({ verdict_count: used + 1 })
-        .eq("usage_date", date)
-        .eq("user_id", user.id);
-      if (error) throw new Error("Failed to update verdict quota.");
-    }
-  } else {
-    if (used === 0) {
-      const { error } = await supabaseAdmin.from("verdict_usage_daily").insert({
-        usage_date: date,
-        anonymous_id: identity.anonymousId,
-        ip_hash: ipHash,
-        verdict_count: 1,
-      });
-      if (error && error.code !== "23505") throw new Error("Failed to update verdict quota.");
-      if (error?.code === "23505") return consumeVerdictQuota(identity);
-    } else {
-      const { error } = await supabaseAdmin
-        .from("verdict_usage_daily")
-        .update({ verdict_count: used + 1 })
-        .eq("usage_date", date)
-        .is("user_id", null)
-        .eq("anonymous_id", identity.anonymousId ?? "")
-        .eq("ip_hash", ipHash);
-      if (error) throw new Error("Failed to update verdict quota.");
-    }
-  }
+  return { plan, limit, used: result.used, remaining: result.remaining, usageDate: date };
+}
 
-  return { plan, limit, used: used + 1, remaining: Math.max(0, limit - used - 1), usageDate: date };
+export async function refundVerdictQuota(identity: {
+  accessToken?: string;
+  anonymousId?: string;
+}): Promise<void> {
+  const user = await resolveUser(identity.accessToken);
+  const date = usageDate();
+  const ipHash = await sha256(requestIp());
+  const plan: AccountPlan = user ? await profilePlan(user.id) : "anonymous";
+
+  if (plan === "unli") return;
+  if (!user && !identity.anonymousId) return;
+
+  const { error } = await supabaseAdmin.rpc("refund_verdict_quota_atomic", {
+    p_usage_date: date,
+    p_user_id: user?.id ?? null,
+    p_anonymous_id: user ? null : identity.anonymousId,
+    p_ip_hash: ipHash,
+  });
+
+  if (error) throw new Error("Failed to refund verdict quota.");
 }
