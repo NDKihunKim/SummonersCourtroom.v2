@@ -1700,6 +1700,9 @@ function ObjectionPanel({
               );
             })}
           </div>
+          <p className="text-center text-[10px] font-medium leading-relaxed text-muted-foreground">
+            {t("objectionNotice")}
+          </p>
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"

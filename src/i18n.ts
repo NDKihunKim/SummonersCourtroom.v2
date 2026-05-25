@@ -135,6 +135,8 @@ const translations = {
     objection: "Objection!",
     objectionHelp: "Select at least one reasoning line you disagree with.",
     objectionPlaceholder: "Optional: explain what felt wrong about this reasoning.",
+    objectionNotice:
+      "Objections are used to improve future AI verdict quality and will not change this verdict.",
     objectionSend: "Send objection",
     objectionSubmitted: "Objection submitted.",
     objectionSaved: "Objection saved",
@@ -295,6 +297,8 @@ const translations = {
     objection: "이의 제기!",
     objectionHelp: "문제가 있다고 생각하는 이유를 하나 이상 선택하세요.",
     objectionPlaceholder: "이 이유에서 무엇이 문제였는지 선택 사항으로 적어주세요.",
+    objectionNotice:
+      "이의 제기는 향후 AI 판결 품질 개선에 사용되며, 현재 판결에는 영향을 주지 않습니다.",
     objectionSend: "이의 보내기",
     objectionSubmitted: "이의가 제출되었습니다.",
     objectionSaved: "이의 저장됨",
