@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Gavel, ArrowLeft, Check, Share2 } from "lucide-react";
+import { Loader2, Gavel, ArrowLeft, Check, Share2, MessageSquareWarning } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
 import { ChampionIcon } from "./ChampionIcon";
@@ -11,7 +11,11 @@ import { RosterColumns } from "./RosterColumns";
 import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
 import { getJudgeVerdict } from "@/functions/timeline-window.functions";
-import { createSharedVerdict, type SharedVerdictPayload } from "@/functions/shared-verdict.functions";
+import {
+  createSharedVerdict,
+  type SharedVerdictPayload,
+} from "@/functions/shared-verdict.functions";
+import { submitVerdictFeedback } from "@/functions/verdict-feedback.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import { sortByRole } from "@/lib/role-order";
 import type { Shard } from "@/lib/regions";
@@ -26,6 +30,7 @@ type Scope = "full" | "window";
 type FaultMode = "me-vs-1" | "one-vs-one" | "free-for-all" | "switch-teams";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 type VerdictDisplay = { championName: string; summonerName?: string };
+type ReasoningChoice = { index: number; text: string };
 type FreeForAllContextPlayer = {
   champion: string;
   puuid?: string;
@@ -155,11 +160,9 @@ function parseJudgeOutput(
   const verdictLine = lines[firstContentIndex].trim();
   const verdictToken = normalizeVerdictToken(verdictLine);
   const subject = subjects.find((candidate) => {
-    const candidates = [
-      candidate.champion,
-      candidate.championLabel,
-      candidate.summoner ?? "",
-    ].map(normalizeVerdictToken);
+    const candidates = [candidate.champion, candidate.championLabel, candidate.summoner ?? ""].map(
+      normalizeVerdictToken,
+    );
     return candidates.some((candidateToken) => candidateToken && candidateToken === verdictToken);
   });
 
@@ -173,6 +176,27 @@ function parseJudgeOutput(
       : { championName: verdictLine },
     reasoning: reasoning || output,
   };
+}
+
+function splitReasoningChoices(reasoning: string): ReasoningChoice[] {
+  const text = reasoning.trim();
+  if (!text) return [];
+
+  const matches = [...text.matchAll(/(?:^|\n)\s*(\d{1,2})\.\s+/g)];
+  if (matches.length === 0) return [{ index: 1, text }];
+
+  return matches
+    .slice(0, 5)
+    .map((match, position) => {
+      const start = (match.index ?? 0) + match[0].length;
+      const end = matches[position + 1]?.index ?? text.length;
+      const index = Number(match[1]);
+      return {
+        index: Number.isFinite(index) ? index : position + 1,
+        text: text.slice(start, end).trim(),
+      };
+    })
+    .filter((choice) => choice.text.length > 0);
 }
 
 export function MatchCard({
@@ -284,11 +308,11 @@ export function MatchCard({
     teamId: match.userTeamId,
     teamPosition: match.userTeamPosition,
   };
-  const visibleTeamMembers = sortByRole(showEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+  const visibleTeamMembers = sortByRole(
+    showEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
+  );
   const selectedFreeForAllPlayers =
-    faultMode === "free-for-all"
-      ? freeForAllSelection
-      : visibleTeamMembers;
+    faultMode === "free-for-all" ? freeForAllSelection : visibleTeamMembers;
   const orderedSelectedFreeForAllPlayers = sortByRole(selectedFreeForAllPlayers);
   const subjectA = pickedSubjectA ?? viewedParticipant;
   const subjectsReady =
@@ -431,7 +455,8 @@ export function MatchCard({
 
     const subjectAChampionLabel = formatChampionName(subjectA.champion);
     const subjectBChampionLabel = formatChampionName(pickedAlly.champion);
-    const freeForAllTeam = faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined;
+    const freeForAllTeam =
+      faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined;
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
@@ -568,6 +593,68 @@ export function MatchCard({
     }
   }
 
+  async function submitObjection({
+    selectedReasons,
+    complaint,
+    source,
+    shareId,
+  }: {
+    selectedReasons: ReasoningChoice[];
+    complaint: string;
+    source: "verdict" | "shared";
+    shareId?: string;
+  }) {
+    const currentReasoning = source === "shared" ? sharedVerdict?.reasoning : reasoning;
+    const currentVerdictDisplay =
+      source === "shared" ? sharedVerdict?.verdictDisplay : verdictDisplay;
+    if (!currentReasoning || !currentVerdictDisplay) return;
+
+    const selectedPlayers =
+      source === "shared" && sharedVerdict
+        ? sharedVerdict.selectedPlayers
+        : faultMode === "free-for-all"
+          ? orderedSelectedFreeForAllPlayers.map((player) => ({
+              champion: player.champion,
+              championLabel: formatChampionName(player.champion),
+              summoner: player.summoner,
+              kills: player.kills,
+              deaths: player.deaths,
+              assists: player.assists,
+            }))
+          : [subjectA, pickedAlly]
+              .filter((player): player is Participant => player !== null)
+              .map((player) => ({
+                champion: player.champion,
+                championLabel: formatChampionName(player.champion),
+                summoner: player.summoner,
+                kills: player.kills,
+                deaths: player.deaths,
+                assists: player.assists,
+              }));
+
+    const turnstileToken = await executeTurnstile();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+
+    await submitVerdictFeedback({
+      data: {
+        turnstileToken,
+        ...(accessToken ? { accessToken } : { anonymousId: getAnonymousId() }),
+        source,
+        ...(shareId ? { shareId } : {}),
+        matchId: match.riotMatchId,
+        locale,
+        verdictMode: source === "shared" && sharedVerdict ? sharedVerdict.verdictMode : faultMode,
+        scopeLabel:
+          source === "shared" && sharedVerdict ? sharedVerdict.scopeLabel : verdictWindowLabel,
+        selectedPlayers,
+        verdictDisplay: currentVerdictDisplay,
+        selectedReasons,
+        complaint,
+      },
+    });
+  }
+
   return (
     <div
       className={`group relative overflow-hidden rounded-lg border-l-4 bg-card transition-all ${
@@ -677,9 +764,17 @@ export function MatchCard({
                 <button
                   type="button"
                   disabled
-                  title={isShortVerdictGame ? t("verdictGameTooShortWarning") : t("rankedSoloVerdictOnly")}
+                  title={
+                    isShortVerdictGame
+                      ? t("verdictGameTooShortWarning")
+                      : t("rankedSoloVerdictOnly")
+                  }
                   className="inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground opacity-60"
-                  aria-label={isShortVerdictGame ? t("verdictGameTooShortWarning") : t("rankedSoloVerdictOnly")}
+                  aria-label={
+                    isShortVerdictGame
+                      ? t("verdictGameTooShortWarning")
+                      : t("rankedSoloVerdictOnly")
+                  }
                 >
                   <Gavel className="h-4 w-4" />
                 </button>
@@ -697,6 +792,15 @@ export function MatchCard({
               verdict={sharedVerdict}
               t={t}
               onNewVerdict={onSharedNewVerdict}
+              onSubmitObjection={(selectedReasons, complaint) =>
+                submitObjection({
+                  selectedReasons,
+                  complaint,
+                  source: "shared",
+                  shareId: sharedVerdict.id,
+                })
+              }
+              onAfterObjection={resetTurnstile}
             />
           )}
 
@@ -710,7 +814,9 @@ export function MatchCard({
                 setPickedAlly(null);
                 setFreeForAllSelection([]);
                 if (nextMode === "free-for-all") {
-                  const members = sortByRole(showEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+                  const members = sortByRole(
+                    showEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
+                  );
                   setFreeForAllSelection(members);
                   setPickedSubjectA(members[0] ?? null);
                   setPickedAlly(members[1] ?? null);
@@ -723,17 +829,20 @@ export function MatchCard({
               onSwitchTeams={() => {
                 const nextShowEnemyTeam = !showEnemyTeam;
                 setShowEnemyTeam(nextShowEnemyTeam);
-                const nextMode = faultMode === "free-for-all"
-                  ? "free-for-all"
-                  : nextShowEnemyTeam
-                    ? "one-vs-one"
-                    : "me-vs-1";
+                const nextMode =
+                  faultMode === "free-for-all"
+                    ? "free-for-all"
+                    : nextShowEnemyTeam
+                      ? "one-vs-one"
+                      : "me-vs-1";
                 setFaultMode(nextMode);
                 setPickedSubjectA(null);
                 setPickedAlly(null);
                 setFreeForAllSelection([]);
                 if (nextMode === "free-for-all") {
-                  const members = sortByRole(nextShowEnemyTeam ? match.enemies : [...match.team, viewedParticipant]);
+                  const members = sortByRole(
+                    nextShowEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
+                  );
                   setFreeForAllSelection(members);
                   setPickedSubjectA(members[0] ?? null);
                   setPickedAlly(members[1] ?? null);
@@ -754,7 +863,7 @@ export function MatchCard({
               selectedFreeForAllPlayers={selectedFreeForAllPlayers}
               onCancel={reset}
               selectedA={stage === "pickScope" ? subjectA : undefined}
-              selectedB={stage === "pickScope" ? pickedAlly ?? undefined : undefined}
+              selectedB={stage === "pickScope" ? (pickedAlly ?? undefined) : undefined}
               t={t}
               formatChampionName={formatChampionName}
               onPick={(a) => {
@@ -797,34 +906,38 @@ export function MatchCard({
             />
           )}
 
-          {!sharedVerdict && stage === "specifyTime" && pickedAlly && match.riotMatchId && match.userPuuid && (
-            <ScopeSpecifyTime
-              matchId={match.riotMatchId}
-              userPuuid={match.userPuuid}
-              routingRegion={match.routingRegion}
-              durationStr={match.duration}
-              onBack={() => setStage("pickScope")}
-              // SUBJECT_A = the viewer's champion on this match
-              // SUBJECT_B = the ally the user picked in the previous step
-              subjectAChampion={subjectA.champion}
-              subjectBChampion={pickedAlly.champion}
-              // Full match + viewer so TimelineWindowResult can build the
-              // per-team champion+role rundown injected into the upper prompt.
-              match={match}
-              you={you}
-              locale={locale}
-              t={t}
-              onRun={(range) => void runJudge("window", range)}
-              onMockResult={SHOW_DEV_CONTEXT ? showMockWindowResult : undefined}
-              onMockLoading={SHOW_DEV_CONTEXT ? showMockLoading : undefined}
-              verdictMode={faultMode === "free-for-all" ? "free-for-all" : "duel"}
-              freeForAllTeam={
-                faultMode === "free-for-all"
-                  ? orderedSelectedFreeForAllPlayers.map(toFreeForAllContextPlayer)
-                  : undefined
-              }
-            />
-          )}
+          {!sharedVerdict &&
+            stage === "specifyTime" &&
+            pickedAlly &&
+            match.riotMatchId &&
+            match.userPuuid && (
+              <ScopeSpecifyTime
+                matchId={match.riotMatchId}
+                userPuuid={match.userPuuid}
+                routingRegion={match.routingRegion}
+                durationStr={match.duration}
+                onBack={() => setStage("pickScope")}
+                // SUBJECT_A = the viewer's champion on this match
+                // SUBJECT_B = the ally the user picked in the previous step
+                subjectAChampion={subjectA.champion}
+                subjectBChampion={pickedAlly.champion}
+                // Full match + viewer so TimelineWindowResult can build the
+                // per-team champion+role rundown injected into the upper prompt.
+                match={match}
+                you={you}
+                locale={locale}
+                t={t}
+                onRun={(range) => void runJudge("window", range)}
+                onMockResult={SHOW_DEV_CONTEXT ? showMockWindowResult : undefined}
+                onMockLoading={SHOW_DEV_CONTEXT ? showMockLoading : undefined}
+                verdictMode={faultMode === "free-for-all" ? "free-for-all" : "duel"}
+                freeForAllTeam={
+                  faultMode === "free-for-all"
+                    ? orderedSelectedFreeForAllPlayers.map(toFreeForAllContextPlayer)
+                    : undefined
+                }
+              />
+            )}
 
           {!sharedVerdict && stage === "loading" && (
             <>
@@ -842,7 +955,9 @@ export function MatchCard({
                     assists: subjectA.assists,
                   }}
                   ally={pickedAlly}
-                  players={faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined}
+                  players={
+                    faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined
+                  }
                   highlightChampionName={verdictDisplay?.championName}
                   formatChampionName={formatChampionName}
                 />
@@ -868,11 +983,13 @@ export function MatchCard({
                     deaths: subjectA.deaths,
                     assists: subjectA.assists,
                   }}
-	                  ally={pickedAlly}
-	                  players={faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined}
-	                  highlightChampionName={verdictDisplay?.championName}
-	                  formatChampionName={formatChampionName}
-	                />
+                  ally={pickedAlly}
+                  players={
+                    faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined
+                  }
+                  highlightChampionName={verdictDisplay?.championName}
+                  formatChampionName={formatChampionName}
+                />
               )}
               <Verdict
                 verdictDisplay={verdictDisplay}
@@ -882,6 +999,10 @@ export function MatchCard({
                 onAgain={() => setStage("pickAlly")}
                 onShare={() => void shareVerdict()}
                 sharing={sharing}
+                onSubmitObjection={(selectedReasons, complaint) =>
+                  submitObjection({ selectedReasons, complaint, source: "verdict" })
+                }
+                onAfterObjection={resetTurnstile}
                 onViewContext={() => {
                   const params = new URLSearchParams();
                   params.set("scope", verdictScope ?? "full");
@@ -1044,9 +1165,7 @@ function PickAlly({
         </div>
       </div>
 
-      <p className="mb-3 text-center text-xs text-muted-foreground">
-        {pickHint}
-      </p>
+      <p className="mb-3 text-center text-xs text-muted-foreground">{pickHint}</p>
 
       {mode === "free-for-all" ? (
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -1068,7 +1187,11 @@ function PickAlly({
       ) : showEnemyTeam || mode === "one-vs-one" ? (
         <div className="flex flex-wrap justify-center gap-3">
           {teamMembers.map((player, i) => (
-            <button key={`${player.summoner}-${i}`} onClick={() => toggleDuelPick(player)} className="group">
+            <button
+              key={`${player.summoner}-${i}`}
+              onClick={() => toggleDuelPick(player)}
+              className="group"
+            >
               <PlayerTile
                 highlighted={isPicked(player)}
                 name={player.summoner}
@@ -1173,10 +1296,16 @@ function PlayerTile({
           column with `items-center`. Without an explicit width, the span
           shrinks to fit its content and overflows the tile. The `title`
           attribute keeps the full name accessible on hover. */}
-      <span className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground" title={championLabel}>
+      <span
+        className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground"
+        title={championLabel}
+      >
         {championLabel}
       </span>
-      <span className="block w-full min-w-0 truncate text-center text-[10px] text-muted-foreground" title={name}>
+      <span
+        className="block w-full min-w-0 truncate text-center text-[10px] text-muted-foreground"
+        title={name}
+      >
         {name}
       </span>
       <span className="text-[10px] text-muted-foreground">{kda}</span>
@@ -1197,7 +1326,7 @@ function ScopeActions({
    * When provided, the "Specify Time" button is enabled and triggers this
    * callback. Omitted (undefined) for matches that lack the matchId/puuid
    * needed to fetch a timeline window — button stays disabled in that case.
-  */
+   */
   onSpecifyTime?: () => void;
   isShortGame: boolean;
   subjectsReady: boolean;
@@ -1206,7 +1335,7 @@ function ScopeActions({
    * button entirely — full-game judging is intentionally Defeat-only,
    * since the prompt is framed around assigning fault for a loss. Wins
    * can still be analyzed via the Specify-Time scope, which is neutral.
-  */
+   */
   isWin: boolean;
   t: Translate;
 }) {
@@ -1215,16 +1344,16 @@ function ScopeActions({
     ? t("verdictGameTooShortWarning")
     : !subjectsReady
       ? undefined
-    : isWin
-      ? t("fullGameVictoryUnavailable")
-      : undefined;
+      : isWin
+        ? t("fullGameVictoryUnavailable")
+        : undefined;
   const specifyTimeTitle = isShortGame
     ? t("verdictGameTooShortWarning")
     : !subjectsReady
       ? undefined
-    : onSpecifyTime
-      ? "Pick a 5-10 min slice of the game"
-      : "Match metadata unavailable";
+      : onSpecifyTime
+        ? "Pick a 5-10 min slice of the game"
+        : "Match metadata unavailable";
 
   return (
     <div className="mt-4 animate-fade-in">
@@ -1315,7 +1444,9 @@ function JudgeLoading({
           return (
             <li key={s.id} className="flex flex-1 flex-col items-center gap-2 text-center">
               <div className="flex w-full items-center">
-                <div className={`h-px flex-1 ${i === 0 ? "opacity-0" : isDone || isActive ? "bg-gold" : "bg-border"}`} />
+                <div
+                  className={`h-px flex-1 ${i === 0 ? "opacity-0" : isDone || isActive ? "bg-gold" : "bg-border"}`}
+                />
                 <div
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all ${
                     isDone
@@ -1333,7 +1464,9 @@ function JudgeLoading({
                     <span className="text-xs font-semibold">{i + 1}</span>
                   )}
                 </div>
-                <div className={`h-px flex-1 ${i === steps.length - 1 ? "opacity-0" : isDone ? "bg-gold" : "bg-border"}`} />
+                <div
+                  className={`h-px flex-1 ${i === steps.length - 1 ? "opacity-0" : isDone ? "bg-gold" : "bg-border"}`}
+                />
               </div>
               <div>
                 <div
@@ -1357,20 +1490,29 @@ function SharedVerdictResult({
   verdict,
   t,
   onNewVerdict,
+  onSubmitObjection,
+  onAfterObjection,
 }: {
   verdict: SharedVerdictPayload;
   t: Translate;
   onNewVerdict?: () => void;
+  onSubmitObjection: (selectedReasons: ReasoningChoice[], complaint: string) => Promise<void>;
+  onAfterObjection: () => void;
 }) {
-  const sharedPlayers = verdict.selectedPlayers.map((player): Participant => ({
-    champion: player.champion,
-    summoner: player.summoner ?? player.championLabel ?? player.champion,
-    kills: player.kills ?? 0,
-    deaths: player.deaths ?? 0,
-    assists: player.assists ?? 0,
-  }));
+  const sharedPlayers = verdict.selectedPlayers.map(
+    (player): Participant => ({
+      champion: player.champion,
+      summoner: player.summoner ?? player.championLabel ?? player.champion,
+      kills: player.kills ?? 0,
+      deaths: player.deaths ?? 0,
+      assists: player.assists ?? 0,
+    }),
+  );
   const championLabels = new Map(
-    verdict.selectedPlayers.map((player) => [player.champion, player.championLabel ?? player.champion]),
+    verdict.selectedPlayers.map((player) => [
+      player.champion,
+      player.championLabel ?? player.champion,
+    ]),
   );
 
   return (
@@ -1413,16 +1555,155 @@ function SharedVerdictResult({
       <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
         {verdict.reasoning}
       </p>
-      <div className="mt-3 flex justify-end">
-        <button
-          type="button"
-          onClick={onNewVerdict}
-          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {t("newVerdict")}
-        </button>
-      </div>
+      <ObjectionPanel
+        reasoning={verdict.reasoning}
+        t={t}
+        onSubmit={onSubmitObjection}
+        onAfterSubmit={onAfterObjection}
+        renderActions={(button, saved) => (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {button}
+              {saved}
+            </div>
+            <button
+              type="button"
+              onClick={onNewVerdict}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t("newVerdict")}
+            </button>
+          </div>
+        )}
+      />
     </div>
+  );
+}
+
+function ObjectionPanel({
+  reasoning,
+  t,
+  onSubmit,
+  onAfterSubmit,
+  renderActions,
+}: {
+  reasoning: string;
+  t: Translate;
+  onSubmit: (selectedReasons: ReasoningChoice[], complaint: string) => Promise<void>;
+  onAfterSubmit: () => void;
+  renderActions: (button: React.ReactNode, saved: React.ReactNode) => React.ReactNode;
+}) {
+  const choices = splitReasoningChoices(reasoning);
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [complaint, setComplaint] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  function toggleChoice(index: number) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  async function submit() {
+    const selectedReasons = choices.filter((choice) => selected.has(choice.index));
+    if (selectedReasons.length === 0) return;
+
+    setSubmitting(true);
+    try {
+      await onSubmit(selectedReasons, complaint);
+      setSubmitted(true);
+      setOpen(false);
+      setSelected(new Set());
+      setComplaint("");
+      toast.success(t("objectionSubmitted"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("objectionFailed"));
+    } finally {
+      setSubmitting(false);
+      onAfterSubmit();
+    }
+  }
+
+  if (choices.length === 0) return null;
+
+  const button = (
+    <button
+      type="button"
+      onClick={() => setOpen((value) => !value)}
+      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <MessageSquareWarning className="h-3.5 w-3.5" />
+      {t("objection")}
+    </button>
+  );
+  const saved = submitted ? (
+    <span className="text-[10px] font-medium text-muted-foreground">{t("objectionSaved")}</span>
+  ) : null;
+
+  return (
+    <>
+      {renderActions(button, saved)}
+      {open && (
+        <div className="mt-3 space-y-3 rounded-lg border border-border bg-background/40 p-3 animate-fade-in">
+          <p className="text-xs font-medium text-muted-foreground">{t("objectionHelp")}</p>
+          <div className="space-y-2">
+            {choices.map((choice) => {
+              const checked = selected.has(choice.index);
+              return (
+                <label
+                  key={`${choice.index}-${choice.text}`}
+                  className={`flex cursor-pointer gap-2 rounded-md border p-2 text-xs leading-relaxed transition-colors ${
+                    checked
+                      ? "border-gold bg-gold/10 text-foreground"
+                      : "border-border bg-card/60 text-muted-foreground hover:border-gold/50 hover:text-foreground"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleChoice(choice.index)}
+                    className="mt-0.5 h-3.5 w-3.5 accent-gold"
+                  />
+                  <span>
+                    <span className="font-semibold text-gold">{choice.index}. </span>
+                    {choice.text}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <textarea
+            value={complaint}
+            onChange={(event) => setComplaint(event.target.value)}
+            maxLength={1000}
+            placeholder={t("objectionPlaceholder")}
+            className="min-h-20 w-full resize-y rounded-md border border-border bg-background/70 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
+          />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t("cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={submitting || selected.size === 0}
+              onClick={() => void submit()}
+              className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? t("loading") : t("objectionSend")}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1434,6 +1715,8 @@ function Verdict({
   onAgain,
   onShare,
   sharing,
+  onSubmitObjection,
+  onAfterObjection,
   onViewContext,
   t,
 }: {
@@ -1444,6 +1727,8 @@ function Verdict({
   onAgain: () => void;
   onShare: () => void;
   sharing: boolean;
+  onSubmitObjection: (selectedReasons: ReasoningChoice[], complaint: string) => Promise<void>;
+  onAfterObjection: () => void;
   onViewContext: () => void;
   t: Translate;
 }) {
@@ -1478,40 +1763,50 @@ function Verdict({
       <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
         {reasoning}
       </p>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <button
-            onClick={onShare}
-            disabled={sharing}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            {sharing ? t("loading") : t("share")}
-          </button>
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          {SHOW_DEV_CONTEXT && (
-            <button
-              onClick={onViewContext}
-              className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              View context
-            </button>
-          )}
-          <button
-            onClick={onAgain}
-            className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            {t("newVerdict")}
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20"
-          >
-            {t("close")}
-          </button>
-        </div>
-      </div>
+      <ObjectionPanel
+        reasoning={reasoning}
+        t={t}
+        onSubmit={onSubmitObjection}
+        onAfterSubmit={onAfterObjection}
+        renderActions={(button, saved) => (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={onShare}
+                disabled={sharing}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                {sharing ? t("loading") : t("share")}
+              </button>
+              {button}
+              {saved}
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              {SHOW_DEV_CONTEXT && (
+                <button
+                  onClick={onViewContext}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  View context
+                </button>
+              )}
+              <button
+                onClick={onAgain}
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {t("newVerdict")}
+              </button>
+              <button
+                onClick={onClose}
+                className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20"
+              >
+                {t("close")}
+              </button>
+            </div>
+          </div>
+        )}
+      />
     </div>
   );
 }
