@@ -1,10 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 import type { Locale } from "@/i18n";
 
 const SHARE_TTL_HOURS = 72;
+const ONE_MINUTE_MS = 60_000;
 
 const SharedPlayerSchema = z.object({
   champion: z.string().min(1).max(64),
@@ -22,7 +24,7 @@ const VerdictDisplaySchema = z.object({
 
 const CreateSharedVerdictInputSchema = z.object({
   turnstileToken: TurnstileTokenSchema,
-  matchId: z.string().max(64).optional(),
+  verdictResultId: z.string().min(8).max(48).regex(/^[a-zA-Z0-9_-]+$/),
   profile: z
     .object({
       shard: z.string().min(1).max(8),
@@ -30,12 +32,7 @@ const CreateSharedVerdictInputSchema = z.object({
       tagLine: z.string().min(1).max(32),
     })
     .optional(),
-  locale: z.enum(["en", "ko"]),
-  verdictMode: z.string().min(1).max(32),
   scopeLabel: z.string().max(64).nullable().optional(),
-  selectedPlayers: z.array(SharedPlayerSchema).min(1).max(5),
-  verdictDisplay: VerdictDisplaySchema,
-  reasoning: z.string().min(1).max(5000),
 });
 
 const GetSharedVerdictInputSchema = z.object({
@@ -67,11 +64,18 @@ function createShareId() {
 }
 
 async function deleteExpiredShares() {
+  const now = new Date().toISOString();
   const { error } = await supabaseAdmin
     .from("shared_verdicts")
     .delete()
-    .lt("expires_at", new Date().toISOString());
+    .lt("expires_at", now);
   if (error) console.error("[shared-verdict] expired cleanup failed:", error);
+
+  const { error: resultError } = await supabaseAdmin
+    .from("verdict_results")
+    .delete()
+    .lt("expires_at", now);
+  if (resultError) console.error("[verdict-result] expired cleanup failed:", resultError);
 }
 
 function normalizeSharedVerdict(row: {
@@ -114,25 +118,59 @@ function normalizeSharedVerdict(row: {
 export const createSharedVerdict = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CreateSharedVerdictInputSchema.parse(input))
   .handler(async ({ data }) => {
+    assertRateLimit({
+      scope: "shared-verdict-create",
+      limit: 8,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many share requests. Please wait a minute and try again.",
+    });
     await assertTurnstile(data.turnstileToken);
     await deleteExpiredShares();
 
+    const { data: resultRow, error: resultError } = await supabaseAdmin
+      .from("verdict_results")
+      .select("id, expires_at, match_id, locale, verdict_mode, selected_players, verdict_display, reasoning")
+      .eq("id", data.verdictResultId)
+      .maybeSingle();
+
+    if (resultError) {
+      console.error("[shared-verdict] verdict result lookup failed:", resultError);
+      throw new Error("Failed to create share link.");
+    }
+    if (!resultRow || new Date(resultRow.expires_at).getTime() <= Date.now()) {
+      throw new Error("This verdict can no longer be shared. Please create a new verdict.");
+    }
+
+    const parsedResult = z
+      .object({
+        selectedPlayers: z.array(SharedPlayerSchema).min(1).max(5),
+        verdictDisplay: VerdictDisplaySchema,
+      })
+      .safeParse({
+        selectedPlayers: resultRow.selected_players,
+        verdictDisplay: resultRow.verdict_display,
+      });
+    if (!parsedResult.success) {
+      console.error("[shared-verdict] stored verdict result is invalid:", parsedResult.error);
+      throw new Error("Failed to create share link.");
+    }
+    const { selectedPlayers, verdictDisplay } = parsedResult.data;
     const expiresAt = new Date(Date.now() + SHARE_TTL_HOURS * 60 * 60_000).toISOString();
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const id = createShareId();
       const { error } = await supabaseAdmin.from("shared_verdicts").insert({
         id,
         expires_at: expiresAt,
-        match_id: data.matchId ?? null,
+        match_id: resultRow.match_id ?? null,
         profile_shard: data.profile?.shard ?? null,
         profile_game_name: data.profile?.gameName ?? null,
         profile_tag_line: data.profile?.tagLine ?? null,
-        locale: data.locale,
-        verdict_mode: data.verdictMode,
+        locale: resultRow.locale,
+        verdict_mode: resultRow.verdict_mode,
         scope_label: data.scopeLabel ?? null,
-        selected_players: data.selectedPlayers as unknown as never,
-        verdict_display: data.verdictDisplay as unknown as never,
-        reasoning: data.reasoning,
+        selected_players: selectedPlayers as unknown as never,
+        verdict_display: verdictDisplay as unknown as never,
+        reasoning: resultRow.reasoning,
       });
 
       if (!error) {

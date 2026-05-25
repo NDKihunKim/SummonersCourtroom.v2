@@ -70,7 +70,8 @@ async function profilePlan(userId: string): Promise<"free" | "paid" | "unli"> {
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to load account plan: ${error.code ?? "unknown"} ${error.message}`);
+    console.error("[verdict-quota] failed to load account plan:", error);
+    throw new Error("Failed to load account plan. Please try again.");
   }
   if (data?.plan === "unli") return "unli";
   if (data?.plan === "paid") return "paid";
@@ -80,9 +81,8 @@ async function profilePlan(userId: string): Promise<"free" | "paid" | "unli"> {
     .from("user_profiles")
     .insert({ user_id: userId, plan: "free" });
   if (insertError && insertError.code !== "23505") {
-    throw new Error(
-      `Failed to create account profile: ${insertError.code ?? "unknown"} ${insertError.message}`,
-    );
+    console.error("[verdict-quota] failed to create account profile:", insertError);
+    throw new Error("Failed to create account profile. Please try again.");
   }
   return "free";
 }

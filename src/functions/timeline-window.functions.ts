@@ -12,6 +12,7 @@ import {
 } from "@/components/judge-prompts/promptText";
 import { substituteSubjects } from "@/components/judge-prompts/substituteSubjects";
 import type { Locale } from "@/i18n";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 type WindowItem = Record<string, unknown> & {
   kind: "frame" | "event";
@@ -78,6 +79,20 @@ type FreeForAllPlayerInput = {
   puuid?: string;
   role?: string;
   summoner?: string;
+};
+
+type StoredVerdictPlayer = {
+  champion: string;
+  championLabel?: string;
+  summoner?: string;
+  kills?: number;
+  deaths?: number;
+  assists?: number;
+};
+
+type StoredVerdictDisplay = {
+  championName: string;
+  summonerName?: string;
 };
 
 const TimelineWindowInputSchema = z.object({
@@ -1397,6 +1412,159 @@ type DeepSeekResponse = {
   usage?: DeepSeekUsage;
 };
 
+function createStoredVerdictId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function normalizeVerdictToken(value: string): string {
+  return value.replace(/[^a-z0-9가-힣]/gi, "").toLowerCase();
+}
+
+function participantDisplayName(participant: Record<string, unknown>): string | undefined {
+  const gameName = typeof participant.riotIdGameName === "string" ? participant.riotIdGameName : "";
+  const tagLine = typeof participant.riotIdTagline === "string" ? participant.riotIdTagline : "";
+  if (gameName && tagLine) return `${gameName}#${tagLine}`;
+  if (gameName) return gameName;
+  return typeof participant.summonerName === "string" ? participant.summonerName : undefined;
+}
+
+function storedPlayerFromParticipant(participant: Record<string, unknown>): StoredVerdictPlayer {
+  return {
+    champion:
+      typeof participant.championName === "string" && participant.championName
+        ? participant.championName
+        : "Unknown",
+    championLabel:
+      typeof participant.championName === "string" && participant.championName
+        ? participant.championName
+        : undefined,
+    summoner: participantDisplayName(participant),
+    kills: typeof participant.kills === "number" ? participant.kills : undefined,
+    deaths: typeof participant.deaths === "number" ? participant.deaths : undefined,
+    assists: typeof participant.assists === "number" ? participant.assists : undefined,
+  };
+}
+
+function findMatchParticipant(
+  match: MatchPayload,
+  selector?: { puuid?: string; champion?: string },
+): Record<string, unknown> | undefined {
+  const participants = (match.info?.participants ?? []) as Array<Record<string, unknown>>;
+  if (!selector) return undefined;
+  if (selector.puuid) {
+    const byPuuid = participants.find((participant) => participant.puuid === selector.puuid);
+    if (byPuuid) return byPuuid;
+  }
+  if (selector.champion) {
+    const target = normalizeVerdictToken(selector.champion);
+    return participants.find(
+      (participant) =>
+        typeof participant.championName === "string" &&
+        normalizeVerdictToken(participant.championName) === target,
+    );
+  }
+  return undefined;
+}
+
+function buildStoredVerdictPlayers(
+  match: MatchPayload,
+  data: z.infer<typeof JudgeVerdictInputSchema>,
+): StoredVerdictPlayer[] {
+  const selectors =
+    data.verdictMode === "free-for-all"
+      ? data.freeForAllTeam?.map((player) => ({
+          puuid: player.puuid,
+          champion: player.champion,
+          summoner: player.summoner,
+        })) ?? []
+      : [
+          { puuid: data.subjects?.a?.puuid, champion: data.subjects?.a?.champion },
+          { puuid: data.subjects?.b?.puuid, champion: data.subjects?.b?.champion },
+        ];
+
+  return selectors
+    .map((selector) => {
+      const participant = findMatchParticipant(match, selector);
+      if (participant) return storedPlayerFromParticipant(participant);
+      if (!selector.champion) return null;
+      return {
+        champion: selector.champion,
+        championLabel: selector.champion,
+        summoner: (selector as { summoner?: string }).summoner,
+      };
+    })
+    .filter((player): player is StoredVerdictPlayer => player !== null)
+    .slice(0, 5);
+}
+
+function parseStoredVerdict(
+  output: string,
+  selectedPlayers: StoredVerdictPlayer[],
+): { verdictDisplay: StoredVerdictDisplay; reasoning: string } {
+  const lines = output.split(/\r?\n/);
+  const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex === -1) {
+    return { verdictDisplay: { championName: "Unknown" }, reasoning: output };
+  }
+
+  const verdictLine = lines[firstContentIndex].trim();
+  const verdictToken = normalizeVerdictToken(verdictLine);
+  const matched = selectedPlayers.find((player) => {
+    const champion = normalizeVerdictToken(player.champion);
+    const championLabel = normalizeVerdictToken(player.championLabel ?? "");
+    const summoner = normalizeVerdictToken(player.summoner ?? "");
+    return [champion, championLabel, summoner].some((token) => token && token === verdictToken);
+  });
+  const reasoning = [...lines.slice(0, firstContentIndex), ...lines.slice(firstContentIndex + 1)]
+    .join("\n")
+    .trim();
+
+  return {
+    verdictDisplay: matched
+      ? { championName: matched.championLabel ?? matched.champion, summonerName: matched.summoner }
+      : { championName: verdictLine },
+    reasoning: reasoning || output,
+  };
+}
+
+async function storeVerdictResult({
+  matchId,
+  locale,
+  verdictMode,
+  selectedPlayers,
+  verdictDisplay,
+  reasoning,
+}: {
+  matchId: string;
+  locale: Locale;
+  verdictMode: "duel" | "free-for-all";
+  selectedPlayers: StoredVerdictPlayer[];
+  verdictDisplay: StoredVerdictDisplay;
+  reasoning: string;
+}): Promise<string> {
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60_000).toISOString();
+  const id = createStoredVerdictId();
+  const { error } = await supabaseAdmin.from("verdict_results").insert({
+    id,
+    expires_at: expiresAt,
+    match_id: matchId,
+    locale,
+    verdict_mode: verdictMode,
+    selected_players: selectedPlayers as unknown as never,
+    verdict_display: verdictDisplay as unknown as never,
+    reasoning,
+  });
+
+  if (error) {
+    console.error("[verdict-result] insert failed:", error);
+    throw new Error("Failed to save verdict result. Please try again.");
+  }
+
+  return id;
+}
+
 type VerdictAnalyticsEvent = {
   success: boolean;
   matchId: string;
@@ -1768,7 +1936,28 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       });
       throw error;
     }
+    const includeDiagnostics = data.includeRaw === true;
     const costEstimate = estimateDeepSeekCost(deepSeek.usage);
+    const selectedPlayers = buildStoredVerdictPlayers(match, data);
+    const storedVerdict = parseStoredVerdict(deepSeek.content, selectedPlayers);
+    let verdictResultId: string | undefined;
+    if (!includeDiagnostics) {
+      try {
+        verdictResultId = await storeVerdictResult({
+          matchId: data.matchId,
+          locale: data.locale ?? "en",
+          verdictMode,
+          selectedPlayers,
+          verdictDisplay: storedVerdict.verdictDisplay,
+          reasoning: storedVerdict.reasoning,
+        });
+      } catch (error) {
+        console.error(
+          "[verdict-result] continuing without shareable verdict result:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
     await writeVerdictAnalytics({
       success: true,
       matchId: data.matchId,
@@ -1786,7 +1975,6 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       maxTokens: deepSeekMaxTokens(),
       durationMs: Date.now() - requestStartedAt,
     });
-    const includeDiagnostics = data.includeRaw === true;
     const raw = includeDiagnostics ? deepSeek.raw : undefined;
 
     return {
@@ -1799,5 +1987,6 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       raw,
       prompt: includeDiagnostics ? promptPayload : undefined,
       context: includeDiagnostics ? windowResponse : undefined,
+      verdictResultId,
     };
   });

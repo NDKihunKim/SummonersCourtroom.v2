@@ -116,6 +116,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      verdict_results: {
+        Row: {
+          created_at: string;
+          expires_at: string;
+          id: string;
+          locale: string;
+          match_id: string | null;
+          reasoning: string;
+          selected_players: Json;
+          verdict_display: Json;
+          verdict_mode: string;
+        };
+        Insert: {
+          created_at?: string;
+          expires_at?: string;
+          id: string;
+          locale?: string;
+          match_id?: string | null;
+          reasoning: string;
+          selected_players?: Json;
+          verdict_display: Json;
+          verdict_mode: string;
+        };
+        Update: {
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          locale?: string;
+          match_id?: string | null;
+          reasoning?: string;
+          selected_players?: Json;
+          verdict_display?: Json;
+          verdict_mode?: string;
+        };
+        Relationships: [];
+      };
       verdict_feedback: {
         Row: {
           anonymous_id_hash: string | null;

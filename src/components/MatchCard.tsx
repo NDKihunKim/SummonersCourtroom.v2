@@ -199,6 +199,14 @@ function splitReasoningChoices(reasoning: string): ReasoningChoice[] {
     .filter((choice) => choice.text.length > 0);
 }
 
+function objectionErrorKey(error: unknown): TranslationKey {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("OBJECTION_RATE_LIMITED")) return "objectionRateLimited";
+  if (message.includes("OBJECTION_SESSION_EXPIRED")) return "objectionSessionExpired";
+  if (message.includes("OBJECTION_VERIFY_FAILED")) return "objectionVerifyFailed";
+  return "objectionFailed";
+}
+
 export function MatchCard({
   match,
   you,
@@ -260,6 +268,7 @@ export function MatchCard({
   const [verdictScope, setVerdictScope] = useState<Scope | null>(null);
   const [verdictWindow, setVerdictWindow] = useState<[number, number] | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [verdictResultId, setVerdictResultId] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -398,6 +407,7 @@ export function MatchCard({
     setReasoning(null);
     setVerdictDisplay(null);
     setShareUrl(null);
+    setVerdictResultId(null);
     setSharing(false);
     setCompleted(new Set());
     setActiveStep("contextualize");
@@ -520,6 +530,7 @@ export function MatchCard({
       );
       setReasoning(parsed.reasoning);
       setVerdictDisplay(parsed.verdict);
+      setVerdictResultId(verdict.verdictResultId ?? null);
       setCompleted((s) => new Set(s).add("judge"));
       setActiveStep("parse");
 
@@ -539,6 +550,10 @@ export function MatchCard({
 
   async function shareVerdict() {
     if (!reasoning || !verdictDisplay) return;
+    if (!verdictResultId) {
+      toast.error(t("shareFailed"));
+      return;
+    }
 
     try {
       setSharing(true);
@@ -548,15 +563,11 @@ export function MatchCard({
         return;
       }
 
-      const selectedPlayers =
-        faultMode === "free-for-all"
-          ? orderedSelectedFreeForAllPlayers
-          : [subjectA, pickedAlly].filter((player): player is Participant => player !== null);
       const turnstileToken = await executeTurnstile();
       const result = await createSharedVerdict({
         data: {
           turnstileToken,
-          matchId: match.riotMatchId,
+          verdictResultId,
           ...(profileShard && profileGameName && profileTagLine
             ? {
                 profile: {
@@ -566,19 +577,7 @@ export function MatchCard({
                 },
               }
             : {}),
-          locale,
-          verdictMode: faultMode,
           scopeLabel: verdictWindowLabel,
-          selectedPlayers: selectedPlayers.map((player) => ({
-            champion: player.champion,
-            championLabel: formatChampionName(player.champion),
-            summoner: player.summoner,
-            kills: player.kills,
-            deaths: player.deaths,
-            assists: player.assists,
-          })),
-          verdictDisplay,
-          reasoning,
         },
       });
       const nextShareUrl = new URL(result.path, window.location.origin).toString();
@@ -1634,7 +1633,7 @@ function ObjectionPanel({
       setExplanationsByReason({});
       toast.success(t("objectionSubmitted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("objectionFailed"));
+      toast.error(t(objectionErrorKey(error)));
     } finally {
       setSubmitting(false);
       onAfterSubmit();

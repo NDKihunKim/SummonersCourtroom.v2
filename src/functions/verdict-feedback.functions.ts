@@ -4,6 +4,13 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 
+const OBJECTION_ERRORS = {
+  RATE_LIMITED: "OBJECTION_RATE_LIMITED",
+  SESSION_EXPIRED: "OBJECTION_SESSION_EXPIRED",
+  VERIFY_FAILED: "OBJECTION_VERIFY_FAILED",
+  SAVE_FAILED: "OBJECTION_SAVE_FAILED",
+} as const;
+
 const SharedPlayerSchema = z.object({
   champion: z.string().min(1).max(64),
   championLabel: z.string().min(1).max(64).optional(),
@@ -49,7 +56,7 @@ async function resolveUser(accessToken?: string): Promise<string | null> {
 
   const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
   if (error || !data.user) {
-    throw new Error("Your session expired. Please sign in again.");
+    throw new Error(OBJECTION_ERRORS.SESSION_EXPIRED);
   }
 
   return data.user.id;
@@ -66,13 +73,24 @@ async function sha256(value: string): Promise<string> {
 export const submitVerdictFeedback = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SubmitVerdictFeedbackInputSchema.parse(input))
   .handler(async ({ data }) => {
-    await assertTurnstile(data.turnstileToken);
-    assertRateLimit({
-      scope: "verdict-feedback",
-      limit: 10,
-      windowMs: 60 * 60_000,
-      message: "Too many objections submitted. Please try again later.",
-    });
+    try {
+      await assertTurnstile(data.turnstileToken);
+    } catch (error) {
+      console.error("[verdict-feedback] turnstile failed:", error);
+      throw new Error(OBJECTION_ERRORS.VERIFY_FAILED);
+    }
+
+    try {
+      assertRateLimit({
+        scope: "verdict-feedback",
+        limit: 10,
+        windowMs: 60 * 60_000,
+        message: OBJECTION_ERRORS.RATE_LIMITED,
+      });
+    } catch (error) {
+      console.error("[verdict-feedback] rate limited:", error);
+      throw new Error(OBJECTION_ERRORS.RATE_LIMITED);
+    }
 
     const userId = await resolveUser(data.accessToken);
     const anonymousIdHash = !userId && data.anonymousId ? await sha256(data.anonymousId) : null;
@@ -101,7 +119,7 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
 
     if (error) {
       console.error("[verdict-feedback] insert failed:", error);
-      throw new Error("Failed to submit objection.");
+      throw new Error(OBJECTION_ERRORS.SAVE_FAILED);
     }
 
     return { ok: true };

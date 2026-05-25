@@ -189,9 +189,10 @@ export function AdFrame({
         });
         if (!cancelled) setQuota(status);
       } catch (error) {
+        console.error("[dashboard] failed to load verdict quota:", error);
         if (!cancelled) {
           setQuota(null);
-          setQuotaError(error instanceof Error ? error.message : null);
+          setQuotaError(null);
         }
       } finally {
         if (!cancelled) setQuotaLoading(false);
