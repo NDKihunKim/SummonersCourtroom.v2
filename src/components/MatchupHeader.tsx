@@ -80,6 +80,7 @@ export interface MatchupHeaderProps {
   /** The ally chosen on the PickAlly screen. */
   ally: Participant;
   players?: Participant[];
+  highlightChampionKey?: string | null;
   highlightChampionName?: string | null;
   formatChampionName?: (champion: string) => string;
 }
@@ -88,10 +89,14 @@ export function MatchupHeader({
   you,
   ally,
   players,
+  highlightChampionKey,
   highlightChampionName,
   formatChampionName = (champion) => champion,
 }: MatchupHeaderProps) {
   function isHighlightedChampion(champion: string): boolean {
+    if (highlightChampionKey) {
+      return normalizeChampionToken(champion) === normalizeChampionToken(highlightChampionKey);
+    }
     if (!highlightChampionName) return false;
     const target = normalizeChampionToken(highlightChampionName);
     return [champion, formatChampionName(champion)]

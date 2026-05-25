@@ -29,7 +29,7 @@ type PipelineStep = "contextualize" | "judge" | "parse";
 type Scope = "full" | "window";
 type FaultMode = "me-vs-1" | "one-vs-one" | "free-for-all" | "switch-teams";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
-type VerdictDisplay = { championName: string; summonerName?: string };
+type VerdictDisplay = { championName: string; championKey?: string; summonerName?: string };
 type ReasoningChoice = { index: number; text: string; explanation?: string };
 type FreeForAllContextPlayer = {
   champion: string;
@@ -172,7 +172,11 @@ function parseJudgeOutput(
 
   return {
     verdict: subject
-      ? { championName: subject.championLabel, summonerName: subject.summoner }
+      ? {
+          championName: subject.championLabel,
+          championKey: subject.champion,
+          summonerName: subject.summoner,
+        }
       : { championName: verdictLine },
     reasoning: reasoning || output,
   };
@@ -332,6 +336,20 @@ export function MatchCard({
     faultMode === "free-for-all" ? freeForAllSelection : visibleTeamMembers;
   const orderedSelectedFreeForAllPlayers = sortByRole(selectedFreeForAllPlayers);
   const subjectA = pickedSubjectA ?? viewedParticipant;
+  const verdictHighlightChampionKey =
+    verdictDisplay?.championKey ??
+    (verdictDisplay
+      ? (faultMode === "free-for-all"
+          ? orderedSelectedFreeForAllPlayers
+          : [subjectA, pickedAlly].filter((player): player is Participant => player !== null)
+        ).find((player) =>
+          [player.champion, formatChampionName(player.champion)].some(
+            (candidate) =>
+              normalizeVerdictToken(candidate) ===
+              normalizeVerdictToken(verdictDisplay.championName),
+          ),
+        )?.champion
+      : undefined);
   const subjectsReady =
     faultMode === "free-for-all"
       ? selectedFreeForAllPlayers.length >= 3 && selectedFreeForAllPlayers.length <= 5
@@ -400,6 +418,7 @@ export function MatchCard({
     );
     setVerdictDisplay({
       championName: formatChampionName(pickedAlly.champion),
+      championKey: pickedAlly.champion,
       summonerName: pickedAlly.summoner,
     });
     setCompleted(new Set(["contextualize", "judge", "parse"]));
@@ -959,6 +978,7 @@ export function MatchCard({
                   players={
                     faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined
                   }
+                  highlightChampionKey={verdictHighlightChampionKey}
                   highlightChampionName={verdictDisplay?.championName}
                   formatChampionName={formatChampionName}
                 />
@@ -988,6 +1008,7 @@ export function MatchCard({
                   players={
                     faultMode === "free-for-all" ? orderedSelectedFreeForAllPlayers : undefined
                   }
+                  highlightChampionKey={verdictHighlightChampionKey}
                   highlightChampionName={verdictDisplay?.championName}
                   formatChampionName={formatChampionName}
                 />
@@ -1520,6 +1541,7 @@ function SharedVerdictResult({
           you={sharedPlayers[0]}
           ally={sharedPlayers[1]}
           players={sharedPlayers.length > 2 ? sharedPlayers : undefined}
+          highlightChampionKey={verdict.verdictDisplay.championKey}
           highlightChampionName={verdict.verdictDisplay.championName}
           formatChampionName={(champion) => championLabels.get(champion) ?? champion}
         />

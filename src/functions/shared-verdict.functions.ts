@@ -19,6 +19,7 @@ const SharedPlayerSchema = z.object({
 
 const VerdictDisplaySchema = z.object({
   championName: z.string().min(1).max(128),
+  championKey: z.string().min(1).max(64).optional(),
   summonerName: z.string().max(128).optional(),
 });
 

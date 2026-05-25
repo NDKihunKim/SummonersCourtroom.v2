@@ -92,6 +92,7 @@ type StoredVerdictPlayer = {
 
 type StoredVerdictDisplay = {
   championName: string;
+  championKey?: string;
   summonerName?: string;
 };
 
@@ -1523,7 +1524,11 @@ function parseStoredVerdict(
 
   return {
     verdictDisplay: matched
-      ? { championName: matched.championLabel ?? matched.champion, summonerName: matched.summoner }
+      ? {
+          championName: matched.championLabel ?? matched.champion,
+          championKey: matched.champion,
+          summonerName: matched.summoner,
+        }
       : { championName: verdictLine },
     reasoning: reasoning || output,
   };
