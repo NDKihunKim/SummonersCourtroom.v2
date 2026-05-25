@@ -39,6 +39,24 @@ const GetSharedVerdictInputSchema = z.object({
   id: z.string().min(8).max(48).regex(/^[a-zA-Z0-9_-]+$/),
 });
 
+function parseCreateSharedVerdictInput(input: unknown) {
+  const parsed = CreateSharedVerdictInputSchema.safeParse(input);
+  if (!parsed.success) {
+    console.error("[shared-verdict] invalid create input:", parsed.error);
+    throw new Error("Failed to create share link.");
+  }
+  return parsed.data;
+}
+
+function parseGetSharedVerdictInput(input: unknown) {
+  const parsed = GetSharedVerdictInputSchema.safeParse(input);
+  if (!parsed.success) {
+    console.error("[shared-verdict] invalid lookup input:", parsed.error);
+    throw new Error("Shared verdict not found or expired.");
+  }
+  return parsed.data;
+}
+
 export type SharedVerdictPlayer = z.infer<typeof SharedPlayerSchema>;
 export type SharedVerdictPayload = {
   id: string;
@@ -121,7 +139,7 @@ function normalizeSharedVerdict(row: {
 }
 
 export const createSharedVerdict = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => CreateSharedVerdictInputSchema.parse(input))
+  .inputValidator(parseCreateSharedVerdictInput)
   .handler(async ({ data }) => {
     assertRateLimit({
       scope: "shared-verdict-create",
@@ -187,7 +205,7 @@ export const createSharedVerdict = createServerFn({ method: "POST" })
   });
 
 export const getSharedVerdict = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) => GetSharedVerdictInputSchema.parse(input))
+  .inputValidator(parseGetSharedVerdictInput)
   .handler(async ({ data }) => {
     const { data: row, error } = await supabaseAdmin
       .from("shared_verdicts")

@@ -207,6 +207,12 @@ function objectionErrorKey(error: unknown): TranslationKey {
   return "objectionFailed";
 }
 
+function shareErrorKey(error: unknown): TranslationKey {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("Too many share requests")) return "shareFailed";
+  return "shareFailed";
+}
+
 export function MatchCard({
   match,
   you,
@@ -585,7 +591,8 @@ export function MatchCard({
       await navigator.clipboard.writeText(nextShareUrl);
       toast.success(t("shareLinkCopied"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("shareFailed"));
+      console.error("[share] failed to create share link:", error);
+      toast.error(t(shareErrorKey(error)));
     } finally {
       setSharing(false);
       resetTurnstile();
@@ -994,6 +1001,7 @@ export function MatchCard({
                 onAgain={() => setStage("pickAlly")}
                 onShare={() => void shareVerdict()}
                 sharing={sharing}
+                shareDisabled={!verdictResultId}
                 onSubmitObjection={(selectedReasons) =>
                   submitObjection({ selectedReasons, source: "verdict" })
                 }
@@ -1735,6 +1743,7 @@ function Verdict({
   onAgain,
   onShare,
   sharing,
+  shareDisabled,
   onSubmitObjection,
   onAfterObjection,
   onViewContext,
@@ -1747,6 +1756,7 @@ function Verdict({
   onAgain: () => void;
   onShare: () => void;
   sharing: boolean;
+  shareDisabled: boolean;
   onSubmitObjection: (selectedReasons: ReasoningChoice[]) => Promise<void>;
   onAfterObjection: () => void;
   onViewContext: () => void;
@@ -1793,7 +1803,7 @@ function Verdict({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={onShare}
-                disabled={sharing}
+                disabled={sharing || shareDisabled}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Share2 className="h-3.5 w-3.5" />
