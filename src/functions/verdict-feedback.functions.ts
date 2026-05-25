@@ -6,8 +6,10 @@ import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 
 const OBJECTION_ERRORS = {
   RATE_LIMITED: "OBJECTION_RATE_LIMITED",
+  AUTH_REQUIRED: "OBJECTION_AUTH_REQUIRED",
   SESSION_EXPIRED: "OBJECTION_SESSION_EXPIRED",
   VERIFY_FAILED: "OBJECTION_VERIFY_FAILED",
+  ALREADY_SUBMITTED: "OBJECTION_ALREADY_SUBMITTED",
   SAVE_FAILED: "OBJECTION_SAVE_FAILED",
 } as const;
 
@@ -35,6 +37,12 @@ const SubmitVerdictFeedbackInputSchema = z.object({
   turnstileToken: TurnstileTokenSchema,
   accessToken: z.string().min(1).optional(),
   anonymousId: z.string().min(8).max(128).optional(),
+  verdictResultId: z
+    .string()
+    .min(8)
+    .max(48)
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .optional(),
   source: z.enum(["verdict", "shared"]),
   shareId: z
     .string()
@@ -52,7 +60,7 @@ const SubmitVerdictFeedbackInputSchema = z.object({
 });
 
 async function resolveUser(accessToken?: string): Promise<string | null> {
-  if (!accessToken) return null;
+  if (!accessToken) throw new Error(OBJECTION_ERRORS.AUTH_REQUIRED);
 
   const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
   if (error || !data.user) {
@@ -60,14 +68,6 @@ async function resolveUser(accessToken?: string): Promise<string | null> {
   }
 
   return data.user.id;
-}
-
-async function sha256(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 export const submitVerdictFeedback = createServerFn({ method: "POST" })
@@ -93,7 +93,9 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
     }
 
     const userId = await resolveUser(data.accessToken);
-    const anonymousIdHash = !userId && data.anonymousId ? await sha256(data.anonymousId) : null;
+    if (!data.verdictResultId) {
+      throw new Error(OBJECTION_ERRORS.SAVE_FAILED);
+    }
     const selectedReasonIndexes = data.selectedReasons.map((reason) => reason.index);
     const selectedReasons = data.selectedReasons.map((reason) => ({
       index: reason.index,
@@ -103,7 +105,8 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
 
     const { error } = await supabaseAdmin.from("verdict_feedback").insert({
       user_id: userId,
-      anonymous_id_hash: anonymousIdHash,
+      anonymous_id_hash: null,
+      verdict_result_id: data.verdictResultId,
       source: data.source,
       share_id: data.shareId ?? null,
       match_id: data.matchId ?? null,
@@ -118,6 +121,9 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
     });
 
     if (error) {
+      if (error.code === "23505") {
+        throw new Error(OBJECTION_ERRORS.ALREADY_SUBMITTED);
+      }
       console.error("[verdict-feedback] insert failed:", error);
       throw new Error(OBJECTION_ERRORS.SAVE_FAILED);
     }

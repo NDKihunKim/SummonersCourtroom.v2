@@ -160,6 +160,7 @@ export type Database = {
           share_id: string | null;
           source: string;
           user_id: string | null;
+          verdict_result_id: string | null;
           verdict_display: Json;
           verdict_mode: string;
         };
@@ -177,6 +178,7 @@ export type Database = {
           share_id?: string | null;
           source: string;
           user_id?: string | null;
+          verdict_result_id?: string | null;
           verdict_display: Json;
           verdict_mode: string;
         };
@@ -194,6 +196,7 @@ export type Database = {
           share_id?: string | null;
           source?: string;
           user_id?: string | null;
+          verdict_result_id?: string | null;
           verdict_display?: Json;
           verdict_mode?: string;
         };

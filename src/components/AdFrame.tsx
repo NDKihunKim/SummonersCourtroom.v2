@@ -115,15 +115,18 @@ export function AdFrame({
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [quotaError, setQuotaError] = useState<string | null>(null);
   const [quotaNow, setQuotaNow] = useState(() => Date.now());
-  const dashboardRef = useRef<HTMLDivElement>(null);
+  const dashboardTriggerRef = useRef<HTMLButtonElement>(null);
+  const dashboardPanelRef = useRef<HTMLDivElement>(null);
   const activeLocaleLabel = LOCALES.find((option) => option.code === locale)?.label ?? "English";
 
   useEffect(() => {
     if (!dashboardOpen) return;
 
     function onPointerDown(event: MouseEvent) {
-      if (!dashboardRef.current) return;
-      if (!dashboardRef.current.contains(event.target as Node)) setDashboardOpen(false);
+      const target = event.target as Node;
+      if (dashboardPanelRef.current?.contains(target)) return;
+      if (dashboardTriggerRef.current?.contains(target)) return;
+      setDashboardOpen(false);
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -274,14 +277,23 @@ export function AdFrame({
   }
 
   function quotaText(status: VerdictQuotaStatus): string {
+    const planLabels: Record<VerdictQuotaStatus["plan"], string> = {
+      anonymous: t?.("dashboardPlanAnonymous") ?? "Visitor",
+      free: t?.("dashboardPlanFree") ?? "Daily User",
+      paid: t?.("dashboardPlanPaid") ?? "Premium User",
+      unli: t?.("dashboardPlanUnli") ?? "Unlimited User",
+    };
     if (status.plan === "unli") {
-      return t?.("dashboardQuotaUnlimited") ?? "Unlimited verdicts today (unli)";
+      return (
+        t?.("dashboardQuotaUnlimited", { plan: planLabels.unli }) ??
+        `Unlimited verdicts today (${planLabels.unli})`
+      );
     }
     return (
       t?.("dashboardQuota", {
         remaining: status.remaining ?? 0,
         limit: status.limit ?? 0,
-        plan: status.plan,
+        plan: planLabels[status.plan],
       }) ?? `${status.remaining ?? 0}/${status.limit ?? 0} verdicts available today`
     );
   }
@@ -390,8 +402,9 @@ export function AdFrame({
 
   return (
     <div className={outer}>
-      <div ref={dashboardRef} className="fixed left-2 top-2 z-50 sm:left-3 sm:top-3">
+      <div className="fixed left-2 top-2 z-50 sm:left-3 sm:top-3">
         <button
+          ref={dashboardTriggerRef}
           type="button"
           aria-label={t?.("dashboardOpen") ?? "Open dashboard"}
           aria-expanded={dashboardOpen}
@@ -408,21 +421,33 @@ export function AdFrame({
 
         {dashboardOpen && (
           <div
+            ref={dashboardPanelRef}
             role="dialog"
             aria-label={t?.("dashboardTitle") ?? "Dashboard"}
             className="mt-2 w-[min(calc(100vw-1rem),20rem)] animate-fade-in rounded-xl border border-border bg-card/95 p-3 text-left shadow-xl backdrop-blur"
           >
             <div className="mb-3 flex items-center justify-between gap-2">
-              <a
-                href={homeHref}
-                aria-label={t?.("home") ?? "Go to Summoner's Courtroom home"}
-                className={headerActionClass}
-              >
-                <Home className="h-3.5 w-3.5" />
-                <span className={headerActionLabelClass}>{t?.("dashboardHome") ?? "Home"}</span>
-              </a>
+              {dashboardView === "options" ? (
+                <button
+                  type="button"
+                  onClick={() => setDashboardView("main")}
+                  className={headerActionClass}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <span className={headerActionLabelClass}>{t?.("dashboardBack") ?? "Back"}</span>
+                </button>
+              ) : (
+                <a
+                  href={homeHref}
+                  aria-label={t?.("home") ?? "Go to Summoner's Courtroom home"}
+                  className={headerActionClass}
+                >
+                  <Home className="h-3.5 w-3.5" />
+                  <span className={headerActionLabelClass}>{t?.("dashboardHome") ?? "Home"}</span>
+                </a>
+              )}
               <div className="flex items-center gap-1.5">
-                {session && (
+                {session && dashboardView === "main" && (
                   <button
                     type="button"
                     className={headerActionClass}
@@ -452,14 +477,6 @@ export function AdFrame({
 
             {dashboardView === "options" ? (
               <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setDashboardView("main")}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-gold"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  {t?.("dashboardBack") ?? "Back"}
-                </button>
                 <div className="space-y-2">
                   {optionSections.map((section) => {
                     const Icon = section.icon;

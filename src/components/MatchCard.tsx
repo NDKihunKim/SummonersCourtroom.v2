@@ -201,6 +201,8 @@ function splitReasoningChoices(reasoning: string): ReasoningChoice[] {
 
 function objectionErrorKey(error: unknown): TranslationKey {
   const message = error instanceof Error ? error.message : "";
+  if (message.includes("OBJECTION_AUTH_REQUIRED")) return "objectionLoginRequired";
+  if (message.includes("OBJECTION_ALREADY_SUBMITTED")) return "objectionAlreadySubmitted";
   if (message.includes("OBJECTION_RATE_LIMITED")) return "objectionRateLimited";
   if (message.includes("OBJECTION_SESSION_EXPIRED")) return "objectionSessionExpired";
   if (message.includes("OBJECTION_VERIFY_FAILED")) return "objectionVerifyFailed";
@@ -639,11 +641,16 @@ export function MatchCard({
     const turnstileToken = await executeTurnstile();
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
+    const currentVerdictResultId = source === "shared" ? undefined : verdictResultId;
+    if (!accessToken || !currentVerdictResultId) {
+      throw new Error("OBJECTION_AUTH_REQUIRED");
+    }
 
     await submitVerdictFeedback({
       data: {
         turnstileToken,
-        ...(accessToken ? { accessToken } : { anonymousId: getAnonymousId() }),
+        accessToken,
+        verdictResultId: currentVerdictResultId,
         source,
         ...(shareId ? { shareId } : {}),
         matchId: match.riotMatchId,
@@ -795,14 +802,6 @@ export function MatchCard({
               verdict={sharedVerdict}
               t={t}
               onNewVerdict={onSharedNewVerdict}
-              onSubmitObjection={(selectedReasons) =>
-                submitObjection({
-                  selectedReasons,
-                  source: "shared",
-                  shareId: sharedVerdict.id,
-                })
-              }
-              onAfterObjection={resetTurnstile}
             />
           )}
 
@@ -1493,14 +1492,10 @@ function SharedVerdictResult({
   verdict,
   t,
   onNewVerdict,
-  onSubmitObjection,
-  onAfterObjection,
 }: {
   verdict: SharedVerdictPayload;
   t: Translate;
   onNewVerdict?: () => void;
-  onSubmitObjection: (selectedReasons: ReasoningChoice[]) => Promise<void>;
-  onAfterObjection: () => void;
 }) {
   const sharedPlayers = verdict.selectedPlayers.map(
     (player): Participant => ({
@@ -1558,27 +1553,15 @@ function SharedVerdictResult({
       <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
         {verdict.reasoning}
       </p>
-      <ObjectionPanel
-        reasoning={verdict.reasoning}
-        t={t}
-        onSubmit={onSubmitObjection}
-        onAfterSubmit={onAfterObjection}
-        renderActions={(button, saved) => (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              {button}
-              {saved}
-            </div>
-            <button
-              type="button"
-              onClick={onNewVerdict}
-              className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              {t("newVerdict")}
-            </button>
-          </div>
-        )}
-      />
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={onNewVerdict}
+          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {t("newVerdict")}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1602,6 +1585,23 @@ function ObjectionPanel({
   const [explanationsByReason, setExplanationsByReason] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) setSignedIn(Boolean(data.session));
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSignedIn(Boolean(nextSession));
+    });
+
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
 
   function toggleChoice(index: number) {
     setSelected((current) => {
@@ -1641,6 +1641,10 @@ function ObjectionPanel({
       setExplanationsByReason({});
       toast.success(t("objectionSubmitted"));
     } catch (error) {
+      if ((error instanceof Error ? error.message : "").includes("OBJECTION_ALREADY_SUBMITTED")) {
+        setSubmitted(true);
+        setOpen(false);
+      }
       toast.error(t(objectionErrorKey(error)));
     } finally {
       setSubmitting(false);
@@ -1650,11 +1654,14 @@ function ObjectionPanel({
 
   if (choices.length === 0) return null;
 
+  const objectionDisabled = submitted || signedIn !== true;
   const button = (
     <button
       type="button"
+      disabled={objectionDisabled}
       onClick={() => setOpen((value) => !value)}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+      title={signedIn === false ? t("objectionLoginRequired") : undefined}
+      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
     >
       <MessageSquareWarning className="h-3.5 w-3.5" />
       {t("objection")}
@@ -1662,6 +1669,10 @@ function ObjectionPanel({
   );
   const saved = submitted ? (
     <span className="text-[10px] font-medium text-muted-foreground">{t("objectionSaved")}</span>
+  ) : signedIn === false ? (
+    <span className="text-[10px] font-medium text-muted-foreground">
+      {t("objectionLoginRequired")}
+    </span>
   ) : null;
 
   return (
