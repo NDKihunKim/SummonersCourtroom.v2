@@ -47,9 +47,9 @@ function outputLanguageInstruction(locale: Locale, championLocalization = ""): s
     return `**OUTPUT LANGUAGE:**
 
 Write the verdict and all reasoning in natural Korean.
-Use the Korean champion names from NAME LOCALIZATION whenever referring to champions. Do not translate summoner names, Riot IDs, timestamps, or numeric evidence.
+Copy champion names exactly from NAME LOCALIZATION whenever referring to champions. Do not transliterate, guess, abbreviate, or alter Korean champion spellings. Do not translate summoner names, Riot IDs, timestamps, or numeric evidence.
 Use Korean fixed output wording:
-- Non-tie first line: only the selected champion name, localized into Korean when NAME LOCALIZATION provides it.
+- Non-tie first line: only the selected champion name copied exactly from NAME LOCALIZATION when it provides that champion.
 - Tie line: '판결: 무승부 — 선택한 구간에는 판결을 내릴 만큼 충분한 이벤트가 없습니다.'
 
 ${championLocalization}`;

@@ -441,7 +441,7 @@ function buildChampionLocalization({
   if (rows.length === 0) return "";
   return `**NAME LOCALIZATION:**
 
-Use these Korean champion names in the verdict and reasoning:
+Use these Korean champion names exactly. Do not transliterate, guess, abbreviate, or alter spelling:
 ${rows.join("\n")}`;
 }
 

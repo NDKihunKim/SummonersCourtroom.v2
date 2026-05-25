@@ -96,6 +96,120 @@ type StoredVerdictDisplay = {
   summonerName?: string;
 };
 
+const DDRAGON_CDN_ROOT = "https://ddragon.leagueoflegends.com/cdn";
+const DDRAGON_FALLBACK_VERSION = "14.24.1";
+
+const CHAMPION_FILENAME_OVERRIDES: Record<string, string> = {
+  FiddleSticks: "Fiddlesticks",
+  Wukong: "MonkeyKing",
+  "Cho'Gath": "Chogath",
+  "Kai'Sa": "Kaisa",
+  "Kha'Zix": "Khazix",
+  "Kog'Maw": "KogMaw",
+  LeBlanc: "Leblanc",
+  "Vel'Koz": "Velkoz",
+  "Rek'Sai": "RekSai",
+  "K'Sante": "KSante",
+  "Bel'Veth": "Belveth",
+  "Nunu & Willump": "Nunu",
+  "Renata Glasc": "Renata",
+  "Tahm Kench": "TahmKench",
+  "Twisted Fate": "TwistedFate",
+  "Master Yi": "MasterYi",
+  "Miss Fortune": "MissFortune",
+  "Aurelion Sol": "AurelionSol",
+  "Dr. Mundo": "DrMundo",
+  "Jarvan IV": "JarvanIV",
+  "Lee Sin": "LeeSin",
+  "Xin Zhao": "XinZhao",
+};
+
+const KOREAN_CHAMPION_NAME_OVERRIDES: Record<string, string> = {
+  Yunara: "유나라",
+};
+
+type DDragonChampionData = {
+  id: string;
+  name: string;
+};
+
+type DDragonChampionResponse = {
+  data?: Record<string, DDragonChampionData>;
+};
+
+let ddragonVersionPromise: Promise<string> | null = null;
+const championNameMapPromises = new Map<string, Promise<Record<string, string>>>();
+
+function championFilename(championName: string): string {
+  if (!championName) return "";
+  return CHAMPION_FILENAME_OVERRIDES[championName] ?? championName.replace(/[^A-Za-z0-9]/g, "");
+}
+
+async function ddragonVersion(): Promise<string> {
+  ddragonVersionPromise ??= fetch("https://ddragon.leagueoflegends.com/api/versions.json")
+    .then(async (response) => {
+      if (!response.ok) return DDRAGON_FALLBACK_VERSION;
+      const versions = (await response.json()) as unknown;
+      return Array.isArray(versions) && typeof versions[0] === "string"
+        ? versions[0]
+        : DDRAGON_FALLBACK_VERSION;
+    })
+    .catch(() => DDRAGON_FALLBACK_VERSION);
+  return ddragonVersionPromise;
+}
+
+async function koreanChampionNameMap(): Promise<Record<string, string>> {
+  const version = await ddragonVersion();
+  const key = `ko_KR:${version}`;
+  if (!championNameMapPromises.has(key)) {
+    championNameMapPromises.set(
+      key,
+      fetch(`${DDRAGON_CDN_ROOT}/${version}/data/ko_KR/champion.json`)
+        .then(async (response) => {
+          if (!response.ok) return {};
+          const json = (await response.json()) as DDragonChampionResponse;
+          return Object.fromEntries(
+            Object.values(json.data ?? {}).map((champion) => [champion.id, champion.name]),
+          );
+        })
+        .catch(() => ({})),
+    );
+  }
+  return championNameMapPromises.get(key) ?? {};
+}
+
+async function buildServerChampionLocalization({
+  locale,
+  match,
+}: {
+  locale: Locale;
+  match: MatchPayload;
+}): Promise<string> {
+  if (locale !== "ko") return "";
+
+  const champions = new Set<string>();
+  for (const participant of match.info?.participants ?? []) {
+    if (participant.championName) champions.add(participant.championName);
+  }
+
+  if (champions.size === 0) return "";
+
+  const names = await koreanChampionNameMap();
+  const rows = [...champions]
+    .map((champion) => {
+      const localized = names[championFilename(champion)] ?? KOREAN_CHAMPION_NAME_OVERRIDES[champion];
+      return localized && localized !== champion ? `- ${champion} → ${localized}` : null;
+    })
+    .filter((row): row is string => row !== null);
+
+  if (rows.length === 0) return "";
+
+  return `**NAME LOCALIZATION:**
+
+Use these Korean champion names exactly. Do not transliterate, guess, abbreviate, or alter spelling:
+${rows.join("\n")}`;
+}
+
 const TimelineWindowInputSchema = z.object({
   matchId: z.string().min(3),
   userPuuid: z.string().min(1),
@@ -1353,6 +1467,7 @@ function buildWindowResponse({
 function buildJudgePrompt({
   brief,
   locale,
+  championLocalization = "",
   subjectAChampion,
   subjectBChampion,
   verdictMode = "duel",
@@ -1360,6 +1475,7 @@ function buildJudgePrompt({
 }: {
   brief: string;
   locale: Locale;
+  championLocalization?: string;
   subjectAChampion?: string;
   subjectBChampion?: string;
   verdictMode?: "duel" | "free-for-all";
@@ -1380,8 +1496,8 @@ function buildJudgePrompt({
       : substituteSubjects(UPPER_PROMPT, subjects);
   const lowerPrompt =
     verdictMode === "free-for-all"
-      ? buildFreeForAllLowerPrompt(locale, "", teamRoster)
-      : substituteSubjects(buildLowerPrompt(locale), subjects);
+      ? buildFreeForAllLowerPrompt(locale, championLocalization, teamRoster)
+      : substituteSubjects(buildLowerPrompt(locale, championLocalization), subjects);
   const prompt = [upperPrompt, "", brief, "", lowerPrompt].join("\n");
   return { upperPrompt, brief, lowerPrompt, prompt };
 }
@@ -1888,9 +2004,14 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
             focusPuuids,
           });
 
+    const championLocalization = await buildServerChampionLocalization({
+      locale: data.locale ?? "en",
+      match,
+    });
     const promptPayload = buildJudgePrompt({
       brief: windowResponse.brief,
       locale: data.locale ?? "en",
+      championLocalization,
       subjectAChampion: data.subjects?.a?.champion,
       subjectBChampion: data.subjects?.b?.champion,
       verdictMode,
