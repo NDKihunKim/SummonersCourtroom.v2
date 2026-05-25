@@ -21,6 +21,7 @@ const VerdictDisplaySchema = z.object({
 const ReasoningFeedbackSchema = z.object({
   index: z.number().int().min(1).max(10),
   text: z.string().min(1).max(2000),
+  explanation: z.string().max(1000).optional(),
 });
 
 const SubmitVerdictFeedbackInputSchema = z.object({
@@ -41,7 +42,6 @@ const SubmitVerdictFeedbackInputSchema = z.object({
   selectedPlayers: z.array(SharedPlayerSchema).min(1).max(5),
   verdictDisplay: VerdictDisplaySchema,
   selectedReasons: z.array(ReasoningFeedbackSchema).min(1).max(5),
-  complaint: z.string().max(1000).optional(),
 });
 
 async function resolveUser(accessToken?: string): Promise<string | null> {
@@ -76,8 +76,12 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
 
     const userId = await resolveUser(data.accessToken);
     const anonymousIdHash = !userId && data.anonymousId ? await sha256(data.anonymousId) : null;
-    const complaint = data.complaint?.trim() || null;
     const selectedReasonIndexes = data.selectedReasons.map((reason) => reason.index);
+    const selectedReasons = data.selectedReasons.map((reason) => ({
+      index: reason.index,
+      text: reason.text,
+      explanation: reason.explanation?.trim() ?? "",
+    }));
 
     const { error } = await supabaseAdmin.from("verdict_feedback").insert({
       user_id: userId,
@@ -91,8 +95,8 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
       selected_players: data.selectedPlayers as unknown as never,
       verdict_display: data.verdictDisplay as unknown as never,
       selected_reason_indexes: selectedReasonIndexes,
-      selected_reasons: data.selectedReasons as unknown as never,
-      complaint,
+      selected_reasons: selectedReasons as unknown as never,
+      complaint: null,
     });
 
     if (error) {

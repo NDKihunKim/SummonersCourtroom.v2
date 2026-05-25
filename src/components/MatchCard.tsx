@@ -30,7 +30,7 @@ type Scope = "full" | "window";
 type FaultMode = "me-vs-1" | "one-vs-one" | "free-for-all" | "switch-teams";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 type VerdictDisplay = { championName: string; summonerName?: string };
-type ReasoningChoice = { index: number; text: string };
+type ReasoningChoice = { index: number; text: string; explanation?: string };
 type FreeForAllContextPlayer = {
   champion: string;
   puuid?: string;
@@ -595,12 +595,10 @@ export function MatchCard({
 
   async function submitObjection({
     selectedReasons,
-    complaint,
     source,
     shareId,
   }: {
     selectedReasons: ReasoningChoice[];
-    complaint: string;
     source: "verdict" | "shared";
     shareId?: string;
   }) {
@@ -650,7 +648,6 @@ export function MatchCard({
         selectedPlayers,
         verdictDisplay: currentVerdictDisplay,
         selectedReasons,
-        complaint,
       },
     });
   }
@@ -792,10 +789,9 @@ export function MatchCard({
               verdict={sharedVerdict}
               t={t}
               onNewVerdict={onSharedNewVerdict}
-              onSubmitObjection={(selectedReasons, complaint) =>
+              onSubmitObjection={(selectedReasons) =>
                 submitObjection({
                   selectedReasons,
-                  complaint,
                   source: "shared",
                   shareId: sharedVerdict.id,
                 })
@@ -999,8 +995,8 @@ export function MatchCard({
                 onAgain={() => setStage("pickAlly")}
                 onShare={() => void shareVerdict()}
                 sharing={sharing}
-                onSubmitObjection={(selectedReasons, complaint) =>
-                  submitObjection({ selectedReasons, complaint, source: "verdict" })
+                onSubmitObjection={(selectedReasons) =>
+                  submitObjection({ selectedReasons, source: "verdict" })
                 }
                 onAfterObjection={resetTurnstile}
                 onViewContext={() => {
@@ -1496,7 +1492,7 @@ function SharedVerdictResult({
   verdict: SharedVerdictPayload;
   t: Translate;
   onNewVerdict?: () => void;
-  onSubmitObjection: (selectedReasons: ReasoningChoice[], complaint: string) => Promise<void>;
+  onSubmitObjection: (selectedReasons: ReasoningChoice[]) => Promise<void>;
   onAfterObjection: () => void;
 }) {
   const sharedPlayers = verdict.selectedPlayers.map(
@@ -1589,37 +1585,53 @@ function ObjectionPanel({
 }: {
   reasoning: string;
   t: Translate;
-  onSubmit: (selectedReasons: ReasoningChoice[], complaint: string) => Promise<void>;
+  onSubmit: (selectedReasons: ReasoningChoice[]) => Promise<void>;
   onAfterSubmit: () => void;
   renderActions: (button: React.ReactNode, saved: React.ReactNode) => React.ReactNode;
 }) {
   const choices = splitReasoningChoices(reasoning);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
-  const [complaint, setComplaint] = useState("");
+  const [explanationsByReason, setExplanationsByReason] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   function toggleChoice(index: number) {
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
+      if (next.has(index)) {
+        next.delete(index);
+        setExplanationsByReason((currentExplanations) => {
+          const { [index]: _removed, ...rest } = currentExplanations;
+          return rest;
+        });
+      } else {
+        next.add(index);
+      }
       return next;
     });
   }
 
+  function updateExplanation(index: number, value: string) {
+    setExplanationsByReason((current) => ({ ...current, [index]: value }));
+  }
+
   async function submit() {
-    const selectedReasons = choices.filter((choice) => selected.has(choice.index));
+    const selectedReasons = choices
+      .filter((choice) => selected.has(choice.index))
+      .map((choice) => ({
+        ...choice,
+        explanation: explanationsByReason[choice.index]?.trim() ?? "",
+      }));
     if (selectedReasons.length === 0) return;
 
     setSubmitting(true);
     try {
-      await onSubmit(selectedReasons, complaint);
+      await onSubmit(selectedReasons);
       setSubmitted(true);
       setOpen(false);
       setSelected(new Set());
-      setComplaint("");
+      setExplanationsByReason({});
       toast.success(t("objectionSubmitted"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("objectionFailed"));
@@ -1655,35 +1667,39 @@ function ObjectionPanel({
             {choices.map((choice) => {
               const checked = selected.has(choice.index);
               return (
-                <label
+                <div
                   key={`${choice.index}-${choice.text}`}
-                  className={`flex cursor-pointer gap-2 rounded-md border p-2 text-xs leading-relaxed transition-colors ${
+                  className={`rounded-md border p-2 text-xs leading-relaxed transition-colors ${
                     checked
                       ? "border-gold bg-gold/10 text-foreground"
                       : "border-border bg-card/60 text-muted-foreground hover:border-gold/50 hover:text-foreground"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleChoice(choice.index)}
-                    className="mt-0.5 h-3.5 w-3.5 accent-gold"
-                  />
-                  <span>
-                    <span className="font-semibold text-gold">{choice.index}. </span>
-                    {choice.text}
-                  </span>
-                </label>
+                  <label className="flex cursor-pointer gap-2">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleChoice(choice.index)}
+                      className="mt-0.5 h-3.5 w-3.5 accent-gold"
+                    />
+                    <span>
+                      <span className="font-semibold text-gold">{choice.index}. </span>
+                      {choice.text}
+                    </span>
+                  </label>
+                  {checked && (
+                    <textarea
+                      value={explanationsByReason[choice.index] ?? ""}
+                      onChange={(event) => updateExplanation(choice.index, event.target.value)}
+                      maxLength={1000}
+                      placeholder={t("objectionPlaceholder")}
+                      className="mt-2 min-h-16 w-full resize-y rounded-md border border-border bg-background/70 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
+                    />
+                  )}
+                </div>
               );
             })}
           </div>
-          <textarea
-            value={complaint}
-            onChange={(event) => setComplaint(event.target.value)}
-            maxLength={1000}
-            placeholder={t("objectionPlaceholder")}
-            className="min-h-20 w-full resize-y rounded-md border border-border bg-background/70 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
-          />
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
@@ -1727,7 +1743,7 @@ function Verdict({
   onAgain: () => void;
   onShare: () => void;
   sharing: boolean;
-  onSubmitObjection: (selectedReasons: ReasoningChoice[], complaint: string) => Promise<void>;
+  onSubmitObjection: (selectedReasons: ReasoningChoice[]) => Promise<void>;
   onAfterObjection: () => void;
   onViewContext: () => void;
   t: Translate;
