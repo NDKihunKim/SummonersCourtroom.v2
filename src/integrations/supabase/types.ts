@@ -73,48 +73,41 @@ export type Database = {
           created_at: string;
           expires_at: string;
           id: string;
-          locale: string;
-          match_id: string | null;
           profile_game_name: string | null;
           profile_shard: string | null;
           profile_tag_line: string | null;
-          reasoning: string;
           scope_label: string | null;
-          selected_players: Json;
-          verdict_display: Json;
-          verdict_mode: string;
+          verdict_result_id: string;
         };
         Insert: {
           created_at?: string;
           expires_at?: string;
           id: string;
-          locale?: string;
-          match_id?: string | null;
           profile_game_name?: string | null;
           profile_shard?: string | null;
           profile_tag_line?: string | null;
-          reasoning: string;
           scope_label?: string | null;
-          selected_players?: Json;
-          verdict_display: Json;
-          verdict_mode: string;
+          verdict_result_id: string;
         };
         Update: {
           created_at?: string;
           expires_at?: string;
           id?: string;
-          locale?: string;
-          match_id?: string | null;
           profile_game_name?: string | null;
           profile_shard?: string | null;
           profile_tag_line?: string | null;
-          reasoning?: string;
           scope_label?: string | null;
-          selected_players?: Json;
-          verdict_display?: Json;
-          verdict_mode?: string;
+          verdict_result_id?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "shared_verdicts_verdict_result_id_fkey";
+            columns: ["verdict_result_id"];
+            isOneToOne: false;
+            referencedRelation: "verdict_results";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       verdict_results: {
         Row: {

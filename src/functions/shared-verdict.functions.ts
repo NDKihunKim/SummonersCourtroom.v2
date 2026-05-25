@@ -81,23 +81,28 @@ async function deleteExpiredShares() {
 function normalizeSharedVerdict(row: {
   id: string;
   expires_at: string;
-  match_id: string | null;
   profile_shard: string | null;
   profile_game_name: string | null;
   profile_tag_line: string | null;
-  locale: string;
-  verdict_mode: string;
   scope_label: string | null;
-  selected_players: unknown;
-  verdict_display: unknown;
-  reasoning: string;
+  verdict_results: {
+    match_id: string | null;
+    locale: string;
+    verdict_mode: string;
+    selected_players: unknown;
+    verdict_display: unknown;
+    reasoning: string;
+    expires_at: string;
+  } | null;
 }): SharedVerdictPayload {
-  const selectedPlayers = z.array(SharedPlayerSchema).catch([]).parse(row.selected_players);
-  const verdictDisplay = VerdictDisplaySchema.parse(row.verdict_display);
+  const result = row.verdict_results;
+  if (!result) throw new Error("Shared verdict not found or expired.");
+  const selectedPlayers = z.array(SharedPlayerSchema).catch([]).parse(result.selected_players);
+  const verdictDisplay = VerdictDisplaySchema.parse(result.verdict_display);
   return {
     id: row.id,
     expiresAt: row.expires_at,
-    matchId: row.match_id,
+    matchId: result.match_id,
     profile:
       row.profile_shard && row.profile_game_name && row.profile_tag_line
         ? {
@@ -106,12 +111,12 @@ function normalizeSharedVerdict(row: {
             tagLine: row.profile_tag_line,
           }
         : null,
-    locale: row.locale === "ko" ? "ko" : "en",
-    verdictMode: row.verdict_mode,
+    locale: result.locale === "ko" ? "ko" : "en",
+    verdictMode: result.verdict_mode,
     scopeLabel: row.scope_label,
     selectedPlayers,
     verdictDisplay,
-    reasoning: row.reasoning,
+    reasoning: result.reasoning,
   };
 }
 
@@ -141,36 +146,27 @@ export const createSharedVerdict = createServerFn({ method: "POST" })
       throw new Error("This verdict can no longer be shared. Please create a new verdict.");
     }
 
-    const parsedResult = z
-      .object({
-        selectedPlayers: z.array(SharedPlayerSchema).min(1).max(5),
-        verdictDisplay: VerdictDisplaySchema,
-      })
-      .safeParse({
-        selectedPlayers: resultRow.selected_players,
-        verdictDisplay: resultRow.verdict_display,
-      });
-    if (!parsedResult.success) {
-      console.error("[shared-verdict] stored verdict result is invalid:", parsedResult.error);
+    const expiresAt = new Date(Date.now() + SHARE_TTL_HOURS * 60 * 60_000).toISOString();
+    const { error: extendError } = await supabaseAdmin
+      .from("verdict_results")
+      .update({ expires_at: expiresAt })
+      .eq("id", resultRow.id)
+      .lt("expires_at", expiresAt);
+    if (extendError) {
+      console.error("[shared-verdict] failed to extend verdict result expiry:", extendError);
       throw new Error("Failed to create share link.");
     }
-    const { selectedPlayers, verdictDisplay } = parsedResult.data;
-    const expiresAt = new Date(Date.now() + SHARE_TTL_HOURS * 60 * 60_000).toISOString();
+
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const id = createShareId();
       const { error } = await supabaseAdmin.from("shared_verdicts").insert({
         id,
         expires_at: expiresAt,
-        match_id: resultRow.match_id ?? null,
+        verdict_result_id: resultRow.id,
         profile_shard: data.profile?.shard ?? null,
         profile_game_name: data.profile?.gameName ?? null,
         profile_tag_line: data.profile?.tagLine ?? null,
-        locale: resultRow.locale,
-        verdict_mode: resultRow.verdict_mode,
         scope_label: data.scopeLabel ?? null,
-        selected_players: selectedPlayers as unknown as never,
-        verdict_display: verdictDisplay as unknown as never,
-        reasoning: resultRow.reasoning,
       });
 
       if (!error) {
@@ -196,7 +192,7 @@ export const getSharedVerdict = createServerFn({ method: "GET" })
     const { data: row, error } = await supabaseAdmin
       .from("shared_verdicts")
       .select(
-        "id, expires_at, match_id, profile_shard, profile_game_name, profile_tag_line, locale, verdict_mode, scope_label, selected_players, verdict_display, reasoning",
+        "id, expires_at, profile_shard, profile_game_name, profile_tag_line, scope_label, verdict_results(match_id, locale, verdict_mode, selected_players, verdict_display, reasoning, expires_at)",
       )
       .eq("id", data.id)
       .maybeSingle();
@@ -212,5 +208,13 @@ export const getSharedVerdict = createServerFn({ method: "GET" })
       throw new Error("Shared verdict not found or expired.");
     }
 
-    return normalizeSharedVerdict(row);
+    const result = Array.isArray(row.verdict_results)
+      ? row.verdict_results[0]
+      : row.verdict_results;
+    if (!result || new Date(result.expires_at).getTime() <= Date.now()) {
+      await supabaseAdmin.from("shared_verdicts").delete().eq("id", data.id);
+      throw new Error("Shared verdict not found or expired.");
+    }
+
+    return normalizeSharedVerdict({ ...row, verdict_results: result });
   });
