@@ -47,6 +47,17 @@ function formatWindowLengthVars(ms: number): Record<string, string | number> {
   };
 }
 
+function formatLocalizedGameTime(
+  ms: number,
+  t?: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+): string {
+  if (t?.("gameTime") === "경기 시간:") {
+    const { minutes, seconds } = formatKoreanLength(ms);
+    return `${minutes}분${seconds}초`;
+  }
+  return formatMs(ms);
+}
+
 /** Parse "m:ss" or "mm:ss" or plain "seconds". Returns null on garbage. */
 function parseMmSs(input: string): number | null {
   const trimmed = input.trim();
@@ -201,7 +212,7 @@ export function TimeRangePicker({
           ({t?.("selectedWindowLength", windowLength) ?? `${formatMs(value[1] - value[0])} long`})
         </span>
         <span className="font-mono">
-          {t?.("gameTime") ?? "Game:"} {formatMs(gameDurationMs)}
+          {t?.("gameTime") ?? "Game:"} {formatLocalizedGameTime(gameDurationMs, t)}
         </span>
       </div>
 
