@@ -80,6 +80,14 @@ const translations = {
     dashboardMagicLinkSent: "Check your email for the sign-in link.",
     dashboardOptions: "Options",
     dashboardOptionsComingSoon: "More settings will be added here.",
+    dashboardBack: "Back",
+    dashboardOptionProfileTitle: "Profile",
+    dashboardOptionProfileDetails: "Account status: {status}",
+    dashboardOptionUsageTitle: "Verdict usage",
+    dashboardOptionUsageDetails: "Current quota: {quota}",
+    dashboardOptionPrivacyTitle: "Privacy & data",
+    dashboardOptionPrivacyDetails:
+      "Recent searches and saved players are stored in this browser. Shared verdict links expire after 72 hours.",
     invalidRiotId: "Enter your Riot ID as Name#TAG (e.g. Faker#KR1).",
     failedToLoadMatches: "Failed to load matches",
     profileNotCached: "This player is not cached yet.",
@@ -162,8 +170,7 @@ const translations = {
     riotIdPlaceholder: "Riot ID (예: Faker#KR1)",
     search: "검색",
     loading: "불러오는 중",
-    heroHelper:
-      "Riot ID를 입력해 최근 경기를 불러오고, AI 판사가 각 경기를 평가하도록 해보세요.",
+    heroHelper: "Riot ID를 입력해 최근 경기를 불러오고, AI 판사가 각 경기를 평가하도록 해보세요.",
     newSearch: "새 검색",
     savePlayer: "저장",
     unsavePlayer: "저장 해제",
@@ -226,6 +233,14 @@ const translations = {
     dashboardMagicLinkSent: "이메일에서 로그인 링크를 확인해 주세요.",
     dashboardOptions: "설정",
     dashboardOptionsComingSoon: "추가 설정은 이곳에 추가될 예정입니다.",
+    dashboardBack: "뒤로가기",
+    dashboardOptionProfileTitle: "프로필",
+    dashboardOptionProfileDetails: "계정 상태: {status}",
+    dashboardOptionUsageTitle: "AI 롤재판 사용량",
+    dashboardOptionUsageDetails: "현재 한도: {quota}",
+    dashboardOptionPrivacyTitle: "개인정보 및 데이터",
+    dashboardOptionPrivacyDetails:
+      "최근 검색과 저장한 플레이어는 이 브라우저에 저장됩니다. 공유 판결 링크는 72시간 후 만료됩니다.",
     invalidRiotId: "Riot ID를 Name#TAG 형식으로 입력하세요. (예: Faker#KR1)",
     failedToLoadMatches: "경기 기록을 불러오지 못했습니다.",
     profileNotCached: "아직 캐시되지 않은 플레이어입니다.",
@@ -340,16 +355,15 @@ export function useLocale() {
   };
 
   const t = useMemo(
-    () =>
-      (key: TranslationKey, vars?: Record<string, string | number>) => {
-        let text = translations[locale][key] ?? translations.en[key];
-        if (vars) {
-          for (const [name, value] of Object.entries(vars)) {
-            text = text.replaceAll(`{${name}}`, String(value));
-          }
+    () => (key: TranslationKey, vars?: Record<string, string | number>) => {
+      let text = translations[locale][key] ?? translations.en[key];
+      if (vars) {
+        for (const [name, value] of Object.entries(vars)) {
+          text = text.replaceAll(`{${name}}`, String(value));
         }
-        return text;
-      },
+      }
+      return text;
+    },
     [locale],
   );
 

@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
+  ChevronLeft,
   Gauge,
   Home,
   Languages,
   LogOut,
   Mail,
   Settings,
+  ShieldCheck,
   User,
   X,
 } from "lucide-react";
@@ -95,15 +97,19 @@ export function AdFrame({
   t?: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   const outer = fitViewport ? "flex min-h-dvh flex-col" : "min-h-dvh";
-  const contentCol = fitViewport
-    ? "min-w-0 min-h-0 flex-1 px-0 py-0"
-    : "min-w-0 flex-1 px-0 py-0";
+  const contentCol = fitViewport ? "min-w-0 min-h-0 flex-1 px-0 py-0" : "min-w-0 flex-1 px-0 py-0";
   const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [dashboardView, setDashboardView] = useState<"main" | "options">("main");
+  const [expandedOptionSections, setExpandedOptionSections] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [languageOpen, setLanguageOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [emailLoginOpen, setEmailLoginOpen] = useState(false);
-  const [lastAuthProvider, setLastAuthProvider] = useState<"discord" | "email" | "google" | null>(null);
+  const [lastAuthProvider, setLastAuthProvider] = useState<"discord" | "email" | "google" | null>(
+    null,
+  );
   const [authLoading, setAuthLoading] = useState(false);
   const [quota, setQuota] = useState<VerdictQuotaStatus | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
@@ -135,6 +141,10 @@ export function AdFrame({
   useEffect(() => {
     if (!dashboardOpen) setLanguageOpen(false);
     if (!dashboardOpen) setEmailLoginOpen(false);
+    if (!dashboardOpen) {
+      setDashboardView("main");
+      setExpandedOptionSections(new Set());
+    }
   }, [dashboardOpen]);
 
   useEffect(() => {
@@ -303,8 +313,8 @@ export function AdFrame({
     const minutes = totalMinutes % 60;
     const time =
       hours > 0
-        ? t?.("dashboardQuotaResetHoursMinutes", { hours, minutes }) ?? `${hours}h ${minutes}m`
-        : t?.("dashboardQuotaResetMinutes", { minutes }) ?? `${minutes}m`;
+        ? (t?.("dashboardQuotaResetHoursMinutes", { hours, minutes }) ?? `${hours}h ${minutes}m`)
+        : (t?.("dashboardQuotaResetMinutes", { minutes }) ?? `${minutes}m`);
 
     return t?.("dashboardQuotaResetsIn", { time }) ?? `Resets in ${time}`;
   }
@@ -322,6 +332,15 @@ export function AdFrame({
     return t?.("dashboardProviderEmail") ?? "Email";
   }
 
+  function toggleOptionSection(section: string) {
+    setExpandedOptionSections((current) => {
+      const next = new Set(current);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
+  }
+
   const authButtonClass =
     "group inline-flex h-9 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-md border border-border bg-background/50 px-2 text-xs font-semibold text-foreground transition-all duration-300 ease-out hover:flex-[2] hover:border-gold hover:text-gold focus-visible:flex-[2] focus-visible:border-gold focus-visible:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-60";
   const authButtonLabelClass =
@@ -331,6 +350,42 @@ export function AdFrame({
   const headerActionLabelClass =
     "ml-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 group-hover:ml-1.5 group-hover:max-w-20 group-hover:opacity-100 group-focus-visible:ml-1.5 group-focus-visible:max-w-20 group-focus-visible:opacity-100";
   const quotaResetHint = quota ? quotaResetText(quota) : null;
+  const optionSections = [
+    {
+      id: "profile",
+      icon: User,
+      title: t?.("dashboardOptionProfileTitle") ?? "Profile",
+      details:
+        t?.("dashboardOptionProfileDetails", {
+          status: session
+            ? (t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
+              `Signed in with ${authProviderLabel()}`)
+            : (t?.("dashboardAnonymousQuotaHelp") ?? "Sign in for a higher daily verdict limit."),
+        }) ??
+        (session
+          ? `Account status: signed in with ${authProviderLabel()}.`
+          : "Account status: not signed in."),
+    },
+    {
+      id: "usage",
+      icon: Gauge,
+      title: t?.("dashboardOptionUsageTitle") ?? "Verdict usage",
+      details:
+        t?.("dashboardOptionUsageDetails", {
+          quota: quota
+            ? quotaText(quota)
+            : (t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."),
+        }) ?? (quota ? quotaText(quota) : "Verdict quota unavailable."),
+    },
+    {
+      id: "privacy",
+      icon: ShieldCheck,
+      title: t?.("dashboardOptionPrivacyTitle") ?? "Privacy & data",
+      details:
+        t?.("dashboardOptionPrivacyDetails") ??
+        "Recent searches and saved players are stored in this browser. Shared verdict links expire after 72 hours.",
+    },
+  ];
 
   return (
     <div className={outer}>
@@ -371,6 +426,11 @@ export function AdFrame({
                     type="button"
                     className={headerActionClass}
                     aria-label={t?.("dashboardOptions") ?? "Options"}
+                    onClick={() => {
+                      setDashboardView("options");
+                      setLanguageOpen(false);
+                      setEmailLoginOpen(false);
+                    }}
                   >
                     <Settings className="h-3.5 w-3.5" />
                     <span className={headerActionLabelClass}>
@@ -389,193 +449,246 @@ export function AdFrame({
               </div>
             </div>
 
-            <div className="space-y-3">
-              <section className="rounded-lg border border-border bg-background/40 p-3">
-                {session ? (
-                  <div className="flex min-w-0 items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <div className="flex shrink-0 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+            {dashboardView === "options" ? (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setDashboardView("main")}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-gold"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  {t?.("dashboardBack") ?? "Back"}
+                </button>
+                <div className="space-y-2">
+                  {optionSections.map((section) => {
+                    const Icon = section.icon;
+                    const expanded = expandedOptionSections.has(section.id);
+                    return (
+                      <section
+                        key={section.id}
+                        className="rounded-lg border border-border bg-background/40"
+                      >
+                        <button
+                          type="button"
+                          aria-expanded={expanded}
+                          onClick={() => toggleOptionSection(section.id)}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                        >
+                          <span className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{section.title}</span>
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                              expanded ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                        {expanded && (
+                          <div className="border-t border-border px-3 pb-3 pt-2 animate-fade-in">
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              {section.details}
+                            </p>
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <section className="rounded-lg border border-border bg-background/40 p-3">
+                  {session ? (
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+                          <User className="h-3.5 w-3.5" />
+                          {t?.("dashboardProfile") ?? "Profile"}
+                        </div>
+                        <p className="min-w-0 truncate text-xs font-semibold text-foreground">
+                          {t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
+                            `Signed in with ${authProviderLabel()}`}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={authLoading}
+                        onClick={signOut}
+                        className={`${headerActionClass} shrink-0`}
+                        aria-label={t?.("dashboardSignOut") ?? "Sign out"}
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                        <span className={headerActionLabelClass}>
+                          {t?.("dashboardSignOut") ?? "Sign out"}
+                        </span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
                         <User className="h-3.5 w-3.5" />
                         {t?.("dashboardProfile") ?? "Profile"}
                       </div>
-                      <p className="min-w-0 truncate text-xs font-semibold text-foreground">
-                        {t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
-                          `Signed in with ${authProviderLabel()}`}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={authLoading}
-                      onClick={signOut}
-                      className={`${headerActionClass} shrink-0`}
-                      aria-label={t?.("dashboardSignOut") ?? "Sign out"}
-                    >
-                      <LogOut className="h-3.5 w-3.5" />
-                      <span className={headerActionLabelClass}>
-                        {t?.("dashboardSignOut") ?? "Sign out"}
-                      </span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
-                      <User className="h-3.5 w-3.5" />
-                      {t?.("dashboardProfile") ?? "Profile"}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        disabled={authLoading}
-                        onClick={() => signInWithProvider("google")}
-                        className={authButtonClass}
-                        aria-label={t?.("dashboardContinueGoogle") ?? "Google"}
-                      >
-                        <GoogleIcon className="h-4 w-4 shrink-0" />
-                        <span className={authButtonLabelClass}>
-                          {t?.("dashboardContinueGoogle") ?? "Google"}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={authLoading}
-                        onClick={() => signInWithProvider("discord")}
-                        className={authButtonClass}
-                        aria-label={t?.("dashboardContinueDiscord") ?? "Discord"}
-                      >
-                        <DiscordIcon className="h-4 w-4 shrink-0 text-[#5865F2]" />
-                        <span className={authButtonLabelClass}>
-                          {t?.("dashboardContinueDiscord") ?? "Discord"}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={authLoading}
-                        onClick={() => setEmailLoginOpen((open) => !open)}
-                        className={authButtonClass}
-                        aria-expanded={emailLoginOpen}
-                        aria-label={t?.("dashboardProviderEmail") ?? "Email"}
-                      >
-                        <Mail className="h-4 w-4 shrink-0" />
-                        <span className={authButtonLabelClass}>
-                          {t?.("dashboardProviderEmail") ?? "Email"}
-                        </span>
-                      </button>
-                    </div>
-                    {lastAuthProvider && (
-                      <p className="text-center text-[10px] font-medium text-muted-foreground">
-                        {t?.("dashboardLastLoginMethod", {
-                          provider: providerLabel(lastAuthProvider),
-                        }) ?? `Most recent login: ${providerLabel(lastAuthProvider)}`}
-                      </p>
-                    )}
-                    {emailLoginOpen && (
-                      <div className="grid gap-2 animate-fade-in">
-                        <input
-                          type="email"
-                          value={authEmail}
-                          onChange={(event) => setAuthEmail(event.target.value)}
-                          placeholder={t?.("dashboardEmail") ?? "Email"}
-                          className="h-8 w-full rounded-md border border-border bg-background/60 px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
-                        />
+                      <div className="flex gap-2">
                         <button
                           type="button"
-                          disabled={authLoading || !authEmail}
-                          onClick={sendMagicLink}
-                          className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={authLoading}
+                          onClick={() => signInWithProvider("google")}
+                          className={authButtonClass}
+                          aria-label={t?.("dashboardContinueGoogle") ?? "Google"}
                         >
-                          {t?.("dashboardSendMagicLink") ?? "Register"}
+                          <GoogleIcon className="h-4 w-4 shrink-0" />
+                          <span className={authButtonLabelClass}>
+                            {t?.("dashboardContinueGoogle") ?? "Google"}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={authLoading}
+                          onClick={() => signInWithProvider("discord")}
+                          className={authButtonClass}
+                          aria-label={t?.("dashboardContinueDiscord") ?? "Discord"}
+                        >
+                          <DiscordIcon className="h-4 w-4 shrink-0 text-[#5865F2]" />
+                          <span className={authButtonLabelClass}>
+                            {t?.("dashboardContinueDiscord") ?? "Discord"}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={authLoading}
+                          onClick={() => setEmailLoginOpen((open) => !open)}
+                          className={authButtonClass}
+                          aria-expanded={emailLoginOpen}
+                          aria-label={t?.("dashboardProviderEmail") ?? "Email"}
+                        >
+                          <Mail className="h-4 w-4 shrink-0" />
+                          <span className={authButtonLabelClass}>
+                            {t?.("dashboardProviderEmail") ?? "Email"}
+                          </span>
                         </button>
                       </div>
+                      {lastAuthProvider && (
+                        <p className="text-center text-[10px] font-medium text-muted-foreground">
+                          {t?.("dashboardLastLoginMethod", {
+                            provider: providerLabel(lastAuthProvider),
+                          }) ?? `Most recent login: ${providerLabel(lastAuthProvider)}`}
+                        </p>
+                      )}
+                      {emailLoginOpen && (
+                        <div className="grid gap-2 animate-fade-in">
+                          <input
+                            type="email"
+                            value={authEmail}
+                            onChange={(event) => setAuthEmail(event.target.value)}
+                            placeholder={t?.("dashboardEmail") ?? "Email"}
+                            className="h-8 w-full rounded-md border border-border bg-background/60 px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
+                          />
+                          <button
+                            type="button"
+                            disabled={authLoading || !authEmail}
+                            onClick={sendMagicLink}
+                            className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {t?.("dashboardSendMagicLink") ?? "Register"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
+
+                <section className="rounded-lg border border-border bg-background/40 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+                    <Gauge className="h-3.5 w-3.5" />
+                    {t?.("dashboardQuotaTitle") ?? "Verdict quota"}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      {quotaLoading
+                        ? (t?.("dashboardQuotaLoading") ?? "Loading verdict quota...")
+                        : quota
+                          ? quotaText(quota)
+                          : quotaError
+                            ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
+                            : session
+                              ? (t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable.")
+                              : (t?.("dashboardAnonymousQuotaHelp") ??
+                                "Sign in for a higher daily verdict limit.")}
+                    </p>
+                    <div
+                      role="meter"
+                      aria-valuemin={0}
+                      aria-valuemax={quota?.limit ?? 100}
+                      aria-valuenow={quota?.remaining ?? (quota?.plan === "unli" ? 100 : 0)}
+                      aria-valuetext={quota ? quotaText(quota) : undefined}
+                      className="h-2.5 overflow-hidden rounded-full border border-border bg-background/70"
+                    >
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ease-out ${
+                          quotaLoading
+                            ? "w-1/2 animate-pulse bg-muted-foreground/30"
+                            : quota
+                              ? quotaFillClass(quota)
+                              : "bg-muted-foreground/20"
+                        }`}
+                        style={{
+                          width: quotaLoading ? "45%" : quota ? `${quotaPercent(quota)}%` : "0%",
+                        }}
+                      />
+                    </div>
+                    {quotaResetHint && (
+                      <p className="text-[10px] font-medium text-muted-foreground">
+                        {quotaResetHint}
+                      </p>
                     )}
                   </div>
-                )}
-              </section>
+                </section>
 
-              <section className="rounded-lg border border-border bg-background/40 p-3">
-                <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
-                  <Gauge className="h-3.5 w-3.5" />
-                  {t?.("dashboardQuotaTitle") ?? "Verdict quota"}
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    {quotaLoading
-                      ? t?.("dashboardQuotaLoading") ?? "Loading verdict quota..."
-                      : quota
-                        ? quotaText(quota)
-                        : quotaError
-                          ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
-                          : session
-                            ? t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."
-                            : t?.("dashboardAnonymousQuotaHelp") ??
-                              "Sign in for a higher daily verdict limit."}
-                  </p>
-                  <div
-                    role="meter"
-                    aria-valuemin={0}
-                    aria-valuemax={quota?.limit ?? 100}
-                    aria-valuenow={quota?.remaining ?? (quota?.plan === "unli" ? 100 : 0)}
-                    aria-valuetext={quota ? quotaText(quota) : undefined}
-                    className="h-2.5 overflow-hidden rounded-full border border-border bg-background/70"
-                  >
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ease-out ${
-                        quotaLoading
-                          ? "w-1/2 animate-pulse bg-muted-foreground/30"
-                          : quota
-                            ? quotaFillClass(quota)
-                            : "bg-muted-foreground/20"
-                      }`}
-                      style={{ width: quotaLoading ? "45%" : quota ? `${quotaPercent(quota)}%` : "0%" }}
-                    />
+                <section className="rounded-lg border border-border bg-background/40 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
+                    <Languages className="h-3.5 w-3.5" />
+                    {t?.("languageSelect") ?? "Language"}
                   </div>
-                  {quotaResetHint && (
-                    <p className="text-[10px] font-medium text-muted-foreground">{quotaResetHint}</p>
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-border bg-background/40 p-3">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
-                  <Languages className="h-3.5 w-3.5" />
-                  {t?.("languageSelect") ?? "Language"}
-                </div>
-                <div className="grid gap-1">
-                  <button
-                    type="button"
-                    aria-expanded={languageOpen}
-                    onClick={() => setLanguageOpen((open) => !open)}
-                    className="flex items-center justify-between rounded-md bg-gold/15 px-3 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
-                  >
-                    <span>{activeLocaleLabel}</span>
-                    <ChevronDown
-                      className={`h-4 w-4 transition-transform ${languageOpen ? "rotate-180" : ""}`}
-                    />
-                  </button>
-                  {languageOpen &&
-                    LOCALES.map((option) => {
-                      const active = option.code === locale;
-                      return (
-                        <button
-                          key={option.code}
-                          type="button"
-                          onClick={() => {
-                            if (!active) onLocaleChange?.(option.code);
-                            setLanguageOpen(false);
-                          }}
-                          className={`flex items-center justify-between rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
-                            active
-                              ? "text-gold"
-                              : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                          }`}
-                        >
-                          <span>{option.label}</span>
-                          {active && <Check className="h-4 w-4" />}
-                        </button>
-                      );
-                  })}
-                </div>
-              </section>
-            </div>
+                  <div className="grid gap-1">
+                    <button
+                      type="button"
+                      aria-expanded={languageOpen}
+                      onClick={() => setLanguageOpen((open) => !open)}
+                      className="flex items-center justify-between rounded-md bg-gold/15 px-3 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
+                    >
+                      <span>{activeLocaleLabel}</span>
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${languageOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    {languageOpen &&
+                      LOCALES.map((option) => {
+                        const active = option.code === locale;
+                        return (
+                          <button
+                            key={option.code}
+                            type="button"
+                            onClick={() => {
+                              if (!active) onLocaleChange?.(option.code);
+                              setLanguageOpen(false);
+                            }}
+                            className={`flex items-center justify-between rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
+                              active
+                                ? "text-gold"
+                                : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                            }`}
+                          >
+                            <span>{option.label}</span>
+                            {active && <Check className="h-4 w-4" />}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </section>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -595,9 +708,7 @@ export function AdFrame({
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:text-[11px]">
           {t?.("disclaimerLabel") ?? "Riot Games Disclaimer"}
         </div>
-        <p className="mx-auto max-w-5xl text-[10px] sm:text-xs">
-          {RIOT_DISCLAIMER}
-        </p>
+        <p className="mx-auto max-w-5xl text-[10px] sm:text-xs">{RIOT_DISCLAIMER}</p>
       </footer>
     </div>
   );
