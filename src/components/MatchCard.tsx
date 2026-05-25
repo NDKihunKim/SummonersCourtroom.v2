@@ -1700,25 +1700,27 @@ function ObjectionPanel({
               );
             })}
           </div>
-          <p className="text-center text-[10px] font-medium leading-relaxed text-muted-foreground">
-            {t("objectionNotice")}
-          </p>
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              {t("cancel")}
-            </button>
-            <button
-              type="button"
-              disabled={submitting || selected.size === 0}
-              onClick={() => void submit()}
-              className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? t("loading") : t("objectionSend")}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="min-w-0 flex-1 text-left text-[10px] font-medium leading-relaxed text-muted-foreground">
+              {t("objectionNotice")}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={submitting || selected.size === 0}
+                onClick={() => void submit()}
+                className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? t("loading") : t("objectionSend")}
+              </button>
+            </div>
           </div>
         </div>
       )}
