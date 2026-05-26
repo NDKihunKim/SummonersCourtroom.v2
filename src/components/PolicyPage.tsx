@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { AdFrame } from "@/components/AdFrame";
 import type { Locale, TranslationKey } from "@/i18n";
 
-export const CONTACT_EMAIL = "peanuttabasco852@gmail.com";
+export const CONTACT_EMAIL = "support@summcourt.com";
 
 export const RIOT_DISCLAIMER =
   "Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
