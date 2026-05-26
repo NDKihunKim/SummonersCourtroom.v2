@@ -234,7 +234,7 @@ const translations = {
     dashboardQuotaTitle: "AI 롤재판 가능 횟수",
     dashboardQuota: "오늘 AI 판결 {remaining}/{limit}회 사용 가능 ({plan})",
     dashboardQuotaUnlimited: "오늘 AI 판결 무제한 사용 가능 ({plan})",
-    dashboardPlanAnonymous: "비로그인 방문자",
+    dashboardPlanAnonymous: "비로그인",
     dashboardPlanFree: "일반 회원",
     dashboardPlanPaid: "프리미엄 회원",
     dashboardPlanUnli: "무제한",
