@@ -286,9 +286,9 @@ export function MatchHistory({
            * Wraps gracefully on narrow viewports — the columns stack and the
            * tier emblem becomes a centered block above the stats.
            */}
-          <div className="flex flex-wrap items-center justify-between gap-6">
+          <div className="flex flex-col items-center justify-center gap-6 text-center md:flex-row md:flex-wrap md:justify-between md:text-left">
             {/* ── LEFT: identity ───────────────────────────────────────── */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col items-center gap-4 md:flex-row md:items-center">
               {/* Real Data Dragon profile icon when we have one; falls back
                   automatically to the colored letter avatar otherwise. */}
               <ProfileIcon
@@ -297,8 +297,8 @@ export function MatchHistory({
                 size={88}
                 alt={`${account.gameName}#${account.tagLine} profile icon`}
               />
-              <div>
-                <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col items-center md:items-start">
+                <div className="flex flex-wrap items-center justify-center gap-3 md:justify-start">
                   <h1 className="text-3xl font-bold text-foreground">
                     {account.gameName}
                     <span className="text-muted-foreground">#{account.tagLine}</span>
@@ -319,7 +319,7 @@ export function MatchHistory({
                 </div>
                 {/* Refresh control + "Updated Xm ago" — sits directly under
                     the Riot ID per the new layout. */}
-                <div className="mt-2">
+                <div className="mt-2 flex justify-center md:justify-start">
                   <RefreshButton
                     shard={shard}
                     gameName={account.gameName}
