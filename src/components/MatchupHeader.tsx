@@ -36,13 +36,20 @@ function Tile({
   championLabel = champion,
   kda,
   highlighted,
+  loadingSequence,
+  sequenceIndex = 0,
+  sequenceCount = 1,
 }: {
   name: string;
   champion: string;
   championLabel?: string;
   kda: string;
   highlighted?: boolean;
+  loadingSequence?: boolean;
+  sequenceIndex?: number;
+  sequenceCount?: number;
 }) {
+  const sequenceDuration = Math.max(1, sequenceCount) * 650;
   return (
     <div
       // `shrink-0` keeps the 112px width when sat inside the flex row,
@@ -50,7 +57,15 @@ function Tile({
       // instead of bleeding past the rounded border.
       className={`flex w-28 shrink-0 flex-col items-center gap-1 overflow-hidden rounded-lg border p-2 ${
         highlighted ? "border-gold bg-secondary/50" : "border-border bg-card"
-      }`}
+      } ${loadingSequence ? "animate-verdict-card-sequence motion-reduce:animate-none" : ""}`}
+      style={
+        loadingSequence
+          ? {
+              animationDelay: `${sequenceIndex * 650}ms`,
+              animationDuration: `${sequenceDuration}ms`,
+            }
+          : undefined
+      }
     >
       <ChampionIcon champion={champion} size={48} />
       {/* For ellipsis to engage inside a flex column with `items-center`,
@@ -80,6 +95,7 @@ export interface MatchupHeaderProps {
   /** The ally chosen on the PickAlly screen. */
   ally: Participant;
   players?: Participant[];
+  loadingSequence?: boolean;
   highlightChampionKey?: string | null;
   highlightChampionName?: string | null;
   formatChampionName?: (champion: string) => string;
@@ -89,6 +105,7 @@ export function MatchupHeader({
   you,
   ally,
   players,
+  loadingSequence = false,
   highlightChampionKey,
   highlightChampionName,
   formatChampionName = (champion) => champion,
@@ -105,6 +122,7 @@ export function MatchupHeader({
   }
 
   if (players?.length) {
+    const sequenceCount = players.length;
     return (
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         {players.map((player, index) => (
@@ -116,6 +134,9 @@ export function MatchupHeader({
               championLabel={formatChampionName(player.champion)}
               kda={`${safeNum(player.kills)}/${safeNum(player.deaths)}/${safeNum(player.assists)}`}
               highlighted={isHighlightedChampion(player.champion)}
+              loadingSequence={loadingSequence}
+              sequenceIndex={index}
+              sequenceCount={sequenceCount}
             />
           </div>
         ))}
@@ -128,6 +149,7 @@ export function MatchupHeader({
   // "undefined/undefined/undefined" inside the header.
   const youKda = `${safeNum(you.kills)}/${safeNum(you.deaths)}/${safeNum(you.assists)}`;
   const allyKda = `${safeNum(ally.kills)}/${safeNum(ally.deaths)}/${safeNum(ally.assists)}`;
+  const sequenceCount = 2;
 
   return (
     <div className="mb-4 flex items-center justify-center gap-3">
@@ -137,6 +159,9 @@ export function MatchupHeader({
         championLabel={formatChampionName(you.champion)}
         kda={youKda}
         highlighted={isHighlightedChampion(you.champion)}
+        loadingSequence={loadingSequence}
+        sequenceIndex={0}
+        sequenceCount={sequenceCount}
       />
       <span className="text-lg font-bold text-muted-foreground">vs</span>
       <Tile
@@ -145,6 +170,9 @@ export function MatchupHeader({
         championLabel={formatChampionName(ally.champion)}
         kda={allyKda}
         highlighted={isHighlightedChampion(ally.champion)}
+        loadingSequence={loadingSequence}
+        sequenceIndex={1}
+        sequenceCount={sequenceCount}
       />
     </div>
   );

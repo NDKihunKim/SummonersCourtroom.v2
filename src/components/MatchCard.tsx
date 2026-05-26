@@ -1004,6 +1004,7 @@ export function MatchCard({
                   }
                   highlightChampionKey={verdictHighlightChampionKey}
                   highlightChampionName={verdictDisplay?.championName}
+                  loadingSequence
                   formatChampionName={formatChampionName}
                 />
               )}

@@ -241,3 +241,29 @@
 .animate-judge-loading-phrase {
   animation: judge-loading-phrase 700ms ease-out both;
 }
+
+@keyframes verdict-card-sequence {
+  0%,
+  100% {
+    border-color: var(--color-border);
+    background-color: var(--color-card);
+    box-shadow: none;
+  }
+  12%,
+  24% {
+    border-color: var(--color-gold);
+    background-color: color-mix(in oklch, var(--color-gold) 14%, var(--color-card));
+    box-shadow: 0 0 18px -8px oklch(0.78 0.13 85 / 0.85);
+  }
+  36% {
+    border-color: var(--color-border);
+    background-color: var(--color-card);
+    box-shadow: none;
+  }
+}
+
+.animate-verdict-card-sequence {
+  animation-name: verdict-card-sequence;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
