@@ -68,6 +68,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      deleted_account_identities: {
+        Row: {
+          deleted_at: string;
+          id: number;
+          identity_hash: string;
+          plan: string;
+          provider: string | null;
+          purge_after: string;
+          reset_at: string | null;
+          verdict_count: number;
+          window_started_at: string | null;
+        };
+        Insert: {
+          deleted_at?: string;
+          id?: number;
+          identity_hash: string;
+          plan?: string;
+          provider?: string | null;
+          purge_after?: string;
+          reset_at?: string | null;
+          verdict_count?: number;
+          window_started_at?: string | null;
+        };
+        Update: {
+          deleted_at?: string;
+          id?: number;
+          identity_hash?: string;
+          plan?: string;
+          provider?: string | null;
+          purge_after?: string;
+          reset_at?: string | null;
+          verdict_count?: number;
+          window_started_at?: string | null;
+        };
+        Relationships: [];
+      };
       shared_verdicts: {
         Row: {
           created_at: string;
@@ -118,6 +154,8 @@ export type Database = {
           match_id: string | null;
           reasoning: string;
           selected_players: Json;
+          user_display: string;
+          user_id: string | null;
           verdict_display: Json;
           verdict_mode: string;
         };
@@ -129,6 +167,8 @@ export type Database = {
           match_id?: string | null;
           reasoning: string;
           selected_players?: Json;
+          user_display?: string;
+          user_id?: string | null;
           verdict_display: Json;
           verdict_mode: string;
         };
@@ -140,6 +180,8 @@ export type Database = {
           match_id?: string | null;
           reasoning?: string;
           selected_players?: Json;
+          user_display?: string;
+          user_id?: string | null;
           verdict_display?: Json;
           verdict_mode?: string;
         };

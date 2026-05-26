@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -10,6 +11,7 @@ import {
   Mail,
   Settings,
   ShieldCheck,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -22,6 +24,7 @@ import {
   getVerdictQuotaStatus,
   type VerdictQuotaStatus,
 } from "@/functions/verdict-quota.functions";
+import { deleteCurrentAccount } from "@/functions/account.functions";
 
 const RIOT_DISCLAIMER =
   "Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
@@ -111,6 +114,8 @@ export function AdFrame({
     null,
   );
   const [authLoading, setAuthLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [quota, setQuota] = useState<VerdictQuotaStatus | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [quotaError, setQuotaError] = useState<string | null>(null);
@@ -147,6 +152,7 @@ export function AdFrame({
     if (!dashboardOpen) {
       setDashboardView("main");
       setExpandedOptionSections(new Set());
+      setDeleteConfirmOpen(false);
     }
   }, [dashboardOpen]);
 
@@ -273,6 +279,34 @@ export function AdFrame({
       toast.error(error instanceof Error ? error.message : "Sign out failed.");
     } finally {
       setAuthLoading(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (!session?.access_token) {
+      toast.error(t?.("dashboardDeleteAccountFailed") ?? "Failed to delete account. Please try again.");
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      await deleteCurrentAccount({ data: { accessToken: session.access_token } });
+      const { error } = await supabase.auth.signOut();
+      if (error) console.warn("[dashboard] local sign out after account deletion failed:", error);
+      setSession(null);
+      setQuota(null);
+      setDeleteConfirmOpen(false);
+      setDashboardView("main");
+      setDashboardOpen(false);
+      toast.success(t?.("dashboardAccountDeleted") ?? "Account deleted.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : (t?.("dashboardDeleteAccountFailed") ?? "Failed to delete account. Please try again."),
+      );
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -507,6 +541,49 @@ export function AdFrame({
                             <p className="text-xs leading-relaxed text-muted-foreground">
                               {section.details}
                             </p>
+                            {section.id === "profile" && session && (
+                              <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-2">
+                                {deleteConfirmOpen ? (
+                                  <div className="space-y-2">
+                                    <div className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+                                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                                      <span>
+                                        {t?.("dashboardDeleteAccountWarning") ??
+                                          "This permanently deletes your account. Your past verdict snapshots may remain for moderation and shared-link integrity, but they will be marked as Deleted User."}
+                                      </span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={deleteLoading}
+                                        onClick={deleteAccount}
+                                        className="inline-flex flex-1 items-center justify-center rounded-md border border-destructive bg-destructive/15 px-2 py-1.5 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/25 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        {t?.("dashboardConfirmDeleteAccount") ?? "Confirm delete"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={deleteLoading}
+                                        onClick={() => setDeleteConfirmOpen(false)}
+                                        className="inline-flex flex-1 items-center justify-center rounded-md border border-border bg-background/50 px-2 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        {t?.("dashboardCancelDeleteAccount") ?? "Cancel"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={deleteLoading}
+                                    onClick={() => setDeleteConfirmOpen(true)}
+                                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-destructive/60 bg-destructive/10 px-2 py-1.5 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    {t?.("dashboardDeleteAccount") ?? "Delete account"}
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </section>

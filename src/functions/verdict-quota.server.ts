@@ -1,5 +1,7 @@
 import { getRequest } from "@tanstack/react-start/server";
+import type { User } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { accountIdentityForUser } from "@/functions/account-identity.server";
 
 const ANONYMOUS_DAILY_LIMIT = 3;
 const FREE_DAILY_LIMIT = 5;
@@ -51,7 +53,9 @@ async function sha256(value: string): Promise<string> {
     .join("");
 }
 
-async function resolveUser(accessToken?: string): Promise<{ id: string; email?: string } | null> {
+type ResolvedUser = { id: string; email?: string; raw: User };
+
+async function resolveUser(accessToken?: string): Promise<ResolvedUser | null> {
   if (!accessToken) return null;
 
   const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
@@ -59,14 +63,62 @@ async function resolveUser(accessToken?: string): Promise<{ id: string; email?: 
     throw new Error("Your session expired. Please sign in again.");
   }
 
-  return { id: data.user.id, email: data.user.email ?? undefined };
+  return { id: data.user.id, email: data.user.email ?? undefined, raw: data.user };
 }
 
-async function profilePlan(userId: string): Promise<"free" | "paid" | "unli"> {
+async function cleanupDeletedIdentities() {
+  const { error } = await supabaseAdmin
+    .from("deleted_account_identities")
+    .delete()
+    .lte("purge_after", new Date().toISOString());
+  if (error) console.error("[verdict-quota] deleted identity cleanup failed:", error);
+}
+
+async function restoreDeletedIdentityQuota({
+  user,
+  ipHash,
+}: {
+  user: ResolvedUser;
+  ipHash: string;
+}) {
+  const identity = await accountIdentityForUser(user.raw);
+  if (!identity) return;
+
+  await cleanupDeletedIdentities();
+
+  const { data, error } = await supabaseAdmin
+    .from("deleted_account_identities")
+    .select("id, verdict_count, window_started_at")
+    .eq("identity_hash", identity.hash)
+    .gt("purge_after", new Date().toISOString())
+    .maybeSingle();
+  if (error) {
+    console.error("[verdict-quota] failed to load deleted identity:", error);
+    return;
+  }
+  if (!data?.window_started_at || data.verdict_count <= 0) return;
+
+  const windowStart = Date.parse(data.window_started_at);
+  if (!Number.isFinite(windowStart) || windowStart <= Date.now() - 24 * 60 * 60_000) return;
+
+  const { error: usageError } = await supabaseAdmin.from("verdict_usage_daily").insert({
+    usage_date: new Date(data.window_started_at).toISOString().slice(0, 10),
+    user_id: user.id,
+    anonymous_id: null,
+    ip_hash: ipHash,
+    verdict_count: data.verdict_count,
+    window_started_at: data.window_started_at,
+  });
+  if (usageError && usageError.code !== "23505") {
+    console.error("[verdict-quota] failed to restore deleted identity quota:", usageError);
+  }
+}
+
+async function profilePlan(user: ResolvedUser, ipHash: string): Promise<"free" | "paid" | "unli"> {
   const { data, error } = await supabaseAdmin
     .from("user_profiles")
     .select("plan")
-    .eq("user_id", userId)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (error) {
@@ -77,9 +129,11 @@ async function profilePlan(userId: string): Promise<"free" | "paid" | "unli"> {
   if (data?.plan === "paid") return "paid";
   if (data?.plan === "free") return "free";
 
+  await restoreDeletedIdentityQuota({ user, ipHash });
+
   const { error: insertError } = await supabaseAdmin
     .from("user_profiles")
-    .insert({ user_id: userId, plan: "free" });
+    .insert({ user_id: user.id, plan: "free" });
   if (insertError && insertError.code !== "23505") {
     console.error("[verdict-quota] failed to create account profile:", insertError);
     throw new Error("Failed to create account profile. Please try again.");
@@ -164,7 +218,7 @@ export async function getVerdictQuota({
   const ipHash = await sha256(requestIp());
 
   if (user) {
-    const plan = await profilePlan(user.id);
+    const plan = await profilePlan(user, ipHash);
     if (plan === "unli") {
       return { plan, limit: null, used: 0, remaining: null, usageDate: date, resetAt: null };
     }
@@ -203,7 +257,7 @@ export async function consumeVerdictQuota(identity: {
   const date = usageDate();
   const ipHash = await sha256(requestIp());
 
-  const plan: AccountPlan = user ? await profilePlan(user.id) : "anonymous";
+  const plan: AccountPlan = user ? await profilePlan(user, ipHash) : "anonymous";
   if (plan === "unli") {
     return { plan, limit: null, used: 0, remaining: null, usageDate: date, resetAt: null };
   }
@@ -247,7 +301,7 @@ export async function refundVerdictQuota(identity: {
   const user = await resolveUser(identity.accessToken);
   const date = usageDate();
   const ipHash = await sha256(requestIp());
-  const plan: AccountPlan = user ? await profilePlan(user.id) : "anonymous";
+  const plan: AccountPlan = user ? await profilePlan(user, ipHash) : "anonymous";
 
   if (plan === "unli") return;
   if (!user && !identity.anonymousId) return;

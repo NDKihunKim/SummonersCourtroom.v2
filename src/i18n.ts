@@ -92,6 +92,13 @@ const translations = {
     dashboardOptionPrivacyTitle: "Privacy & data",
     dashboardOptionPrivacyDetails:
       "Recent searches and saved players are stored in this browser. Shared verdict links expire after 72 hours.",
+    dashboardDeleteAccount: "Delete account",
+    dashboardDeleteAccountWarning:
+      "This permanently deletes your account. Your past verdict snapshots may remain for moderation and shared-link integrity, but they will be marked as Deleted User.",
+    dashboardConfirmDeleteAccount: "Confirm delete",
+    dashboardCancelDeleteAccount: "Cancel",
+    dashboardAccountDeleted: "Account deleted.",
+    dashboardDeleteAccountFailed: "Failed to delete account. Please try again.",
     invalidRiotId: "Enter your Riot ID as Name#TAG (e.g. Faker#KR1).",
     failedToLoadMatches: "Failed to load matches",
     profileNotCached: "This player is not cached yet.",
@@ -265,6 +272,13 @@ const translations = {
     dashboardOptionPrivacyTitle: "개인정보 및 데이터",
     dashboardOptionPrivacyDetails:
       "최근 검색과 저장한 플레이어는 이 브라우저에 저장됩니다. 공유 판결 링크는 72시간 후 만료됩니다.",
+    dashboardDeleteAccount: "계정 삭제",
+    dashboardDeleteAccountWarning:
+      "계정이 영구적으로 삭제됩니다. 이전 판결 기록은 관리와 공유 링크 유지를 위해 남을 수 있지만 Deleted User로 표시됩니다.",
+    dashboardConfirmDeleteAccount: "삭제 확인",
+    dashboardCancelDeleteAccount: "취소",
+    dashboardAccountDeleted: "계정이 삭제되었습니다.",
+    dashboardDeleteAccountFailed: "계정을 삭제하지 못했습니다. 다시 시도해 주세요.",
     invalidRiotId: "Riot ID를 Name#TAG 형식으로 입력하세요. (예: Faker#KR1)",
     failedToLoadMatches: "경기 기록을 불러오지 못했습니다.",
     profileNotCached: "아직 캐시되지 않은 플레이어입니다.",

@@ -62,6 +62,13 @@ function PrivacyPage() {
             Summoner's Courtroom은 계정별 판결 이용 횟수와 24시간 이용 창의 시작 및
             초기화 시간을 저장해 과도한 사용을 제한합니다.
           </p>
+          <p>
+            계정을 삭제하면 Supabase Auth 계정은 삭제됩니다. 다만 삭제 후 재가입으로
+            무료 판결 한도가 즉시 초기화되는 남용을 막기 위해 이메일 또는 인증 제공자
+            식별자에서 생성한 해시값, 이용 한도 창 정보, 삭제 시각을 최대 30일 동안
+            보관할 수 있습니다. 이 보관 데이터에는 원본 이메일 주소가 저장되지 않으며
+            보안, 남용 방지, 이용 한도 유지 목적으로만 사용됩니다.
+          </p>
         </Section>
 
         <Section title="공유 판결 링크">
@@ -180,6 +187,15 @@ function PrivacyPage() {
         <p>
           Summoner's Courtroom stores account verdict usage counts and the start
           and reset time of a rolling 24-hour usage window to limit excessive use.
+        </p>
+        <p>
+          If you delete your account, your Supabase Auth account is deleted. To
+          prevent deleted accounts from immediately resetting free verdict quota
+          by re-registering, Summoner's Courtroom may retain a hash generated
+          from your email or authentication-provider identity, quota-window
+          details, and deletion time for up to 30 days. The original email
+          address is not stored in this retention record, and the record is used
+          only for security, abuse prevention, and quota continuity.
         </p>
       </Section>
 

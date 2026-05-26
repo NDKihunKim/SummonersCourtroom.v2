@@ -1657,6 +1657,8 @@ async function storeVerdictResult({
   selectedPlayers,
   verdictDisplay,
   reasoning,
+  userId,
+  userDisplay,
 }: {
   matchId: string;
   locale: Locale;
@@ -1664,6 +1666,8 @@ async function storeVerdictResult({
   selectedPlayers: StoredVerdictPlayer[];
   verdictDisplay: StoredVerdictDisplay;
   reasoning: string;
+  userId: string | null;
+  userDisplay: string;
 }): Promise<string> {
   const expiresAt = new Date(Date.now() + 72 * 60 * 60_000).toISOString();
   const id = createStoredVerdictId();
@@ -1676,6 +1680,8 @@ async function storeVerdictResult({
     selected_players: selectedPlayers as unknown as never,
     verdict_display: verdictDisplay as unknown as never,
     reasoning,
+    user_id: userId,
+    user_display: userDisplay,
   });
 
   if (error) {
@@ -1684,6 +1690,21 @@ async function storeVerdictResult({
   }
 
   return id;
+}
+
+async function resolveVerdictResultOwner(accessToken?: string): Promise<{
+  userId: string | null;
+  userDisplay: string;
+}> {
+  if (!accessToken) return { userId: null, userDisplay: "Visitor" };
+
+  const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
+  if (error || !data.user) return { userId: null, userDisplay: "Visitor" };
+
+  return {
+    userId: data.user.id,
+    userDisplay: data.user.email ?? `User ${data.user.id}`,
+  };
 }
 
 type VerdictAnalyticsEvent = {
@@ -2069,6 +2090,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
     let verdictResultId: string | undefined;
     if (!includeDiagnostics) {
       try {
+        const owner = await resolveVerdictResultOwner(data.accessToken);
         verdictResultId = await storeVerdictResult({
           matchId: data.matchId,
           locale: data.locale ?? "en",
@@ -2076,6 +2098,8 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
           selectedPlayers,
           verdictDisplay: storedVerdict.verdictDisplay,
           reasoning: storedVerdict.reasoning,
+          userId: owner.userId,
+          userDisplay: owner.userDisplay,
         });
       } catch (error) {
         console.error(
