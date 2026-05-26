@@ -941,6 +941,7 @@ export function MatchCard({
               isWin={showEnemyTeam ? !win : win}
               isShortGame={isShortVerdictGame}
               subjectsReady={subjectsReady}
+              showSpecifyTime={SHOW_DEV_CONTEXT}
               t={t}
               onSpecifyTime={
                 match.riotMatchId && match.userPuuid && !isShortVerdictGame && subjectsReady
@@ -1367,6 +1368,7 @@ function ScopeActions({
   isWin,
   isShortGame,
   subjectsReady,
+  showSpecifyTime,
   t,
 }: {
   onFullGame: () => void;
@@ -1378,6 +1380,7 @@ function ScopeActions({
   onSpecifyTime?: () => void;
   isShortGame: boolean;
   subjectsReady: boolean;
+  showSpecifyTime: boolean;
   /**
    * True when this match is a Victory. On wins we hide the "Full game"
    * button entirely — full-game judging is intentionally Defeat-only,
@@ -1420,18 +1423,20 @@ function ScopeActions({
         >
           {t("fullGame")}
         </button>
-        <button
-          onClick={onSpecifyTime}
-          disabled={!onSpecifyTime || !subjectsReady}
-          className={
-            onSpecifyTime && subjectsReady
-              ? "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
-              : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
-          }
-          title={specifyTimeTitle}
-        >
-          {t("specifyTime")}
-        </button>
+        {showSpecifyTime && (
+          <button
+            onClick={onSpecifyTime}
+            disabled={!onSpecifyTime || !subjectsReady}
+            className={
+              onSpecifyTime && subjectsReady
+                ? "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
+                : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
+            }
+            title={specifyTimeTitle}
+          >
+            {t("specifyTime")}
+          </button>
+        )}
       </div>
     </div>
   );
