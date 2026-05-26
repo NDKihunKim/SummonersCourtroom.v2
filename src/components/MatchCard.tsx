@@ -219,6 +219,30 @@ function shareErrorKey(error: unknown): TranslationKey {
   return "shareFailed";
 }
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      return copied;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export function MatchCard({
   match,
   you,
@@ -585,8 +609,8 @@ export function MatchCard({
     try {
       setSharing(true);
       if (shareUrl) {
-        await navigator.clipboard.writeText(shareUrl);
-        toast.success(t("shareLinkCopied"));
+        const copied = await copyToClipboard(shareUrl);
+        toast[copied ? "success" : "error"](t(copied ? "shareLinkCopied" : "shareCopyFailed"));
         return;
       }
 
@@ -609,8 +633,8 @@ export function MatchCard({
       });
       const nextShareUrl = new URL(result.path, window.location.origin).toString();
       setShareUrl(nextShareUrl);
-      await navigator.clipboard.writeText(nextShareUrl);
-      toast.success(t("shareLinkCopied"));
+      const copied = await copyToClipboard(nextShareUrl);
+      toast.success(t(copied ? "shareLinkCopied" : "shareLinkReady"));
     } catch (error) {
       console.error("[share] failed to create share link:", error);
       toast.error(t(shareErrorKey(error)));
