@@ -545,8 +545,8 @@ export function AdFrame({
                               <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-2">
                                 {deleteConfirmOpen ? (
                                   <div className="space-y-2">
-                                    <div className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
-                                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                                    <div className="flex flex-col items-center gap-2 text-center text-xs leading-relaxed text-muted-foreground">
+                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" />
                                       <span>
                                         {t?.("dashboardDeleteAccountWarning") ??
                                           "This permanently deletes your account. Your past verdict snapshots may remain for moderation and shared-link integrity, but they will be marked as Deleted User."}
