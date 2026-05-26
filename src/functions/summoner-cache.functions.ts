@@ -122,15 +122,14 @@ export interface CachedSummonerPayload {
 const REFRESH_COOLDOWN_MS = 30_000;
 const ONE_MINUTE_MS = 60_000;
 /**
- * How many matches we fetch + cache per player.
+ * How many recent match ids we ask Riot for per cache miss / refresh.
  *
- * Bumped to 30 so the Performance Block's sample-size selector (10 / 20 / 30)
- * always has a full window to slice from without an extra Riot round-trip.
- * The visible match list on the page is still capped at 10 by the UI
- * (see `MATCHES_VISIBLE` in `src/routes/index.tsx`); only the header stats
- * use the larger window.
+ * The cache can still retain 30 matches, but refresh only needs the latest 20
+ * ids to detect newly played games and avoid re-fetching every cached detail.
  */
-const MATCH_COUNT = 30;
+const MATCH_ID_LOOKUP_COUNT = 20;
+const CACHE_MATCH_LIMIT = 30;
+const MATCH_DETAIL_CONCURRENCY = 5;
 
 // ---------------------------------------------------------------------------
 // Riot fetcher (extracted from match-history.functions for reuse)
@@ -272,6 +271,7 @@ async function fetchFreshFromRiot(
   shard: z.infer<typeof ShardSchema>,
   gameName: string,
   tagLine: string,
+  existingMatches: Match[] = [],
 ) {
   const routing = shardToRouting(shard) as RegionalRouting;
   const platform = shardToPlatform(shard);
@@ -283,7 +283,7 @@ async function fetchFreshFromRiot(
   // Summoner is best-effort — failures resolve to null so the page still
   // renders with the letter-avatar fallback.
   const [matchIds, leagueEntries, summoner] = await Promise.all([
-    listMatchIds(account.puuid, routing, MATCH_COUNT),
+    listMatchIds(account.puuid, routing, MATCH_ID_LOOKUP_COUNT),
     getLeagueEntriesByPuuid(account.puuid, platform).catch((err) => {
       console.error("league-v4 fetch failed (best-effort, ignored):", err);
       return [] as Awaited<ReturnType<typeof getLeagueEntriesByPuuid>>;
@@ -294,17 +294,37 @@ async function fetchFreshFromRiot(
     }),
   ]);
 
-  // Fetch each match in parallel; tolerate individual failures.
-  const settled = await Promise.allSettled(matchIds.map((id) => fetchMatch(id, routing)));
-  const matches: Match[] = [];
-  for (const s of settled) {
-    if (s.status !== "fulfilled") {
-      console.error("match fetch failed:", s.reason);
-      continue;
+  const cachedByMatchId = new Map(
+    existingMatches
+      .map((match) => [match.riotMatchId ?? match.id, match] as const)
+      .filter(([matchId]) => Boolean(matchId)),
+  );
+  const fetchedByMatchId = new Map<string, Match>();
+  const missingMatchIds = matchIds.filter((id) => !cachedByMatchId.has(id));
+
+  for (let i = 0; i < missingMatchIds.length; i += MATCH_DETAIL_CONCURRENCY) {
+    const batch = missingMatchIds.slice(i, i + MATCH_DETAIL_CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map((id) => fetchMatch(id, routing)));
+    for (let j = 0; j < settled.length; j++) {
+      const result = settled[j];
+      const matchId = batch[j];
+      if (result.status !== "fulfilled") {
+        console.error("match fetch failed:", result.reason);
+        continue;
+      }
+      const match = normaliseMatch(result.value, account.puuid, routing);
+      if (match) fetchedByMatchId.set(matchId, match);
     }
-    const m = normaliseMatch(s.value, account.puuid, routing);
-    if (m) matches.push(m);
   }
+
+  const latestMatches = matchIds
+    .map((id) => fetchedByMatchId.get(id) ?? cachedByMatchId.get(id) ?? null)
+    .filter((match): match is Match => match !== null);
+  const latestMatchIds = new Set(latestMatches.map((match) => match.riotMatchId ?? match.id));
+  const olderCachedMatches = existingMatches.filter(
+    (match) => !latestMatchIds.has(match.riotMatchId ?? match.id),
+  );
+  const matches = [...latestMatches, ...olderCachedMatches].slice(0, CACHE_MATCH_LIMIT);
 
   const rankedEntries: RankedEntries = {
     solo: leagueEntryToRanked(pickSoloEntry(leagueEntries)),
@@ -566,7 +586,13 @@ export const refreshSummoner = createServerFn({ method: "POST" })
     }
 
     await assertTurnstile(data.turnstileToken);
-    const fresh = await fetchFreshFromRiot(data.shard, data.gameName, data.tagLine);
+    const existingMatches = rowToPayload(row, /* fromCache */ true).matches;
+    const fresh = await fetchFreshFromRiot(
+      data.shard,
+      data.gameName,
+      data.tagLine,
+      existingMatches,
+    );
     const cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ true);
 
     return {
