@@ -1803,7 +1803,28 @@ async function writeVerdictAnalytics(event: VerdictAnalyticsEvent) {
   }
 }
 
-async function callDeepSeek(prompt: string): Promise<{
+function combineAbortSignals(signals: Array<AbortSignal | undefined>): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) controller.abort();
+  };
+
+  for (const signal of signals) {
+    if (!signal) continue;
+    if (signal.aborted) {
+      abort();
+      break;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  }
+
+  return controller.signal;
+}
+
+async function callDeepSeek(
+  prompt: string,
+  requestSignal?: AbortSignal,
+): Promise<{
   content: string;
   reasoningContent?: string;
   usage?: DeepSeekUsage;
@@ -1822,8 +1843,13 @@ async function callDeepSeek(prompt: string): Promise<{
   };
   if (thinking.enabled) body.reasoning_effort = thinking.effort;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
+  const timeoutController = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    timeoutController.abort();
+  }, 120_000);
+  const signal = combineAbortSignals([requestSignal, timeoutController.signal]);
   let res: Response;
   try {
     res = await fetch("https://api.deepseek.com/chat/completions", {
@@ -1833,11 +1859,15 @@ async function callDeepSeek(prompt: string): Promise<{
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-      signal: controller.signal,
+      signal,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("DeepSeek request timed out. Please try again.");
+      throw new Error(
+        timedOut
+          ? "DeepSeek request timed out. Please try again."
+          : "AI verdict request was cancelled.",
+      );
     }
     throw error;
   } finally {
@@ -1951,6 +1981,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => JudgeVerdictInputSchema.parse(input))
   .handler(async ({ data }) => {
     const requestStartedAt = Date.now();
+    const requestSignal = getRequest().signal;
     if (data.includeRaw) assertContextInspectionAllowed();
     assertRateLimit({
       scope: "judge-verdict",
@@ -2050,7 +2081,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
 
     let deepSeek: Awaited<ReturnType<typeof callDeepSeek>>;
     try {
-      deepSeek = await callDeepSeek(promptPayload.prompt);
+      deepSeek = await callDeepSeek(promptPayload.prompt, requestSignal);
     } catch (error) {
       if (quotaReserved) {
         try {

@@ -55,6 +55,13 @@ function participantKey(player: Participant): string {
   return player.puuid ?? player.summoner?.toLowerCase() ?? player.champion;
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 function addFreeForAllContextParams(params: URLSearchParams, team: Participant[]) {
   if (team.length === 0) return;
   params.set("verdictMode", "free-for-all");
@@ -308,6 +315,7 @@ export function MatchCard({
   const [sharing, setSharing] = useState(false);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const verdictAbortControllerRef = useRef<AbortController | null>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const lastOpenJudgeRequestRef = useRef(0);
@@ -328,6 +336,7 @@ export function MatchCard({
   useEffect(() => {
     return () => {
       mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
+      verdictAbortControllerRef.current?.abort();
     };
   }, []);
 
@@ -484,6 +493,7 @@ export function MatchCard({
   async function runJudge(scope: Scope, windowRange?: [number, number]) {
     if (!pickedAlly) return;
     clearMockLoadingTimers();
+    verdictAbortControllerRef.current?.abort();
     if (!isRankedGame) {
       toast.warning(t("rankedSoloVerdictOnly"));
       return;
@@ -514,6 +524,9 @@ export function MatchCard({
       return;
     }
 
+    const verdictAbortController = new AbortController();
+    verdictAbortControllerRef.current = verdictAbortController;
+
     const subjectAChampionLabel = formatChampionName(subjectA.champion);
     const subjectBChampionLabel = formatChampionName(pickedAlly.champion);
     const freeForAllTeam =
@@ -529,6 +542,7 @@ export function MatchCard({
       setActiveStep("judge");
 
       const verdict = await getJudgeVerdict({
+        signal: verdictAbortController.signal,
         data: {
           matchId: match.riotMatchId,
           userPuuid: match.userPuuid,
@@ -592,9 +606,13 @@ export function MatchCard({
       setVerdictWindow(windowRange ?? null);
       setStage("verdict");
     } catch (e) {
+      if (verdictAbortController.signal.aborted || isAbortLikeError(e)) return;
       toast.error(e instanceof Error ? e.message : "AI verdict request failed.");
       reset();
     } finally {
+      if (verdictAbortControllerRef.current === verdictAbortController) {
+        verdictAbortControllerRef.current = null;
+      }
       resetTurnstile();
     }
   }
@@ -1535,6 +1553,10 @@ function JudgeLoading({
           );
         })}
       </ol>
+      <div className="text-center text-xs leading-relaxed text-muted-foreground">
+        <p className="font-medium text-foreground/80">{t("judgeLoadingRefreshWarning")}</p>
+        <p>{t("judgeLoadingNotice")}</p>
+      </div>
     </div>
   );
 }
