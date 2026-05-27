@@ -1553,10 +1553,6 @@ function JudgeLoading({
           );
         })}
       </ol>
-      <div className="text-center text-xs leading-relaxed text-muted-foreground">
-        <p className="font-medium text-foreground/80">{t("judgeLoadingRefreshWarning")}</p>
-        <p>{t("judgeLoadingNotice")}</p>
-      </div>
     </div>
   );
 }
