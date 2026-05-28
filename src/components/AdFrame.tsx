@@ -320,6 +320,10 @@ export function AdFrame({
     return planLabels[status.plan];
   }
 
+  function quotaHeaderPlanLabel(status: VerdictQuotaStatus): string {
+    return quotaPlanLabel(status).replace(/\s+User$/u, "");
+  }
+
   function quotaValueText(status: VerdictQuotaStatus): string {
     if (status.plan === "unli") {
       return t?.("dashboardQuotaUnlimitedShort") ?? "Unlimited";
@@ -331,7 +335,7 @@ export function AdFrame({
     if (status.plan === "unli") {
       return (
         t?.("dashboardQuotaUnlimited", { plan: quotaPlanLabel(status) }) ??
-        `Unlimited verdicts today (${quotaPlanLabel(status)})`
+        "Unlimited verdicts available today"
       );
     }
     return (
@@ -682,7 +686,7 @@ export function AdFrame({
                           <User className="h-3.5 w-3.5" />
                           {t?.("dashboardProfile") ?? "Profile"}
                         </div>
-                        <p className="min-w-0 truncate text-xs font-semibold text-foreground">
+                        <p className="min-w-0 truncate text-xs font-semibold text-muted-foreground">
                           {t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
                             `Signed in with ${authProviderLabel()}`}
                         </p>
@@ -776,12 +780,19 @@ export function AdFrame({
                 </section>
 
                 <section className="rounded-lg border border-border bg-background/40 p-3">
-                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gold">
-                    <Gauge className="h-3.5 w-3.5" />
-                    {t?.("dashboardQuotaTitle") ?? "Verdict quota"}
+                  <div className="mb-1 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wider text-gold">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Gauge className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{t?.("dashboardQuotaTitle") ?? "Verdict quota"}</span>
+                    </div>
+                    {quota && (
+                      <span className="shrink-0 text-muted-foreground">
+                        {quotaHeaderPlanLabel(quota)}
+                      </span>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-center text-xs text-muted-foreground">
                       {quotaLoading
                         ? (t?.("dashboardQuotaLoading") ?? "Loading verdict quota...")
                         : quota
