@@ -282,11 +282,6 @@ const MAX_WINDOW_MS = 10 * 60_000;
 const MAX_FULL_GAME_CONTEXT_MS = 60 * 60_000;
 const ONE_MINUTE_MS = 60_000;
 const END_OF_GAME_TOLERANCE_MS = 15_000;
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
-const DEFAULT_DEEPSEEK_MAX_TOKENS = 1400;
-const DEEPSEEK_FLASH_CACHE_MISS_INPUT_PER_1M = 0.14;
-const DEEPSEEK_FLASH_CACHE_HIT_INPUT_PER_1M = 0.0028;
-const DEEPSEEK_FLASH_OUTPUT_PER_1M = 0.28;
 
 function contextStartMinuteMs(startMs: number): number {
   return Math.floor(startMs / ONE_MINUTE_MS) * ONE_MINUTE_MS;
@@ -313,26 +308,16 @@ function apiKey(): string {
   return key;
 }
 
-function deepSeekApiKey(): string {
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) throw new Error("DEEPSEEK_API_KEY is not configured on the server.");
-  return key;
+function aiGatewayUrl(): string {
+  const url = process.env.AI_GATEWAY_URL;
+  if (!url) throw new Error("AI gateway URL is not configured on the server.");
+  return url;
 }
 
-function deepSeekModel(): string {
-  return process.env.DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL;
-}
-
-function deepSeekThinking() {
-  const enabled = process.env.DEEPSEEK_THINKING === "enabled";
-  return {
-    enabled,
-    effort: process.env.DEEPSEEK_REASONING_EFFORT === "max" ? "max" : "high",
-  };
-}
-
-function deepSeekMaxTokens(): number {
-  return Number(process.env.DEEPSEEK_MAX_TOKENS ?? DEFAULT_DEEPSEEK_MAX_TOKENS);
+function aiGatewayToken(): string {
+  const token = process.env.AI_GATEWAY_TOKEN;
+  if (!token) throw new Error("AI gateway token is not configured on the server.");
+  return token;
 }
 
 function inferRouting(matchId: string, override?: RegionalRouting): RegionalRouting {
@@ -1502,7 +1487,7 @@ function buildJudgePrompt({
   return { upperPrompt, brief, lowerPrompt, prompt };
 }
 
-type DeepSeekUsage = {
+type AiGatewayUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
@@ -1516,7 +1501,15 @@ type DeepSeekUsage = {
   prompt_cache_miss_tokens?: number;
 };
 
-type DeepSeekResponse = {
+type AiGatewayCostEstimate = {
+  usd?: number;
+  cacheHitInputTokens?: number;
+  cacheMissInputTokens?: number;
+  outputTokens?: number;
+  note?: string;
+};
+
+type AiGatewayResponse = {
   id?: string;
   model?: string;
   choices?: Array<{
@@ -1526,7 +1519,14 @@ type DeepSeekResponse = {
       reasoning_content?: string;
     };
   }>;
-  usage?: DeepSeekUsage;
+  usage?: AiGatewayUsage;
+  content?: string;
+  reasoningContent?: string;
+  thinking?: { enabled: boolean; effort: "high" | "max" };
+  finishReason?: string;
+  costEstimate?: AiGatewayCostEstimate;
+  maxTokens?: number;
+  raw?: unknown;
 };
 
 function createStoredVerdictId() {
@@ -1720,33 +1720,11 @@ type VerdictAnalyticsEvent = {
   gameLengthMs: number;
   requestedWindowMs?: number;
   actualContextWindowMs: number;
-  usage?: DeepSeekUsage;
-  costEstimate?: ReturnType<typeof estimateDeepSeekCost>;
+  usage?: AiGatewayUsage;
+  costEstimate?: AiGatewayCostEstimate | null;
   maxTokens: number;
   durationMs: number;
 };
-
-function estimateDeepSeekCost(usage?: DeepSeekUsage) {
-  if (!usage) return null;
-  const cacheHitInput = usage.prompt_cache_hit_tokens ?? 0;
-  const cacheMissInput =
-    usage.prompt_cache_miss_tokens ??
-    Math.max(0, (usage.prompt_tokens ?? 0) - cacheHitInput);
-  const output = usage.completion_tokens ?? 0;
-  const usd =
-    (cacheHitInput / 1_000_000) * DEEPSEEK_FLASH_CACHE_HIT_INPUT_PER_1M +
-    (cacheMissInput / 1_000_000) * DEEPSEEK_FLASH_CACHE_MISS_INPUT_PER_1M +
-    (output / 1_000_000) * DEEPSEEK_FLASH_OUTPUT_PER_1M;
-
-  return {
-    usd,
-    cacheHitInputTokens: cacheHitInput,
-    cacheMissInputTokens: cacheMissInput,
-    outputTokens: output,
-    note:
-      "Estimate uses deepseek-v4-flash public pricing. Thinking mode may increase completion tokens through reasoning content.",
-  };
-}
 
 function numberOrZero(value: number | undefined): number {
   return Number.isFinite(value) ? (value as number) : 0;
@@ -1821,28 +1799,20 @@ function combineAbortSignals(signals: Array<AbortSignal | undefined>): AbortSign
   return controller.signal;
 }
 
-async function callDeepSeek(
+async function callAiGateway(
   prompt: string,
   requestSignal?: AbortSignal,
 ): Promise<{
   content: string;
   reasoningContent?: string;
-  usage?: DeepSeekUsage;
-  model: string;
-  thinking: { enabled: boolean; effort: "high" | "max" };
+  usage?: AiGatewayUsage;
+  model?: string;
+  thinking?: { enabled: boolean; effort: "high" | "max" };
   finishReason?: string;
-  raw: DeepSeekResponse;
+  costEstimate?: AiGatewayCostEstimate | null;
+  maxTokens?: number;
+  raw: AiGatewayResponse;
 }> {
-  const model = deepSeekModel();
-  const thinking = deepSeekThinking();
-  const body: Record<string, unknown> = {
-    model,
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: deepSeekMaxTokens(),
-    thinking: { type: thinking.enabled ? "enabled" : "disabled" },
-  };
-  if (thinking.enabled) body.reasoning_effort = thinking.effort;
-
   const timeoutController = new AbortController();
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -1852,20 +1822,23 @@ async function callDeepSeek(
   const signal = combineAbortSignals([requestSignal, timeoutController.signal]);
   let res: Response;
   try {
-    res = await fetch("https://api.deepseek.com/chat/completions", {
+    res = await fetch(aiGatewayUrl(), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${deepSeekApiKey()}`,
+        Authorization: `Bearer ${aiGatewayToken()}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        prompt,
+        requestId: crypto.randomUUID(),
+      }),
       signal,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
         timedOut
-          ? "DeepSeek request timed out. Please try again."
+          ? "AI request timed out. Please try again."
           : "AI verdict request was cancelled.",
       );
     }
@@ -1875,27 +1848,37 @@ async function callDeepSeek(
   }
 
   if (!res.ok) {
+    let gatewayError: string | undefined;
+    try {
+      const payload = (await res.clone().json()) as { error?: unknown };
+      gatewayError = typeof payload.error === "string" ? payload.error : undefined;
+    } catch {
+      gatewayError = undefined;
+    }
+    if (gatewayError) throw new Error(gatewayError);
     if (res.status === 401 || res.status === 403) {
-      throw new Error("DeepSeek API access is unavailable. Check the server API key.");
+      throw new Error("AI API access is unavailable. Check the server API key.");
     }
     if (res.status === 429) {
-      throw new Error("DeepSeek rate limit reached. Please wait and try again.");
+      throw new Error("AI rate limit reached. Please wait and try again.");
     }
-    throw new Error(`DeepSeek API request failed with status ${res.status}.`);
+    throw new Error(`AI API request failed with status ${res.status}.`);
   }
 
-  const raw = (await res.json()) as DeepSeekResponse;
+  const raw = (await res.json()) as AiGatewayResponse;
   const message = raw.choices?.[0]?.message;
-  const content = message?.content?.trim();
-  if (!content) throw new Error("DeepSeek returned an empty verdict.");
+  const content = (raw.content ?? message?.content)?.trim();
+  if (!content) throw new Error("AI returned an empty verdict.");
 
   return {
     content,
-    reasoningContent: message.reasoning_content,
+    reasoningContent: raw.reasoningContent ?? message?.reasoning_content,
     usage: raw.usage,
-    model: raw.model ?? model,
-    thinking,
-    finishReason: raw.choices?.[0]?.finish_reason,
+    model: raw.model,
+    thinking: raw.thinking,
+    finishReason: raw.finishReason ?? raw.choices?.[0]?.finish_reason,
+    costEstimate: raw.costEstimate,
+    maxTokens: raw.maxTokens,
     raw,
   };
 }
@@ -2079,9 +2062,9 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       quotaReserved = true;
     }
 
-    let deepSeek: Awaited<ReturnType<typeof callDeepSeek>>;
+    let aiResult: Awaited<ReturnType<typeof callAiGateway>>;
     try {
-      deepSeek = await callDeepSeek(promptPayload.prompt, requestSignal);
+      aiResult = await callAiGateway(promptPayload.prompt, requestSignal);
     } catch (error) {
       if (quotaReserved) {
         try {
@@ -2103,21 +2086,19 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
         scope: data.scope,
         routingRegion: routing,
         locale: data.locale ?? "en",
-        model: deepSeekModel(),
-        thinking: deepSeekThinking(),
         errorType: error instanceof Error ? error.message : "unknown_error",
         gameLengthMs: timelineEnd,
         requestedWindowMs,
         actualContextWindowMs: actualContextEndMs - actualContextStartMs,
-        maxTokens: deepSeekMaxTokens(),
+        maxTokens: 0,
         durationMs: Date.now() - requestStartedAt,
       });
       throw error;
     }
     const includeDiagnostics = data.includeRaw === true;
-    const costEstimate = estimateDeepSeekCost(deepSeek.usage);
+    const costEstimate = aiResult.costEstimate ?? null;
     const selectedPlayers = buildStoredVerdictPlayers(match, data);
-    const storedVerdict = parseStoredVerdict(deepSeek.content, selectedPlayers);
+    const storedVerdict = parseStoredVerdict(aiResult.content, selectedPlayers);
     let verdictResultId: string | undefined;
     if (!includeDiagnostics) {
       try {
@@ -2145,29 +2126,36 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       scope: data.scope,
       routingRegion: routing,
       locale: data.locale ?? "en",
-      model: deepSeek.model,
-      thinking: deepSeek.thinking,
-      finishReason: deepSeek.finishReason,
+      model: aiResult.model,
+      thinking: aiResult.thinking,
+      finishReason: aiResult.finishReason,
       gameLengthMs: timelineEnd,
       requestedWindowMs,
       actualContextWindowMs: actualContextEndMs - actualContextStartMs,
-      usage: deepSeek.usage,
+      usage: aiResult.usage,
       costEstimate,
-      maxTokens: deepSeekMaxTokens(),
+      maxTokens: aiResult.maxTokens ?? 0,
       durationMs: Date.now() - requestStartedAt,
     });
-    const raw = includeDiagnostics ? deepSeek.raw : undefined;
+    const raw = includeDiagnostics ? aiResult.raw : undefined;
+
+    if (!includeDiagnostics) {
+      return {
+        content: aiResult.content,
+        verdictResultId,
+      };
+    }
 
     return {
-      content: deepSeek.content,
-      reasoningContent: includeDiagnostics ? deepSeek.reasoningContent : undefined,
-      model: deepSeek.model,
-      thinking: deepSeek.thinking,
-      usage: includeDiagnostics ? deepSeek.usage : undefined,
-      costEstimate: includeDiagnostics ? costEstimate : undefined,
+      content: aiResult.content,
+      reasoningContent: aiResult.reasoningContent,
+      model: aiResult.model,
+      thinking: aiResult.thinking,
+      usage: aiResult.usage,
+      costEstimate,
       raw,
-      prompt: includeDiagnostics ? promptPayload : undefined,
-      context: includeDiagnostics ? windowResponse : undefined,
+      prompt: promptPayload,
+      context: windowResponse,
       verdictResultId,
     };
   });

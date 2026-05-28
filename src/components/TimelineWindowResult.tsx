@@ -43,8 +43,8 @@ type WindowResponse = {
 type JudgeRawResult = {
   content: string;
   reasoningContent?: string;
-  model: string;
-  thinking: { enabled: boolean; effort: "high" | "max" };
+  model?: string;
+  thinking?: { enabled: boolean; effort: "high" | "max" };
   usage?: unknown;
   costEstimate?: unknown;
   raw?: unknown;
@@ -249,7 +249,7 @@ export function TimelineWindowResult({
     }
   }
 
-  async function runDeepSeekForContext() {
+  async function runAiGatewayForContext() {
     if (!result) return;
     setJudgeLoading(true);
     setError(null);
@@ -281,7 +281,7 @@ export function TimelineWindowResult({
       });
       setJudgeResult(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "DeepSeek request failed");
+      setError(e instanceof Error ? e.message : "AI gateway request failed");
     } finally {
       setJudgeLoading(false);
     }
@@ -320,11 +320,11 @@ export function TimelineWindowResult({
               {copied ? "Copied" : "Copy all"}
             </button>
             <button
-              onClick={() => void runDeepSeekForContext()}
+              onClick={() => void runAiGatewayForContext()}
               disabled={judgeLoading}
               className="rounded border border-gold/60 px-2 py-1 text-xs text-gold hover:border-gold disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {judgeLoading ? "Running DeepSeek..." : "Run DeepSeek"}
+              {judgeLoading ? "Running AI Gateway..." : "Run AI Gateway"}
             </button>
           </>
         )}
@@ -354,13 +354,13 @@ export function TimelineWindowResult({
           {judgeResult && (
             <div className="flex flex-col gap-3">
               <PromptBlock
-                label="DeepSeek final content"
+                label="AI final content"
                 text={judgeResult.content}
                 tone="instruction"
               />
               {judgeResult.reasoningContent && (
                 <PromptBlock
-                  label="DeepSeek reasoning_content"
+                  label="AI reasoning_content"
                   text={judgeResult.reasoningContent}
                   tone="intro"
                 />

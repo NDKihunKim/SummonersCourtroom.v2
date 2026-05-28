@@ -1,6 +1,6 @@
 -- Server-owned AI verdict results.
 --
--- A row is created only after the server receives a DeepSeek verdict. Share
+-- A row is created only after the server receives an AI verdict. Share
 -- links are then created from this server-owned snapshot instead of trusting
 -- verdict text submitted by the browser.
 

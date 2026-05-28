@@ -32,9 +32,6 @@
     "VITE_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_CiDVjfQ4VzII1-vt8w51Sw_ozTpKuLA",
     "VITE_SUPABASE_PROJECT_ID": "gbbbwazmqnqbvcgjhnvz",
     "VITE_TURNSTILE_SITE_KEY": "0x4AAAAAADR21K5nOwdQvXRN",
-    "VITE_ENABLE_DEV_CONTEXT": "false",
-    "DEEPSEEK_MODEL": "deepseek-v4-flash",
-    "DEEPSEEK_THINKING": "enabled",
-    "DEEPSEEK_MAX_TOKENS": "50000"
+    "VITE_ENABLE_DEV_CONTEXT": "false"
   }
 }
