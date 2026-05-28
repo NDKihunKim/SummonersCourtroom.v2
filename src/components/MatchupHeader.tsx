@@ -49,7 +49,8 @@ function Tile({
   sequenceIndex?: number;
   sequenceCount?: number;
 }) {
-  const sequenceDuration = Math.max(1, sequenceCount) * 650;
+  const sequenceStepMs = sequenceCount === 2 ? 950 : 650;
+  const sequenceDuration = Math.max(1, sequenceCount) * sequenceStepMs;
   return (
     <div
       // `shrink-0` keeps the 112px width when sat inside the flex row,
@@ -61,7 +62,7 @@ function Tile({
       style={
         loadingSequence
           ? {
-              animationDelay: `${sequenceIndex * 650}ms`,
+              animationDelay: `${sequenceIndex * sequenceStepMs}ms`,
               animationDuration: `${sequenceDuration}ms`,
             }
           : undefined

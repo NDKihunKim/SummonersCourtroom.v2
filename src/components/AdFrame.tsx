@@ -310,24 +310,35 @@ export function AdFrame({
     }
   }
 
-  function quotaText(status: VerdictQuotaStatus): string {
+  function quotaPlanLabel(status: VerdictQuotaStatus): string {
     const planLabels: Record<VerdictQuotaStatus["plan"], string> = {
       anonymous: t?.("dashboardPlanAnonymous") ?? "Visitor",
       free: t?.("dashboardPlanFree") ?? "Daily User",
       paid: t?.("dashboardPlanPaid") ?? "Premium User",
       unli: t?.("dashboardPlanUnli") ?? "Unlimited User",
     };
+    return planLabels[status.plan];
+  }
+
+  function quotaValueText(status: VerdictQuotaStatus): string {
+    if (status.plan === "unli") {
+      return t?.("dashboardQuotaUnlimitedShort") ?? "Unlimited";
+    }
+    return `${status.remaining ?? 0}/${status.limit ?? 0}`;
+  }
+
+  function quotaText(status: VerdictQuotaStatus): string {
     if (status.plan === "unli") {
       return (
-        t?.("dashboardQuotaUnlimited", { plan: planLabels.unli }) ??
-        `Unlimited verdicts today (${planLabels.unli})`
+        t?.("dashboardQuotaUnlimited", { plan: quotaPlanLabel(status) }) ??
+        `Unlimited verdicts today (${quotaPlanLabel(status)})`
       );
     }
     return (
       t?.("dashboardQuota", {
         remaining: status.remaining ?? 0,
         limit: status.limit ?? 0,
-        plan: planLabels[status.plan],
+        plan: quotaPlanLabel(status),
       }) ?? `${status.remaining ?? 0}/${status.limit ?? 0} verdicts available today`
     );
   }
@@ -354,6 +365,32 @@ export function AdFrame({
 
     const resetAt = Date.parse(status.resetAt);
     if (!Number.isFinite(resetAt)) return null;
+    const remainingMs = Math.max(0, resetAt - quotaNow);
+    const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const time =
+      hours > 0
+        ? (t?.("dashboardQuotaResetHoursMinutes", { hours, minutes }) ?? `${hours}h ${minutes}m`)
+        : (t?.("dashboardQuotaResetMinutes", { minutes }) ?? `${minutes}m`);
+
+    return t?.("dashboardQuotaResetsIn", { time }) ?? `Resets in ${time}`;
+  }
+
+  function quotaResetTimerText(status: VerdictQuotaStatus): string {
+    if (status.plan === "unli") return t?.("dashboardQuotaUnlimitedShort") ?? "Unlimited";
+    if (!status.resetAt) {
+      return (
+        t?.("dashboardQuotaResetStartsAfterFirstVerdict") ?? "Starts after your first verdict"
+      );
+    }
+
+    const resetAt = Date.parse(status.resetAt);
+    if (!Number.isFinite(resetAt)) {
+      return (
+        t?.("dashboardQuotaResetStartsAfterFirstVerdict") ?? "Starts after your first verdict"
+      );
+    }
     const remainingMs = Math.max(0, resetAt - quotaNow);
     const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
     const hours = Math.floor(totalMinutes / 60);
@@ -538,9 +575,53 @@ export function AdFrame({
                         </button>
                         {expanded && (
                           <div className="border-t border-border px-3 pb-3 pt-2 animate-fade-in">
-                            <p className="text-xs leading-relaxed text-muted-foreground">
-                              {section.details}
-                            </p>
+                            {section.id === "usage" ? (
+                              <div className="space-y-2 text-xs">
+                                {quotaLoading ? (
+                                  <p className="text-muted-foreground">
+                                    {t?.("dashboardQuotaLoading") ?? "Loading verdict quota..."}
+                                  </p>
+                                ) : quota ? (
+                                  <>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="text-muted-foreground">
+                                        {t?.("dashboardUsagePlan") ?? "Plan"}
+                                      </span>
+                                      <span className="text-right font-semibold text-foreground">
+                                        {quotaPlanLabel(quota)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="text-muted-foreground">
+                                        {t?.("dashboardUsageCurrentQuota") ?? "Current quota"}
+                                      </span>
+                                      <span className="text-right font-semibold text-gold">
+                                        {quotaValueText(quota)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="text-muted-foreground">
+                                        {t?.("dashboardUsageResetTimer") ?? "Reset timer"}
+                                      </span>
+                                      <span className="text-right font-semibold text-foreground">
+                                        {quotaResetTimerText(quota)}
+                                      </span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <p className="text-muted-foreground">
+                                    {quotaError
+                                      ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
+                                      : (t?.("dashboardQuotaUnavailable") ??
+                                        "Verdict quota unavailable.")}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs leading-relaxed text-muted-foreground">
+                                {section.details}
+                              </p>
+                            )}
                             {section.id === "profile" && session && (
                               <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-2">
                                 {deleteConfirmOpen ? (
