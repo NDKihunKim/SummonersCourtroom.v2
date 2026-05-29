@@ -139,6 +139,21 @@ function formatWindowLength(ms: number, t: Translate): string {
   });
 }
 
+function formatPlayedAtMs(playedAtMs: number, locale: Locale, t: Translate): string {
+  const diff = Date.now() - playedAtMs;
+  if (diff < 60_000) return locale === "ko" ? t("justNow") : "Just now";
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) {
+    return locale === "ko" ? t("relativeMinutesAgo", { count: mins }) : `${mins}m ago`;
+  }
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) {
+    return locale === "ko" ? t("relativeHoursAgo", { count: hours }) : `${hours}h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return locale === "ko" ? t("relativeDaysAgo", { count: days }) : `${days}d ago`;
+}
+
 function formatPlayedAt(playedAt: string, locale: Locale, t: Translate): string {
   if (locale !== "ko") return playedAt;
   if (playedAt.toLowerCase() === "just now") return t("justNow");
@@ -295,7 +310,10 @@ export function MatchCard({
   const durationLabel = formatDuration(match.duration, locale, t);
   const matchDurationMs = parseMatchDurationToMs(match.duration);
   const isShortVerdictGame = matchDurationMs != null && matchDurationMs < MIN_VERDICT_GAME_MS;
-  const playedAtLabel = formatPlayedAt(match.playedAt, locale, t);
+  const playedAtLabel =
+    typeof match.playedAtMs === "number"
+      ? formatPlayedAtMs(match.playedAtMs, locale, t)
+      : formatPlayedAt(match.playedAt, locale, t);
   const championLabel = formatChampionName(match.champion);
 
   const [stage, setStage] = useState<Stage>("closed");

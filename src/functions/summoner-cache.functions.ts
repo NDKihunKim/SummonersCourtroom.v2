@@ -219,6 +219,7 @@ function normaliseMatch(
     queue: queueName(raw.info.queueId),
     result: me.win ? "Victory" : "Defeat",
     duration: formatDuration(raw.info.gameDuration),
+    playedAtMs,
     playedAt: relativeTime(playedAtMs),
     champion: me.championName,
     championIconSeed: hashSeed(me.championName + me.puuid),

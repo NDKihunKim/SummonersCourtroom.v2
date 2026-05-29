@@ -30,6 +30,8 @@ export type Match = {
   queue: string;
   result: "Victory" | "Defeat";
   duration: string;
+  /** Absolute game end timestamp in epoch ms. Used to render fresh relative time from cache. */
+  playedAtMs?: number;
   playedAt: string;
   champion: string;
   championIconSeed: number;
