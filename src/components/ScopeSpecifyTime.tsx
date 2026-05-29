@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { TimeRangePicker, type TimeRange, MIN_WINDOW_MS, MAX_WINDOW_MS } from "./TimeRangePicker";
+import { TimeRangePicker } from "./TimeRangePicker";
+import { MAX_WINDOW_MS, MIN_WINDOW_MS, type TimeRange } from "./TimeRangePicker.constants";
 import { TimelineWindowResult } from "./TimelineWindowResult";
 import type { Match, Participant } from "@/lib/match-types";
 import type { Locale, TranslationKey } from "@/i18n";

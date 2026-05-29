@@ -9,7 +9,8 @@ import {
 import { getSharedVerdict, type SharedVerdictPayload } from "@/functions/shared-verdict.functions";
 import { SHARDS, type Shard } from "@/lib/regions";
 import { useLocale } from "@/i18n";
-import { buildPlayerProfileUrl, MatchHistory } from "./index";
+import { buildPlayerProfileUrl } from "@/lib/profile-url";
+import { MatchHistory } from "./index";
 
 export const Route = createFileRoute("/share/$shareId")({
   head: () => ({

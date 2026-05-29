@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import { toast } from "sonner";
 import type { TranslationKey } from "@/i18n";
+import {
+  formatMs,
+  MAX_WINDOW_MS,
+  MIN_WINDOW_MS,
+  type TimeRange,
+} from "./TimeRangePicker.constants";
 
 /**
  * Dual-handle range picker for the "Specify Time" Judge scope.
@@ -17,19 +23,6 @@ import type { TranslationKey } from "@/i18n";
  *   - dragging one handle past the other auto-pushes the partner so the
  *     window never inverts and never shrinks below MIN.
  */
-
-export const MIN_WINDOW_MS = 5 * 60_000; // 5 minutes
-export const MAX_WINDOW_MS = 10 * 60_000; // 10 minutes
-
-export type TimeRange = [number, number];
-
-/** Format ms as "m:ss" (LoL-style; hours unrealistic for a single match). */
-export function formatMs(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 function formatKoreanLength(ms: number): { minutes: number; seconds: number } {
   const total = Math.max(0, Math.floor(ms / 1000));

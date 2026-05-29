@@ -14,7 +14,8 @@ import { useRecentSearches } from "@/hooks/useRecentSearches";
 import { useSavedPlayers } from "@/hooks/useSavedPlayers";
 import { SHARDS, type Shard } from "@/lib/regions";
 import { useLocale } from "@/i18n";
-import { buildPlayerProfileUrl, MatchHistory } from "./index";
+import { buildPlayerProfileUrl } from "@/lib/profile-url";
+import { MatchHistory } from "./index";
 
 export const Route = createFileRoute("/summoner/$shard/$gameName/$tagLine")({
   head: ({ params }) => ({

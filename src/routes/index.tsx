@@ -40,13 +40,6 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-/**
- * Build the same-origin dedicated profile URL used for shareable player links.
- */
-export function buildPlayerProfileUrl(shard: Shard, gameName: string, tagLine: string): string {
-  return `/summoner/${encodeURIComponent(shard)}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
-}
-
 function Index() {
   const { locale, setLocale, t } = useLocale();
   return (
