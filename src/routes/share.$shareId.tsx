@@ -6,10 +6,7 @@ import {
   getCachedMatchHistory,
   type CachedSummonerPayload,
 } from "@/functions/summoner-cache.functions";
-import {
-  getSharedVerdict,
-  type SharedVerdictPayload,
-} from "@/functions/shared-verdict.functions";
+import { getSharedVerdict, type SharedVerdictPayload } from "@/functions/shared-verdict.functions";
 import { SHARDS, type Shard } from "@/lib/regions";
 import { useLocale } from "@/i18n";
 import { buildPlayerProfileUrl, MatchHistory } from "./index";
@@ -43,14 +40,20 @@ function SharePage() {
 
   const canonicalProfileUrl =
     verdict?.profile && isKnownShard(verdict.profile.shard)
-      ? buildPlayerProfileUrl(verdict.profile.shard, verdict.profile.gameName, verdict.profile.tagLine)
+      ? buildPlayerProfileUrl(
+          verdict.profile.shard,
+          verdict.profile.gameName,
+          verdict.profile.tagLine,
+        )
       : null;
 
   const sharedMatchIndex =
     verdict?.matchId && profile
       ? profile.matches
           .slice(0, 20)
-          .findIndex((match) => match.riotMatchId === verdict.matchId || match.id === verdict.matchId)
+          .findIndex(
+            (match) => match.riotMatchId === verdict.matchId || match.id === verdict.matchId,
+          )
       : -1;
   const sharedMatchInRecent = sharedMatchIndex >= 0;
 
@@ -101,7 +104,7 @@ function SharePage() {
     return () => {
       cancelled = true;
     };
-  }, [shareId]);
+  }, [locale, setLocale, shareId]);
 
   if (error) {
     return (

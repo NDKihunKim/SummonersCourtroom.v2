@@ -18,8 +18,8 @@ import type { TranslationKey } from "@/i18n";
  *     window never inverts and never shrinks below MIN.
  */
 
-export const MIN_WINDOW_MS = 5 * 60_000;    // 5 minutes
-export const MAX_WINDOW_MS = 10 * 60_000;   // 10 minutes
+export const MIN_WINDOW_MS = 5 * 60_000; // 5 minutes
+export const MAX_WINDOW_MS = 10 * 60_000; // 10 minutes
 
 export type TimeRange = [number, number];
 
@@ -114,11 +114,7 @@ export function TimeRangePicker({
    * `editedHandle` tells us which handle the user just touched so we know
    * which one to pin when adjusting the partner.
    */
-  function commit(
-    rawStart: number,
-    rawEnd: number,
-    editedHandle: "start" | "end" | "both",
-  ) {
+  function commit(rawStart: number, rawEnd: number, editedHandle: "start" | "end" | "both") {
     const cap = Math.max(MIN_WINDOW_MS, gameDurationMs);
     let s = Math.max(0, Math.min(rawStart, cap));
     let e = Math.max(0, Math.min(rawEnd, cap));
@@ -164,8 +160,7 @@ export function TimeRangePicker({
 
   function warnShortManualWindow() {
     toast.warning(
-      t?.("specifyTimeMinWindowWarning") ??
-        "The selected window must be at least 5 minutes.",
+      t?.("specifyTimeMinWindowWarning") ?? "The selected window must be at least 5 minutes.",
     );
   }
 

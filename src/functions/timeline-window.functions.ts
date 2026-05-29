@@ -197,7 +197,8 @@ async function buildServerChampionLocalization({
   const names = await koreanChampionNameMap();
   const rows = [...champions]
     .map((champion) => {
-      const localized = names[championFilename(champion)] ?? KOREAN_CHAMPION_NAME_OVERRIDES[champion];
+      const localized =
+        names[championFilename(champion)] ?? KOREAN_CHAMPION_NAME_OVERRIDES[champion];
       return localized && localized !== champion ? `- ${champion} → ${localized}` : null;
     })
     .filter((row): row is string => row !== null);
@@ -310,13 +311,19 @@ function apiKey(): string {
 
 function aiGatewayUrl(): string {
   const url = process.env.AI_GATEWAY_URL;
-  if (!url) throw new Error("AI gateway URL is not configured on the server.");
+  if (!url) {
+    console.error("[ai-service] AI_GATEWAY_URL is not configured.");
+    throw new Error("AI service is unavailable. Please try again later.");
+  }
   return url;
 }
 
 function aiGatewayToken(): string {
   const token = process.env.AI_GATEWAY_TOKEN;
-  if (!token) throw new Error("AI gateway token is not configured on the server.");
+  if (!token) {
+    console.error("[ai-service] AI_GATEWAY_TOKEN is not configured.");
+    throw new Error("AI service is unavailable. Please try again later.");
+  }
   return token;
 }
 
@@ -675,10 +682,7 @@ function teamRoster(participants: ParticipantInfo[], teamId: number): string {
     .join(", ");
 }
 
-function trimEvidence(
-  items: InternalWindowItem[],
-  subjectIds: Set<number>,
-): InternalWindowItem[] {
+function trimEvidence(items: InternalWindowItem[], subjectIds: Set<number>): InternalWindowItem[] {
   if (items.length <= 40 && subjectIds.size === 0) return items;
 
   const evidence: InternalWindowItem[] = [];
@@ -1189,7 +1193,7 @@ function outputEventSummary(item: OutputWindowItem, championTeams: ChampionTeamL
     const killer = item.killer;
     const actorTeam = isUnknownKiller(killer)
       ? normalizedTeam(item.team)
-      : teamForChampion(killer, championTeams) ?? normalizedTeam(item.team);
+      : (teamForChampion(killer, championTeams) ?? normalizedTeam(item.team));
     const destroyedTeam = structure?.ownerTeam ?? oppositeTeam(actorTeam);
     const lane = structure?.lane ?? fallbackLane(item.laneType);
     const structureName = structure?.name ?? fallbackStructureName(item);
@@ -1216,7 +1220,7 @@ function outputEventSummary(item: OutputWindowItem, championTeams: ChampionTeamL
     const destroyedTeam = normalizedTeam(item.team);
     const actorTeam = isUnknownKiller(item.killer)
       ? oppositeTeam(destroyedTeam)
-      : teamForChampion(item.killer, championTeams) ?? oppositeTeam(destroyedTeam);
+      : (teamForChampion(item.killer, championTeams) ?? oppositeTeam(destroyedTeam));
     const lane = structure?.lane ?? "Unknown";
     const structureName = structure?.name ?? "Unknown Turret";
 
@@ -1243,7 +1247,9 @@ function chronologicalContextLine(
   item: OutputWindowItem,
   championTeams: ChampionTeamLookup,
 ): string {
-  return outputItemType(item) === "frame" ? frameSummary(item) : outputEventSummary(item, championTeams);
+  return outputItemType(item) === "frame"
+    ? frameSummary(item)
+    : outputEventSummary(item, championTeams);
 }
 
 function buildBriefFromOutput(evidence: OutputWindowItem[]): string {
@@ -1471,9 +1477,7 @@ function buildJudgePrompt({
     subjectB: subjectBChampion ?? "",
   };
   const teamRoster = freeForAllTeam.length
-    ? freeForAllTeam
-        .map((player) => `- ${player.champion}`)
-        .join("\n")
+    ? freeForAllTeam.map((player) => `- ${player.champion}`).join("\n")
     : "- Selected defeated-team roster unavailable.";
   const upperPrompt =
     verdictMode === "free-for-all"
@@ -1591,11 +1595,11 @@ function buildStoredVerdictPlayers(
 ): StoredVerdictPlayer[] {
   const selectors =
     data.verdictMode === "free-for-all"
-      ? data.freeForAllTeam?.map((player) => ({
+      ? (data.freeForAllTeam?.map((player) => ({
           puuid: player.puuid,
           champion: player.champion,
           summoner: player.summoner,
-        })) ?? []
+        })) ?? [])
       : [
           { puuid: data.subjects?.a?.puuid, champion: data.subjects?.a?.champion },
           { puuid: data.subjects?.b?.puuid, champion: data.subjects?.b?.champion },
@@ -1837,9 +1841,7 @@ async function callAiGateway(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
-        timedOut
-          ? "AI request timed out. Please try again."
-          : "AI verdict request was cancelled.",
+        timedOut ? "AI request timed out. Please try again." : "AI verdict request was cancelled.",
       );
     }
     throw error;
@@ -1855,14 +1857,21 @@ async function callAiGateway(
     } catch {
       gatewayError = undefined;
     }
-    if (gatewayError) throw new Error(gatewayError);
+
+    if (gatewayError) {
+      console.error("[ai-gateway] request failed", {
+        status: res.status,
+        error: gatewayError,
+      });
+    }
+
     if (res.status === 401 || res.status === 403) {
-      throw new Error("AI API access is unavailable. Check the server API key.");
+      throw new Error("AI service is unavailable. Please try again later.");
     }
     if (res.status === 429) {
       throw new Error("AI rate limit reached. Please wait and try again.");
     }
-    throw new Error(`AI API request failed with status ${res.status}.`);
+    throw new Error("AI request failed. Please try again.");
   }
 
   const raw = (await res.json()) as AiGatewayResponse;

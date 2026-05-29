@@ -127,7 +127,10 @@ export function MatchupHeader({
     return (
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         {players.map((player, index) => (
-          <div key={`${player.puuid ?? player.summoner}-${index}`} className="flex items-center gap-3">
+          <div
+            key={`${player.puuid ?? player.summoner}-${index}`}
+            className="flex items-center gap-3"
+          >
             {index > 0 ? <span className="text-lg font-bold text-muted-foreground">vs</span> : null}
             <Tile
               name={player.summoner}

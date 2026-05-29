@@ -1,11 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Star, Swords, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { MatchCard } from "@/components/MatchCard";
@@ -61,7 +55,10 @@ function Index() {
           north & south ads (AdFrame's middle row is flex-1 in fit
           mode). Padding is reduced so the form stays visible on
           shorter viewports without scrolling. */}
-      <div className="min-h-[calc(100dvh-4rem)] sm:min-h-[calc(100dvh-5rem)]" style={{ background: "var(--gradient-hero)" }}>
+      <div
+        className="min-h-[calc(100dvh-4rem)] sm:min-h-[calc(100dvh-5rem)]"
+        style={{ background: "var(--gradient-hero)" }}
+      >
         <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-3xl flex-col items-center justify-center px-3 py-16 sm:min-h-[calc(100dvh-5rem)] sm:px-4 sm:py-8 md:py-10">
           <div className="mb-3 flex items-center gap-2 text-center text-[10px] font-semibold uppercase tracking-[0.22em] text-gold sm:text-xs sm:tracking-[0.3em]">
             <Swords className="h-3.5 w-3.5" /> {t("heroLabel")}
@@ -129,7 +126,9 @@ export function MatchHistory({
   const rankedEntries = rawRankedEntries ?? { solo: ranked, flex: null };
   const [rankedQueue, setRankedQueue] = useState<"solo" | "flex">("solo");
   const displayedRanked: RankedEntry | null =
-    SHOW_DEV_CONTEXT && rankedQueue === "flex" ? rankedEntries.flex : rankedEntries.solo ?? ranked;
+    SHOW_DEV_CONTEXT && rankedQueue === "flex"
+      ? rankedEntries.flex
+      : (rankedEntries.solo ?? ranked);
   // ─── Stats vs. visible split ─────────────────────────────────────────
   // We cache up to 30 matches server-side (see `MATCH_COUNT`) so the
   // Performance Block selector (10 / 20 / 30) can slice locally with no
@@ -150,12 +149,17 @@ export function MatchHistory({
   }, [account.puuid]);
 
   const sharedMatchIndex = sharedVerdict?.matchId
-    ? matches.findIndex((match) => match.riotMatchId === sharedVerdict.matchId || match.id === sharedVerdict.matchId)
+    ? matches.findIndex(
+        (match) =>
+          match.riotMatchId === sharedVerdict.matchId || match.id === sharedVerdict.matchId,
+      )
     : -1;
   const sharedMatchVisibleCount =
     sharedMatchIndex >= 0 && sharedMatchIndex < EXPANDED_VISIBLE ? sharedMatchIndex + 1 : 0;
   const directMatchIndex = openVerdictMatchId
-    ? matches.findIndex((match) => match.riotMatchId === openVerdictMatchId || match.id === openVerdictMatchId)
+    ? matches.findIndex(
+        (match) => match.riotMatchId === openVerdictMatchId || match.id === openVerdictMatchId,
+      )
     : -1;
   const directMatchVisibleCount =
     directMatchIndex >= 0 && directMatchIndex < EXPANDED_VISIBLE ? directMatchIndex + 1 : 0;
@@ -174,10 +178,7 @@ export function MatchHistory({
 
   // How many more matches the user could reveal by clicking the button.
   // 0 means "hide the button entirely" (already at cap or not enough cached).
-  const remainingCount = Math.max(
-    0,
-    Math.min(EXPANDED_VISIBLE, matches.length) - visibleCount,
-  );
+  const remainingCount = Math.max(0, Math.min(EXPANDED_VISIBLE, matches.length) - visibleCount);
 
   // Ref pointed at the FIRST newly-revealed card (index === INITIAL_VISIBLE).
   // Scroll it into view after expansion so the user immediately sees the
@@ -433,9 +434,7 @@ export function MatchHistory({
               // lookup — RosterColumns uses it for de-dup.
               const safeName = account.gameName?.trim() || "You";
               const safeTag = account.tagLine?.trim() || "";
-              const youSummoner = safeTag
-                ? `${safeName}#${safeTag}`
-                : safeName;
+              const youSummoner = safeTag ? `${safeName}#${safeTag}` : safeName;
               const you: Participant = {
                 champion: m.champion,
                 summoner: youSummoner,
@@ -456,11 +455,11 @@ export function MatchHistory({
               const isFirstNewMatch = idx === INITIAL_VISIBLE;
               const isSharedMatch = Boolean(
                 sharedVerdict?.matchId &&
-                  (m.riotMatchId === sharedVerdict.matchId || m.id === sharedVerdict.matchId),
+                (m.riotMatchId === sharedVerdict.matchId || m.id === sharedVerdict.matchId),
               );
               const shouldOpenDirectVerdict = Boolean(
                 openVerdictMatchId &&
-                  (m.riotMatchId === openVerdictMatchId || m.id === openVerdictMatchId),
+                (m.riotMatchId === openVerdictMatchId || m.id === openVerdictMatchId),
               );
               return (
                 <div
@@ -470,9 +469,9 @@ export function MatchHistory({
                       ? sharedMatchRef
                       : shouldOpenDirectVerdict
                         ? directMatchRef
-                      : isFirstNewMatch
-                        ? firstNewMatchRef
-                        : undefined
+                        : isFirstNewMatch
+                          ? firstNewMatchRef
+                          : undefined
                   }
                 >
                   <MatchCard
@@ -484,11 +483,7 @@ export function MatchHistory({
                     profileShard={shard}
                     profileGameName={account.gameName}
                     profileTagLine={account.tagLine}
-                    openJudgeRequest={
-                      shouldOpenDirectVerdict
-                        ? directJudgeRequest
-                        : 0
-                    }
+                    openJudgeRequest={shouldOpenDirectVerdict ? directJudgeRequest : 0}
                     onProfileInteraction={onProfileInteraction}
                     sharedVerdict={isSharedMatch ? sharedVerdict : null}
                     onSharedNewVerdict={
@@ -528,7 +523,9 @@ export function MatchHistory({
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div>
-      <div className={`text-2xl font-bold ${accent ? "text-gold" : "text-foreground"}`}>{value}</div>
+      <div className={`text-2xl font-bold ${accent ? "text-gold" : "text-foreground"}`}>
+        {value}
+      </div>
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
     </div>
   );

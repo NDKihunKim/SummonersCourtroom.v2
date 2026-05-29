@@ -14,9 +14,7 @@ import { toast } from "sonner";
 import { RegionPicker } from "@/components/RegionPicker";
 import { SearchSuggestions } from "@/components/SearchSuggestions";
 import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
-import {
-  getOrFetchMatchHistory,
-} from "@/functions/summoner-cache.functions";
+import { getOrFetchMatchHistory } from "@/functions/summoner-cache.functions";
 import { useRecentSearches } from "@/hooks/useRecentSearches";
 import { useSavedPlayers } from "@/hooks/useSavedPlayers";
 import { useShard } from "@/hooks/useShard";
@@ -147,7 +145,9 @@ export function SummonerSearchBar({
       mutation.mutate({ ...parsed, shard, turnstileToken });
     } catch (error) {
       setIsSearchVerifying(false);
-      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
+      toast.error(
+        error instanceof Error ? error.message : "Human verification failed. Please try again.",
+      );
     }
   }
 
@@ -166,14 +166,18 @@ export function SummonerSearchBar({
       });
     } catch (error) {
       setIsSearchVerifying(false);
-      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
+      toast.error(
+        error instanceof Error ? error.message : "Human verification failed. Please try again.",
+      );
     }
   }
 
   function handleClearAll() {
     const cleared = clearAll();
     if (cleared > 0) {
-      toast.success(t("clearedRecentSearches", { count: cleared, plural: cleared === 1 ? "" : "es" }));
+      toast.success(
+        t("clearedRecentSearches", { count: cleared, plural: cleared === 1 ? "" : "es" }),
+      );
     }
   }
 
@@ -192,7 +196,11 @@ export function SummonerSearchBar({
   }
 
   function onInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
-    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !isSuggestOpen && suggestions.length > 0) {
+    if (
+      (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+      !isSuggestOpen &&
+      suggestions.length > 0
+    ) {
       setIsSuggestOpen(true);
       e.preventDefault();
       return;

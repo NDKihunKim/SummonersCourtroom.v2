@@ -32,9 +32,7 @@ Do not use outside match knowledge, hidden information, matchup theory, vision a
 
 export function buildFreeForAllUpperPrompt(champions: readonly string[]) {
   const championList =
-    champions.length > 0
-      ? champions.join(", ")
-      : "the selected defeated-team champions";
+    champions.length > 0 ? champions.join(", ") : "the selected defeated-team champions";
 
   return `${UPPER_PROMPT.replace(
     "Your task is to compare SUBJECT_A and SUBJECT_B and decide which subject shows greater process fault within the provided context window.",
@@ -234,8 +232,8 @@ export function buildFreeForAllLowerPrompt(
     .replaceAll("subject's", "selected player's")
     .replaceAll("subject", "selected player")
     .replace(
-      "- Line 1: Output only the selected champion name. Do not include \"Verdict:\", \"is more at fault\", \"판결:\", or any other words on this line. Pick exactly one selected player; no ties here because ties are handled above.",
-      "- Line 1: Output only the champion name of the selected defeated-team player who was most at fault. Do not include \"Verdict:\", \"is more at fault\", \"판결:\", or any other words on this line. Pick exactly one player from the selected defeated-team list; no ties here because ties are handled above.",
+      '- Line 1: Output only the selected champion name. Do not include "Verdict:", "is more at fault", "판결:", or any other words on this line. Pick exactly one selected player; no ties here because ties are handled above.',
+      '- Line 1: Output only the champion name of the selected defeated-team player who was most at fault. Do not include "Verdict:", "is more at fault", "판결:", or any other words on this line. Pick exactly one player from the selected defeated-team list; no ties here because ties are handled above.',
     );
 
   return `${base}

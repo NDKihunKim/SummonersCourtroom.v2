@@ -1,11 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import {
-  TimeRangePicker,
-  type TimeRange,
-  MIN_WINDOW_MS,
-  MAX_WINDOW_MS,
-} from "./TimeRangePicker";
+import { TimeRangePicker, type TimeRange, MIN_WINDOW_MS, MAX_WINDOW_MS } from "./TimeRangePicker";
 import { TimelineWindowResult } from "./TimelineWindowResult";
 import type { Match, Participant } from "@/lib/match-types";
 import type { Locale, TranslationKey } from "@/i18n";
@@ -171,12 +166,7 @@ export function ScopeSpecifyTime({
       </div>
 
       <div className="flex flex-col items-center gap-4">
-        <TimeRangePicker
-          gameDurationMs={gameDurationMs}
-          value={range}
-          onChange={setRange}
-          t={t}
-        />
+        <TimeRangePicker gameDurationMs={gameDurationMs} value={range} onChange={setRange} t={t} />
 
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button

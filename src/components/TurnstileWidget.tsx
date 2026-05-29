@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 
 declare global {
   interface Window {
@@ -67,17 +67,17 @@ export const TurnstileWidget = forwardRef<TurnstileHandle, { siteKey?: string; r
       reject: (error: Error) => void;
     } | null>(null);
 
-    function settleToken(token: string | undefined) {
+    const settleToken = useCallback((token: string | undefined) => {
       pendingRef.current?.resolve(token);
       pendingRef.current = null;
-    }
+    }, []);
 
-    function rejectToken(message: string) {
+    const rejectToken = useCallback((message: string) => {
       pendingRef.current?.reject(new Error(message));
       pendingRef.current = null;
-    }
+    }, []);
 
-    function renderWidget() {
+    const renderWidget = useCallback(() => {
       if (!siteKey || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
@@ -89,7 +89,7 @@ export const TurnstileWidget = forwardRef<TurnstileHandle, { siteKey?: string; r
         "expired-callback": () => rejectToken("Human verification expired. Please try again."),
         "error-callback": () => rejectToken("Human verification failed. Please try again."),
       });
-    }
+    }, [rejectToken, settleToken, siteKey]);
 
     useEffect(() => {
       if (!siteKey || !containerRef.current) return;
@@ -109,7 +109,7 @@ export const TurnstileWidget = forwardRef<TurnstileHandle, { siteKey?: string; r
           widgetIdRef.current = null;
         }
       };
-    }, [siteKey]);
+    }, [rejectToken, renderWidget, siteKey]);
 
     useEffect(() => {
       if (widgetIdRef.current && window.turnstile) window.turnstile.reset(widgetIdRef.current);
@@ -140,7 +140,7 @@ export const TurnstileWidget = forwardRef<TurnstileHandle, { siteKey?: string; r
           if (widgetIdRef.current && window.turnstile) window.turnstile.reset(widgetIdRef.current);
         },
       }),
-      [siteKey],
+      [renderWidget, siteKey],
     );
 
     if (!siteKey) return null;

@@ -191,11 +191,7 @@ export function detectShardFromTimezone(
   if (tz.startsWith("Europe/")) {
     // Anything Europe/* not in the explicit table — assume EUW which is the
     // dominant shard, unless the locale is clearly Eastern.
-    if (
-      langLower.startsWith("ru") ||
-      langLower.startsWith("uk") ||
-      langLower.startsWith("be")
-    ) {
+    if (langLower.startsWith("ru") || langLower.startsWith("uk") || langLower.startsWith("be")) {
       return "RU";
     }
     if (langLower.startsWith("tr")) return "TR";

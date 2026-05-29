@@ -12,13 +12,10 @@ export function getAnonymousId(): string {
     if (existing) return existing;
 
     const next =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : fallbackId();
+      typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : fallbackId();
     window.localStorage.setItem(STORAGE_KEY, next);
     return next;
   } catch {
     return fallbackId();
   }
 }
-

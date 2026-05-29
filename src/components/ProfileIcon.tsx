@@ -40,10 +40,7 @@ export function ProfileIcon({ iconId, seed, size = 56, level, className = "", al
   }
 
   return (
-    <div
-      className={`relative inline-block ${className}`}
-      style={{ width: size, height: size }}
-    >
+    <div className={`relative inline-block ${className}`} style={{ width: size, height: size }}>
       <img
         src={profileIconUrl(iconId, version)}
         alt={alt ?? "Summoner profile icon"}

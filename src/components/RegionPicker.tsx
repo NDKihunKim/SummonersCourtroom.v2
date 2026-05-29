@@ -1,17 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import {
-  Select,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  DEFAULT_SHARD,
-  getShardInfo,
-  type ShardInfo,
-  type Shard,
-} from "@/lib/regions";
+import { Select, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DEFAULT_SHARD, getShardInfo, type ShardInfo, type Shard } from "@/lib/regions";
 import type { TranslationKey } from "@/i18n";
 
 interface RegionPickerProps {
@@ -38,9 +28,7 @@ function ShardRow({ shard }: { shard: ShardInfo }) {
     <span className="flex w-full items-center gap-2">
       {showEmoji && <span aria-hidden="true">{shard.emoji}</span>}
       <span className="font-semibold">{shard.label}</span>
-      <span className="ml-auto truncate text-xs text-muted-foreground">
-        {shard.fullName}
-      </span>
+      <span className="ml-auto truncate text-xs text-muted-foreground">{shard.fullName}</span>
     </span>
   );
 }
@@ -106,7 +94,12 @@ export function RegionPicker({ value, onChange, onOpenChange, t }: RegionPickerP
   }
 
   return (
-    <Select value={current.code} onValueChange={(v) => onChange(v as Shard)} open={open} onOpenChange={handleOpenChange}>
+    <Select
+      value={current.code}
+      onValueChange={(v) => onChange(v as Shard)}
+      open={open}
+      onOpenChange={handleOpenChange}
+    >
       <SelectTrigger
         // Borderless pill that lives inside the search-bar container.
         className="h-full w-auto min-w-[88px] gap-1.5 border-0 bg-transparent px-3 font-semibold text-foreground shadow-none focus:ring-0 focus:ring-offset-0"

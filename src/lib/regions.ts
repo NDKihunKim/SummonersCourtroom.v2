@@ -8,10 +8,23 @@
 export type RoutingRegion = "americas" | "europe" | "asia" | "sea";
 
 export type Shard =
-  | "NA" | "BR" | "LAN" | "LAS"
-  | "EUW" | "EUNE" | "RU" | "TR" | "ME"
-  | "KR" | "JP" | "TW"
-  | "OCE" | "SEA" | "TH" | "PH" | "VN";
+  | "NA"
+  | "BR"
+  | "LAN"
+  | "LAS"
+  | "EUW"
+  | "EUNE"
+  | "RU"
+  | "TR"
+  | "ME"
+  | "KR"
+  | "JP"
+  | "TW"
+  | "OCE"
+  | "SEA"
+  | "TH"
+  | "PH"
+  | "VN";
 
 export interface ShardInfo {
   code: Shard;
@@ -33,29 +46,92 @@ export interface ShardInfo {
 // Order within each group reflects rough player-base size for nicer UX.
 export const SHARDS: ShardInfo[] = [
   // Americas
-  { code: "NA",   label: "NA",   emoji: "🇺🇸", fullName: "North America",       routing: "americas", platform: "na1" },
-  { code: "BR",   label: "BR",   emoji: "🇧🇷", fullName: "Brazil",              routing: "americas", platform: "br1" },
-  { code: "LAN",  label: "LAN",  emoji: "🇲🇽", fullName: "Latin America North", routing: "americas", platform: "la1" },
-  { code: "LAS",  label: "LAS",  emoji: "🇦🇷", fullName: "Latin America South", routing: "americas", platform: "la2" },
+  {
+    code: "NA",
+    label: "NA",
+    emoji: "🇺🇸",
+    fullName: "North America",
+    routing: "americas",
+    platform: "na1",
+  },
+  {
+    code: "BR",
+    label: "BR",
+    emoji: "🇧🇷",
+    fullName: "Brazil",
+    routing: "americas",
+    platform: "br1",
+  },
+  {
+    code: "LAN",
+    label: "LAN",
+    emoji: "🇲🇽",
+    fullName: "Latin America North",
+    routing: "americas",
+    platform: "la1",
+  },
+  {
+    code: "LAS",
+    label: "LAS",
+    emoji: "🇦🇷",
+    fullName: "Latin America South",
+    routing: "americas",
+    platform: "la2",
+  },
 
   // Europe
-  { code: "EUW",  label: "EUW",  emoji: "🇪🇺", fullName: "Europe West",            routing: "europe", platform: "euw1" },
-  { code: "EUNE", label: "EUNE", emoji: "❄️", fullName: "Europe Nordic & East",   routing: "europe", platform: "eun1" },
-  { code: "RU",   label: "RU",   emoji: "🇷🇺", fullName: "Russia",                 routing: "europe", platform: "ru" },
-  { code: "TR",   label: "TR",   emoji: "🇹🇷", fullName: "Turkey",                 routing: "europe", platform: "tr1" },
-  { code: "ME",   label: "ME",   emoji: "🕌", fullName: "Middle East",            routing: "europe", platform: "me1" },
+  {
+    code: "EUW",
+    label: "EUW",
+    emoji: "🇪🇺",
+    fullName: "Europe West",
+    routing: "europe",
+    platform: "euw1",
+  },
+  {
+    code: "EUNE",
+    label: "EUNE",
+    emoji: "❄️",
+    fullName: "Europe Nordic & East",
+    routing: "europe",
+    platform: "eun1",
+  },
+  { code: "RU", label: "RU", emoji: "🇷🇺", fullName: "Russia", routing: "europe", platform: "ru" },
+  { code: "TR", label: "TR", emoji: "🇹🇷", fullName: "Turkey", routing: "europe", platform: "tr1" },
+  {
+    code: "ME",
+    label: "ME",
+    emoji: "🕌",
+    fullName: "Middle East",
+    routing: "europe",
+    platform: "me1",
+  },
 
   // Asia
-  { code: "KR",   label: "KR",   emoji: "🇰🇷", fullName: "Korea",                  routing: "asia", platform: "kr" },
-  { code: "JP",   label: "JP",   emoji: "🇯🇵", fullName: "Japan",                  routing: "asia", platform: "jp1" },
-  { code: "TW",   label: "TW",   emoji: "🇹🇼", fullName: "Taiwan",                 routing: "asia", platform: "tw2" },
+  { code: "KR", label: "KR", emoji: "🇰🇷", fullName: "Korea", routing: "asia", platform: "kr" },
+  { code: "JP", label: "JP", emoji: "🇯🇵", fullName: "Japan", routing: "asia", platform: "jp1" },
+  { code: "TW", label: "TW", emoji: "🇹🇼", fullName: "Taiwan", routing: "asia", platform: "tw2" },
 
   // SEA
-  { code: "OCE",  label: "OCE",  emoji: "🇦🇺", fullName: "Oceania",                          routing: "sea", platform: "oc1" },
-  { code: "SEA",  label: "SEA",  emoji: "🇸🇬", fullName: "Singapore, Malaysia, Indonesia",   routing: "sea", platform: "sg2" },
-  { code: "TH",   label: "TH",   emoji: "🇹🇭", fullName: "Thailand",                         routing: "sea", platform: "th2" },
-  { code: "PH",   label: "PH",   emoji: "🇵🇭", fullName: "Philippines",                      routing: "sea", platform: "ph2" },
-  { code: "VN",   label: "VN",   emoji: "🇻🇳", fullName: "Vietnam",                          routing: "sea", platform: "vn2" },
+  { code: "OCE", label: "OCE", emoji: "🇦🇺", fullName: "Oceania", routing: "sea", platform: "oc1" },
+  {
+    code: "SEA",
+    label: "SEA",
+    emoji: "🇸🇬",
+    fullName: "Singapore, Malaysia, Indonesia",
+    routing: "sea",
+    platform: "sg2",
+  },
+  { code: "TH", label: "TH", emoji: "🇹🇭", fullName: "Thailand", routing: "sea", platform: "th2" },
+  {
+    code: "PH",
+    label: "PH",
+    emoji: "🇵🇭",
+    fullName: "Philippines",
+    routing: "sea",
+    platform: "ph2",
+  },
+  { code: "VN", label: "VN", emoji: "🇻🇳", fullName: "Vietnam", routing: "sea", platform: "vn2" },
 ];
 
 /** O(1) lookup map built once at module load. */
@@ -70,9 +146,9 @@ const SHARD_BY_CODE: Record<string, ShardInfo> = SHARDS.reduce(
 /** Display label per routing cluster, used as group headings in the dropdown. */
 export const ROUTING_LABELS: Record<RoutingRegion, { label: string; emoji: string }> = {
   americas: { label: "Americas", emoji: "🌎" },
-  europe:   { label: "Europe",   emoji: "🌍" },
-  asia:     { label: "Asia",     emoji: "🌏" },
-  sea:      { label: "SEA",      emoji: "🏝️" },
+  europe: { label: "Europe", emoji: "🌍" },
+  asia: { label: "Asia", emoji: "🌏" },
+  sea: { label: "SEA", emoji: "🏝️" },
 };
 
 /** Shards grouped by routing cluster, preserving SHARDS array order. */

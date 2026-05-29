@@ -105,10 +105,7 @@ export type RiotSummoner = {
  * sites should treat a failure as best-effort and fall back to the letter
  * avatar.
  */
-export function getSummonerByPuuid(
-  puuid: string,
-  platform: string,
-): Promise<RiotSummoner> {
+export function getSummonerByPuuid(puuid: string, platform: string): Promise<RiotSummoner> {
   return riotGet<RiotSummoner>(
     `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`,
   );
@@ -156,7 +153,7 @@ export type RiotMatchParticipant = {
   perks?: {
     styles?: Array<{
       description?: string; // "primaryStyle" | "subStyle"
-      style?: number;       // tree id (8000, 8100, 8200, 8300, 8400)
+      style?: number; // tree id (8000, 8100, 8200, 8300, 8400)
       selections?: Array<{ perk?: number }>;
     }>;
   };

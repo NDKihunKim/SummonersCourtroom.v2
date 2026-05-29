@@ -246,7 +246,8 @@ export function SearchSuggestions({
             className="flex w-full items-center justify-center gap-2 px-4 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            {t?.("clearAllHistory", { count: recentsCount }) ?? `Clear all history (${recentsCount})`}
+            {t?.("clearAllHistory", { count: recentsCount }) ??
+              `Clear all history (${recentsCount})`}
           </button>
         </div>
       )}

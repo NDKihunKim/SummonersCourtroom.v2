@@ -15,10 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Shard } from "@/lib/regions";
-import {
-  refreshSummoner,
-  type CachedSummonerPayload,
-} from "@/functions/summoner-cache.functions";
+import { refreshSummoner, type CachedSummonerPayload } from "@/functions/summoner-cache.functions";
 import type { TranslationKey } from "@/i18n";
 import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
 
@@ -125,7 +122,9 @@ export function RefreshButton({
       mutation.mutate(turnstileToken);
     } catch (error) {
       setIsVerifying(false);
-      toast.error(error instanceof Error ? error.message : "Human verification failed. Please try again.");
+      toast.error(
+        error instanceof Error ? error.message : "Human verification failed. Please try again.",
+      );
     }
   }
 
@@ -139,7 +138,7 @@ export function RefreshButton({
         title={
           onCooldown
             ? `${t?.("availableIn") ?? "Available in"} ${Math.ceil(cooldownRemainingMs / 1000)}s`
-            : t?.("refreshMatchHistory") ?? "Refresh match history"
+            : (t?.("refreshMatchHistory") ?? "Refresh match history")
         }
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card transition-colors hover:border-gold hover:text-gold disabled:cursor-not-allowed disabled:opacity-50"
       >
@@ -149,18 +148,12 @@ export function RefreshButton({
           <RefreshCw className="h-4 w-4" />
         )}
       </button>
-      <span
-        className={`text-xs ${stale ? "text-gold" : "text-muted-foreground"}`}
-      >
+      <span className={`text-xs ${stale ? "text-gold" : "text-muted-foreground"}`}>
         {onCooldown
           ? `${t?.("availableIn") ?? "Available in"} ${Math.ceil(cooldownRemainingMs / 1000)}s`
           : `${t?.("updated") ?? "Updated"} ${formatAgo(cachedAt, now, t)}`}
       </span>
-      <TurnstileWidget
-        ref={turnstileRef}
-        siteKey={turnstileSiteKey}
-        resetKey={turnstileResetKey}
-      />
+      <TurnstileWidget ref={turnstileRef} siteKey={turnstileSiteKey} resetKey={turnstileResetKey} />
     </div>
   );
 }

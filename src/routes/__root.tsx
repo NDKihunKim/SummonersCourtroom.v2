@@ -47,8 +47,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "Summoner's Courtroom" },
       {
         property: "og:description",
-        content:
-          "Post-game League of Legends match review with AI-assisted verdict context.",
+        content: "Post-game League of Legends match review with AI-assisted verdict context.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

@@ -15,11 +15,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  DEFAULT_SAMPLE_SIZE,
-  isSampleSize,
-  type SampleSize,
-} from "@/lib/match-stats";
+import { DEFAULT_SAMPLE_SIZE, isSampleSize, type SampleSize } from "@/lib/match-stats";
 
 /** localStorage key — namespaced like the other riftlog preferences. */
 const STORAGE_KEY = "riftlog:sample-size";

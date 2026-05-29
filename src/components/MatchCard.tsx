@@ -62,6 +62,26 @@ function isAbortLikeError(error: unknown): boolean {
   );
 }
 
+function getReadableVerdictError(error: unknown): string {
+  if (!(error instanceof Error)) return "AI verdict request failed. Please try again.";
+
+  const message = error.message.trim();
+  if (!message) return "AI verdict request failed. Please try again.";
+
+  const lower = message.toLowerCase();
+  const looksInternal =
+    lower.includes("gateway") ||
+    lower.includes("api key") ||
+    lower.includes("bearer") ||
+    lower.includes("token") ||
+    lower.includes("model") ||
+    lower.includes("provider") ||
+    lower.includes("stack") ||
+    lower.includes("trace");
+
+  return looksInternal ? "AI verdict request failed. Please try again." : message;
+}
+
 function addFreeForAllContextParams(params: URLSearchParams, team: Participant[]) {
   if (team.length === 0) return;
   params.set("verdictMode", "free-for-all");
@@ -414,7 +434,8 @@ export function MatchCard({
   }
 
   function reset() {
-    clearMockLoadingTimers();
+    mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
+    mockLoadingTimersRef.current = [];
     setStage("closed");
     setFaultMode("me-vs-1");
     setShowEnemyTeam(false);
@@ -452,7 +473,23 @@ export function MatchCard({
   useEffect(() => {
     if (openJudgeRequest === lastOpenJudgeRequestRef.current) return;
     lastOpenJudgeRequestRef.current = openJudgeRequest;
-    if (openJudgeRequest > 0) startFreshVerdict();
+    if (openJudgeRequest <= 0) return;
+
+    clearMockLoadingTimers();
+    setStage("pickAlly");
+    setFaultMode("me-vs-1");
+    setShowEnemyTeam(false);
+    setPickedSubjectA(null);
+    setPickedAlly(null);
+    setFreeForAllSelection([]);
+    setReasoning(null);
+    setVerdictDisplay(null);
+    setCompleted(new Set());
+    setActiveStep("contextualize");
+    setVerdictScope(null);
+    setVerdictWindow(null);
+    setShareUrl(null);
+    setSharing(false);
   }, [openJudgeRequest]);
 
   function showMockWindowResult(windowRange: [number, number]) {
@@ -625,7 +662,7 @@ export function MatchCard({
       setStage("verdict");
     } catch (e) {
       if (verdictAbortController.signal.aborted || isAbortLikeError(e)) return;
-      toast.error(e instanceof Error ? e.message : "AI verdict request failed.");
+      toast.error(getReadableVerdictError(e));
       reset();
     } finally {
       if (verdictAbortControllerRef.current === verdictAbortController) {
@@ -877,11 +914,7 @@ export function MatchCard({
       {expanded && (
         <div className="border-t border-border bg-background/40 px-4 py-5 animate-fade-in">
           {sharedVerdict && stage === "closed" && (
-            <SharedVerdictResult
-              verdict={sharedVerdict}
-              t={t}
-              onNewVerdict={onSharedNewVerdict}
-            />
+            <SharedVerdictResult verdict={sharedVerdict} t={t} onNewVerdict={onSharedNewVerdict} />
           )}
 
           {!sharedVerdict && (stage === "pickAlly" || stage === "pickScope") && (

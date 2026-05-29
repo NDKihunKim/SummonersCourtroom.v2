@@ -35,7 +35,9 @@ export async function assertTurnstile(token: string | undefined) {
   const secret = turnstileSecret();
   if (isLocalRequest() || import.meta.env.DEV) return;
   if (!secret) {
-    console.error("[turnstile] TURNSTILE_SECRET_KEY is missing for a protected production request.");
+    console.error(
+      "[turnstile] TURNSTILE_SECRET_KEY is missing for a protected production request.",
+    );
     throw new Error("Human verification is unavailable. Please try again later.");
   }
   if (!token) throw new Error("Human verification is required. Please try again.");

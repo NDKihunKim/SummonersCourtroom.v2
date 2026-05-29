@@ -44,7 +44,7 @@ const CHAMPION_FILENAME_OVERRIDES: Record<string, string> = {
   "Kai'Sa": "Kaisa",
   "Kha'Zix": "Khazix",
   "Kog'Maw": "KogMaw",
-  "LeBlanc": "Leblanc",
+  LeBlanc: "Leblanc",
   "Vel'Koz": "Velkoz",
   "Rek'Sai": "RekSai",
   "K'Sante": "KSante",
@@ -120,7 +120,10 @@ function ddragonLanguage(locale: Locale): string {
   return locale === "ko" ? "ko_KR" : "en_US";
 }
 
-async function fetchChampionNameMap(version: string, locale: Locale): Promise<Record<string, string>> {
+async function fetchChampionNameMap(
+  version: string,
+  locale: Locale,
+): Promise<Record<string, string>> {
   if (locale === "en") return {};
 
   const language = ddragonLanguage(locale);
@@ -250,7 +253,7 @@ export function useSummonerSpellNameFormatter(locale: Locale): (spellName: strin
 
   return (spellName: string) => {
     const file = SUMMONER_SPELL_FILENAMES[spellName];
-    return file ? data?.[file] ?? spellName : spellName;
+    return file ? (data?.[file] ?? spellName) : spellName;
   };
 }
 

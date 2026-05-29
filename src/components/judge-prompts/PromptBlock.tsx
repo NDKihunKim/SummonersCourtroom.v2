@@ -30,9 +30,7 @@ export function PromptBlock({
   // Tone → chip classes. Kept as a tiny lookup so adding a new tone later is
   // a one-line change and the JSX stays readable.
   const chipClass =
-    tone === "instruction"
-      ? "bg-hex-blue/20 text-hex-blue"
-      : "bg-gold/20 text-gold";
+    tone === "instruction" ? "bg-hex-blue/20 text-hex-blue" : "bg-gold/20 text-gold";
 
   return (
     <section className="rounded border border-border bg-card/40 p-3">

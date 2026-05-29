@@ -106,11 +106,7 @@ export function isPlayerSaved(
   return all.some((e) => keyOf(e) === k);
 }
 
-export function filterSavedPlayers(
-  all: SavedPlayer[],
-  query: string,
-  limit = 5,
-): SavedPlayer[] {
+export function filterSavedPlayers(all: SavedPlayer[], query: string, limit = 5): SavedPlayer[] {
   const scoped = [...all].sort((a, b) => b.savedAt - a.savedAt);
 
   const q = query.trim().toLowerCase();

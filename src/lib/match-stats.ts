@@ -18,10 +18,7 @@ export const DEFAULT_SAMPLE_SIZE: SampleSize = 10;
  * Used by the persistence hook to reject corrupt localStorage values.
  */
 export function isSampleSize(value: unknown): value is SampleSize {
-  return (
-    typeof value === "number" &&
-    (SAMPLE_SIZE_OPTIONS as readonly number[]).includes(value)
-  );
+  return typeof value === "number" && (SAMPLE_SIZE_OPTIONS as readonly number[]).includes(value);
 }
 
 export interface MatchStats {
@@ -51,10 +48,7 @@ export interface MatchStats {
  * - Defensive against an empty window — returns a zero-stat shape rather than
  *   throwing, so callers can render unconditionally.
  */
-export function computeMatchStats(
-  matches: readonly Match[],
-  sampleSize: number,
-): MatchStats {
+export function computeMatchStats(matches: readonly Match[], sampleSize: number): MatchStats {
   const sampleUsed = Math.min(Math.max(0, sampleSize | 0), matches.length);
 
   if (sampleUsed === 0) {

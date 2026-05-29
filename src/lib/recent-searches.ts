@@ -150,9 +150,7 @@ export function filterRecents(
   shard: Shard,
   limit = 5,
 ): RecentSearch[] {
-  const scoped = all
-    .filter((e) => e.shard === shard)
-    .sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+  const scoped = all.filter((e) => e.shard === shard).sort((a, b) => b.lastUsedAt - a.lastUsedAt);
 
   const q = query.trim().toLowerCase();
   if (!q) return scoped.slice(0, limit);

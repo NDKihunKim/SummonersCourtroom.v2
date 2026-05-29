@@ -66,7 +66,9 @@ function toParticipant(p: RiotMatchParticipant): Participant {
  * payload. Returns undefined when the match doesn't carry runes (some non-SR
  * queues, remakes) so the UI can render empty placeholders.
  */
-function extractRunes(p: RiotMatchParticipant): { keystoneId: number; secondaryStyleId: number } | undefined {
+function extractRunes(
+  p: RiotMatchParticipant,
+): { keystoneId: number; secondaryStyleId: number } | undefined {
   const styles = p.perks?.styles;
   if (!styles || styles.length === 0) return undefined;
   const primary = styles.find((s) => s.description === "primaryStyle") ?? styles[0];
@@ -142,9 +144,7 @@ export const getMatchHistory = createServerFn({ method: "POST" })
 
     // Fetch all matches in parallel; tolerate individual failures so one bad
     // match doesn't blank the whole history.
-    const settled = await Promise.allSettled(
-      matchIds.map((id) => fetchMatch(id, routing)),
-    );
+    const settled = await Promise.allSettled(matchIds.map((id) => fetchMatch(id, routing)));
 
     const matches: Match[] = [];
     for (const s of settled) {

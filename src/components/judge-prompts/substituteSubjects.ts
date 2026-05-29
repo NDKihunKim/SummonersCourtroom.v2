@@ -35,22 +35,21 @@ function escapeReplacement(value: string): string {
   return value.replace(/\$/g, "$$$$");
 }
 
-export function substituteSubjects(
-  text: string,
-  { subjectA, subjectB }: SubjectValues,
-): string {
+export function substituteSubjects(text: string, { subjectA, subjectB }: SubjectValues): string {
   // Fall back to the original token when a value is missing so the preview
   // stays informative instead of producing weird empty parentheses.
   const a = subjectA ? escapeReplacement(subjectA) : "SUBJECT_A";
   const b = subjectB ? escapeReplacement(subjectB) : "SUBJECT_B";
 
-  return text
-    // "<SUBJECT_A name>" / "<SUBJECT_B name>" — must come BEFORE the bare
-    // token replacement, otherwise the inner `SUBJECT_A` would be replaced
-    // first and we'd be left with a stray "<Champion name>" wrapper.
-    .replace(/<SUBJECT_A\s+name>/g, a)
-    .replace(/<SUBJECT_B\s+name>/g, b)
-    // Bare tokens.
-    .replace(/SUBJECT_A/g, a)
-    .replace(/SUBJECT_B/g, b);
+  return (
+    text
+      // "<SUBJECT_A name>" / "<SUBJECT_B name>" — must come BEFORE the bare
+      // token replacement, otherwise the inner `SUBJECT_A` would be replaced
+      // first and we'd be left with a stray "<Champion name>" wrapper.
+      .replace(/<SUBJECT_A\s+name>/g, a)
+      .replace(/<SUBJECT_B\s+name>/g, b)
+      // Bare tokens.
+      .replace(/SUBJECT_A/g, a)
+      .replace(/SUBJECT_B/g, b)
+  );
 }

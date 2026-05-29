@@ -24,12 +24,7 @@
 import type { Participant } from "@/lib/match-types";
 import { ChampionIcon } from "./ChampionIcon";
 import { sortByRole } from "@/lib/role-order";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 /** How many roster slots to render per side. League is always 5v5. */
 const MAX_ROWS = 5;
@@ -65,9 +60,7 @@ function RosterColumn({
 
   return (
     <div className="flex w-[120px] shrink-0 flex-col">
-      <span
-        className={`mb-0.5 text-[10px] font-semibold uppercase tracking-wider ${accent}`}
-      >
+      <span className={`mb-0.5 text-[10px] font-semibold uppercase tracking-wider ${accent}`}>
         {label}
       </span>
 
@@ -84,12 +77,7 @@ function RosterColumn({
         // actually engages the ellipsis on long unbroken CJK strings.
         const rowInner = (
           <>
-            <ChampionIcon
-              champion={p.champion}
-              size={14}
-              ring={false}
-              className="shrink-0"
-            />
+            <ChampionIcon champion={p.champion} size={14} ring={false} className="shrink-0" />
             <span
               className={`block min-w-0 flex-1 truncate text-left text-[11px] ${
                 isHighlighted ? "font-semibold text-gold/80" : "text-muted-foreground"

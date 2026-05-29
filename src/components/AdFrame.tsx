@@ -284,7 +284,9 @@ export function AdFrame({
 
   async function deleteAccount() {
     if (!session?.access_token) {
-      toast.error(t?.("dashboardDeleteAccountFailed") ?? "Failed to delete account. Please try again.");
+      toast.error(
+        t?.("dashboardDeleteAccountFailed") ?? "Failed to delete account. Please try again.",
+      );
       return;
     }
 
@@ -384,16 +386,12 @@ export function AdFrame({
   function quotaResetTimerText(status: VerdictQuotaStatus): string {
     if (status.plan === "unli") return t?.("dashboardQuotaUnlimitedShort") ?? "Unlimited";
     if (!status.resetAt) {
-      return (
-        t?.("dashboardQuotaResetStartsAfterFirstVerdict") ?? "Starts after your first verdict"
-      );
+      return t?.("dashboardQuotaResetStartsAfterFirstVerdict") ?? "Starts after your first verdict";
     }
 
     const resetAt = Date.parse(status.resetAt);
     if (!Number.isFinite(resetAt)) {
-      return (
-        t?.("dashboardQuotaResetStartsAfterFirstVerdict") ?? "Starts after your first verdict"
-      );
+      return t?.("dashboardQuotaResetStartsAfterFirstVerdict") ?? "Starts after your first verdict";
     }
     const remainingMs = Math.max(0, resetAt - quotaNow);
     const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
@@ -783,7 +781,9 @@ export function AdFrame({
                   <div className="mb-1 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wider text-gold">
                     <div className="flex min-w-0 items-center gap-2">
                       <Gauge className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{t?.("dashboardQuotaTitle") ?? "Verdict quota"}</span>
+                      <span className="truncate">
+                        {t?.("dashboardQuotaTitle") ?? "Verdict quota"}
+                      </span>
                     </div>
                     {quota && (
                       <span className="shrink-0 text-muted-foreground">

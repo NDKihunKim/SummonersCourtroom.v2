@@ -167,10 +167,15 @@ function SummonerProfilePage() {
 
   function openPlayer(rawRiotId: string) {
     const hash = rawRiotId.lastIndexOf("#");
-    if (!shard || hash < 1 || hash === rawRiotId.length - 1 || typeof window === "undefined") return;
+    if (!shard || hash < 1 || hash === rawRiotId.length - 1 || typeof window === "undefined")
+      return;
     const nextGameName = rawRiotId.slice(0, hash).trim();
     const nextTagLine = rawRiotId.slice(hash + 1).trim();
-    window.open(buildPlayerProfileUrl(shard, nextGameName, nextTagLine), "_blank", "noopener,noreferrer");
+    window.open(
+      buildPlayerProfileUrl(shard, nextGameName, nextTagLine),
+      "_blank",
+      "noopener,noreferrer",
+    );
   }
 
   if (!shard) {
@@ -205,8 +210,12 @@ function SummonerProfilePage() {
               shard,
             };
             if (saved) {
-              removeSavedPlayer(`${shard}|${data.account.gameName.toLowerCase()}#${data.account.tagLine.toLowerCase()}`);
-              toast.success(t("unsavedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }));
+              removeSavedPlayer(
+                `${shard}|${data.account.gameName.toLowerCase()}#${data.account.tagLine.toLowerCase()}`,
+              );
+              toast.success(
+                t("unsavedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }),
+              );
             } else {
               addSavedPlayer({
                 ...player,
@@ -215,19 +224,15 @@ function SummonerProfilePage() {
                 division: data.ranked?.division ?? null,
                 lp: data.ranked?.lp ?? null,
               });
-              toast.success(t("savedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }));
+              toast.success(
+                t("savedPlayer", { riotId: `${data.account.gameName}#${data.account.tagLine}` }),
+              );
             }
           }}
           onRefreshed={setData}
           onBack={() => void navigate({ to: "/" })}
           onSearchPlayer={openPlayer}
-          topSlot={
-            <SummonerSearchBar
-              t={t}
-              preferredShard={shard}
-              className="w-full max-w-xl"
-            />
-          }
+          topSlot={<SummonerSearchBar t={t} preferredShard={shard} className="w-full max-w-xl" />}
           openVerdictMatchId={openVerdictMatchId}
           locale={locale}
           t={t}
@@ -249,7 +254,8 @@ function SummonerProfilePage() {
             <div className="space-y-4">
               <div>
                 <h1 className="text-2xl font-bold text-foreground">
-                  {gameName}<span className="text-muted-foreground">#{tagLine}</span>
+                  {gameName}
+                  <span className="text-muted-foreground">#{tagLine}</span>
                 </h1>
                 <p className="mt-2 text-sm font-semibold text-gold">{t("profileNotCached")}</p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">

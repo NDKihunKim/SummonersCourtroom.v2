@@ -25,7 +25,11 @@ const VerdictDisplaySchema = z.object({
 
 const CreateSharedVerdictInputSchema = z.object({
   turnstileToken: TurnstileTokenSchema,
-  verdictResultId: z.string().min(8).max(48).regex(/^[a-zA-Z0-9_-]+$/),
+  verdictResultId: z
+    .string()
+    .min(8)
+    .max(48)
+    .regex(/^[a-zA-Z0-9_-]+$/),
   profile: z
     .object({
       shard: z.string().min(1).max(8),
@@ -37,7 +41,11 @@ const CreateSharedVerdictInputSchema = z.object({
 });
 
 const GetSharedVerdictInputSchema = z.object({
-  id: z.string().min(8).max(48).regex(/^[a-zA-Z0-9_-]+$/),
+  id: z
+    .string()
+    .min(8)
+    .max(48)
+    .regex(/^[a-zA-Z0-9_-]+$/),
 });
 
 function parseCreateSharedVerdictInput(input: unknown) {
@@ -84,10 +92,7 @@ function createShareId() {
 
 async function deleteExpiredShares() {
   const now = new Date().toISOString();
-  const { error } = await supabaseAdmin
-    .from("shared_verdicts")
-    .delete()
-    .lt("expires_at", now);
+  const { error } = await supabaseAdmin.from("shared_verdicts").delete().lt("expires_at", now);
   if (error) console.error("[shared-verdict] expired cleanup failed:", error);
 
   const { error: resultError } = await supabaseAdmin
@@ -153,7 +158,9 @@ export const createSharedVerdict = createServerFn({ method: "POST" })
 
     const { data: resultRow, error: resultError } = await supabaseAdmin
       .from("verdict_results")
-      .select("id, expires_at, match_id, locale, verdict_mode, selected_players, verdict_display, reasoning")
+      .select(
+        "id, expires_at, match_id, locale, verdict_mode, selected_players, verdict_display, reasoning",
+      )
       .eq("id", data.verdictResultId)
       .maybeSingle();
 

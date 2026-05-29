@@ -71,7 +71,10 @@ export const Route = createFileRoute("/dev/context/$matchId")({
     scope: raw.scope === "window" ? "window" : raw.scope === "full" ? "full" : undefined,
     puuid: typeof raw.puuid === "string" ? raw.puuid : undefined,
     region:
-      raw.region === "americas" || raw.region === "europe" || raw.region === "asia" || raw.region === "sea"
+      raw.region === "americas" ||
+      raw.region === "europe" ||
+      raw.region === "asia" ||
+      raw.region === "sea"
         ? raw.region
         : undefined,
     subjectA: typeof raw.subjectA === "string" ? raw.subjectA : undefined,
@@ -123,8 +126,7 @@ function DevContextPage() {
                   · Game Length: <span className="text-foreground">{gameLength}</span>
                 </>
               )}{" "}
-              · scope:{" "}
-              <span className="text-gold">{search.scope ?? "unknown"}</span>
+              · scope: <span className="text-gold">{search.scope ?? "unknown"}</span>
             </p>
             {search.puuid && (
               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -138,7 +140,8 @@ function DevContextPage() {
         </div>
 
         <div className="mb-4 rounded-lg border border-destructive/60 bg-destructive/10 p-3 text-center text-xs font-medium text-destructive">
-          Development only — this page shows the context sent to the AI and can run the AI gateway to inspect the raw API response.
+          Development only — this page shows the context sent to the AI and can run the AI gateway
+          to inspect the raw API response.
         </div>
 
         {search.scope === "window" &&
@@ -182,8 +185,8 @@ function DevContextPage() {
           />
         ) : (
           <div className="rounded-lg border border-dashed border-border bg-card/40 p-6 text-center text-sm text-muted-foreground">
-            Missing context parameters. Return to the match page and open
-            context from a verdict preview.
+            Missing context parameters. Return to the match page and open context from a verdict
+            preview.
           </div>
         )}
       </div>

@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && npm run clean:build-secrets",
     "build:dev": "vite build --mode development",
+    "clean:build-secrets": "rm -f dist/server/.dev.vars",
     "preview": "vite preview",
     "deploy:dry-run": "npm run build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler deploy",

@@ -27,12 +27,12 @@ export function RuneIcons({ runes, size = 22, locale = "en" }: RuneIconsProps) {
       <RuneCell
         url={runes ? runeIconUrl(runes.keystoneId) : null}
         size={size}
-        title={runes ? perkName(runes.keystoneId) ?? "Keystone" : undefined}
+        title={runes ? (perkName(runes.keystoneId) ?? "Keystone") : undefined}
       />
       <RuneCell
         url={runes ? runeStyleIconUrl(runes.secondaryStyleId) : null}
         size={size}
-        title={runes ? styleName(runes.secondaryStyleId) ?? "Secondary tree" : undefined}
+        title={runes ? (styleName(runes.secondaryStyleId) ?? "Secondary tree") : undefined}
         // Tree icons are smaller PNGs with transparent backgrounds — use
         // contain so they don't get cropped to a square fill.
         contain

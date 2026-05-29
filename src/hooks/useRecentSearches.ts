@@ -33,12 +33,9 @@ export function useRecentSearches() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const addRecent = useCallback(
-    (entry: { gameName: string; tagLine: string; shard: Shard }) => {
-      setRecents(saveToStorage(entry));
-    },
-    [],
-  );
+  const addRecent = useCallback((entry: { gameName: string; tagLine: string; shard: Shard }) => {
+    setRecents(saveToStorage(entry));
+  }, []);
 
   const removeRecent = useCallback((key: string) => {
     setRecents(removeFromStorage(key));

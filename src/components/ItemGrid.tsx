@@ -39,10 +39,7 @@ export function ItemGrid({ items, trinket, size = 22, locale = "en" }: ItemGridP
   return (
     <div className="flex items-center gap-1.5">
       {/* 3 columns x 2 rows main inventory */}
-      <div
-        className="grid gap-0.5"
-        style={{ gridTemplateColumns: `repeat(3, ${size}px)` }}
-      >
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(3, ${size}px)` }}>
         {mainSix.map((id, i) => (
           <ItemCell
             key={i}
@@ -85,7 +82,7 @@ function ItemCell({
 }) {
   const [broken, setBroken] = useState(false);
   const isEmpty = id <= 0 || broken;
-  const label = !isEmpty ? name ?? `Item ${id}` : undefined;
+  const label = !isEmpty ? (name ?? `Item ${id}`) : undefined;
 
   return (
     <div

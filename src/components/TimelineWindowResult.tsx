@@ -181,7 +181,9 @@ export function TimelineWindowResult({
                   ? {
                       focusPuuids: freeForAllTeam
                         .map((player) => player.puuid)
-                        .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0),
+                        .filter(
+                          (puuid): puuid is string => typeof puuid === "string" && puuid.length > 0,
+                        ),
                     }
                   : {}),
               },
@@ -206,7 +208,9 @@ export function TimelineWindowResult({
                   ? {
                       focusPuuids: freeForAllTeam
                         .map((player) => player.puuid)
-                        .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0),
+                        .filter(
+                          (puuid): puuid is string => typeof puuid === "string" && puuid.length > 0,
+                        ),
                     }
                   : {}),
               },
@@ -234,13 +238,7 @@ export function TimelineWindowResult({
   async function copyAll() {
     if (!result) return;
     try {
-      const blob = [
-        upperPromptText,
-        "",
-        result.brief,
-        "",
-        lowerPromptText,
-      ].join("\n");
+      const blob = [upperPromptText, "", result.brief, "", lowerPromptText].join("\n");
       await navigator.clipboard.writeText(blob);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -265,9 +263,7 @@ export function TimelineWindowResult({
           locale,
           includeRaw: true,
           verdictMode,
-          ...(verdictMode === "free-for-all" && freeForAllTeam?.length
-            ? { freeForAllTeam }
-            : {}),
+          ...(verdictMode === "free-for-all" && freeForAllTeam?.length ? { freeForAllTeam } : {}),
           subjects: {
             a: {
               champion: subjectAChampion,
@@ -353,11 +349,7 @@ export function TimelineWindowResult({
 
           {judgeResult && (
             <div className="flex flex-col gap-3">
-              <PromptBlock
-                label="AI final content"
-                text={judgeResult.content}
-                tone="instruction"
-              />
+              <PromptBlock label="AI final content" text={judgeResult.content} tone="instruction" />
               {judgeResult.reasoningContent && (
                 <PromptBlock
                   label="AI reasoning_content"
@@ -447,7 +439,5 @@ ${rows.join("\n")}`;
 
 function buildFreeForAllRoster(freeForAllTeam?: FreeForAllContextPlayer[]): string {
   if (!freeForAllTeam?.length) return "- Selected defeated-team roster unavailable.";
-  return freeForAllTeam
-    .map((player) => `- ${player.champion}`)
-    .join("\n");
+  return freeForAllTeam.map((player) => `- ${player.champion}`).join("\n");
 }

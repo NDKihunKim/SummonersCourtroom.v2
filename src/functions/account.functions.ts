@@ -18,9 +18,7 @@ export const deleteCurrentAccount = createServerFn({ method: "POST" })
       message: "Too many account deletion attempts. Please wait and try again.",
     });
 
-    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(
-      data.accessToken,
-    );
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(data.accessToken);
     if (userError || !userData.user) {
       throw new Error("Please sign in again before deleting your account.");
     }

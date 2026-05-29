@@ -113,21 +113,18 @@ export function useSuggestions({ savedPlayers, recents, query, shard, limit = 5 
     [recents, query, shard, limit],
   );
 
-  const localItems = useMemo(
-    () => {
-      const seen = new Set(savedItems.map((s) => dedupeKey(s.gameName, s.tagLine)));
-      return [
-        ...savedItems,
-        ...recentItems.filter((s) => {
-          const k = dedupeKey(s.gameName, s.tagLine);
-          if (seen.has(k)) return false;
-          seen.add(k);
-          return true;
-        }),
-      ].slice(0, limit);
-    },
-    [savedItems, recentItems, limit],
-  );
+  const localItems = useMemo(() => {
+    const seen = new Set(savedItems.map((s) => dedupeKey(s.gameName, s.tagLine)));
+    return [
+      ...savedItems,
+      ...recentItems.filter((s) => {
+        const k = dedupeKey(s.gameName, s.tagLine);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      }),
+    ].slice(0, limit);
+  }, [savedItems, recentItems, limit]);
 
   // Enrich local recents with cached profile/ranked metadata. Missing keys
   // gracefully fall back to the local-only row.
