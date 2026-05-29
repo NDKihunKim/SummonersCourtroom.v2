@@ -16,9 +16,27 @@ dist-ssr
 .nitro
 *.local
 .env
+.env.*
+!.env.example
+!.env.production
+!python/.env.example
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+
+# Generated runtime artifacts
+.vibeskills/
+outputs/
+docs/plans/
+docs/requirements/
+
+# Legacy builder metadata
+.lovable/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
 
 # Editor directories and files
 .vscode/*
