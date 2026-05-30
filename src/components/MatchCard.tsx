@@ -18,6 +18,7 @@ import {
 import { submitVerdictFeedback } from "@/functions/verdict-feedback.functions";
 import { useChampionNameFormatter } from "@/lib/ddragon";
 import { sortByRole } from "@/lib/role-order";
+import { formatRelativePlayedAt } from "@/lib/relative-time";
 import type { Shard } from "@/lib/regions";
 import type { Locale, TranslationKey } from "@/i18n";
 import { TurnstileWidget, type TurnstileHandle } from "./TurnstileWidget";
@@ -315,21 +316,6 @@ function formatWindowLength(ms: number, t: Translate): string {
   });
 }
 
-function formatPlayedAtMs(playedAtMs: number, locale: Locale, t: Translate): string {
-  const diff = Date.now() - playedAtMs;
-  if (diff < 60_000) return locale === "ko" ? t("justNow") : "Just now";
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) {
-    return locale === "ko" ? t("relativeMinutesAgo", { count: mins }) : `${mins}m ago`;
-  }
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) {
-    return locale === "ko" ? t("relativeHoursAgo", { count: hours }) : `${hours}h ago`;
-  }
-  const days = Math.floor(hours / 24);
-  return locale === "ko" ? t("relativeDaysAgo", { count: days }) : `${days}d ago`;
-}
-
 function formatPlayedAt(playedAt: string, locale: Locale, t: Translate): string {
   if (locale !== "ko") return playedAt;
   if (playedAt.toLowerCase() === "just now") return t("justNow");
@@ -486,9 +472,10 @@ export function MatchCard({
   const durationLabel = formatDuration(match.duration, locale, t);
   const matchDurationMs = parseMatchDurationToMs(match.duration);
   const isShortVerdictGame = matchDurationMs != null && matchDurationMs < MIN_VERDICT_GAME_MS;
+  const [relativeNowMs, setRelativeNowMs] = useState(() => Date.now());
   const playedAtLabel =
     typeof match.playedAtMs === "number"
-      ? formatPlayedAtMs(match.playedAtMs, locale, t)
+      ? formatRelativePlayedAt(match.playedAtMs, relativeNowMs, locale, t)
       : formatPlayedAt(match.playedAt, locale, t);
   const championLabel = formatChampionName(match.champion);
 
@@ -534,6 +521,17 @@ export function MatchCard({
       verdictAbortControllerRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof match.playedAtMs !== "number") return;
+
+    setRelativeNowMs(Date.now());
+    const interval = window.setInterval(() => {
+      setRelativeNowMs(Date.now());
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, [match.playedAtMs]);
 
   const expanded = stage !== "closed" || Boolean(sharedVerdict);
   const verdictWindowLabel =

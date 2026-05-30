@@ -25,6 +25,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { Match } from "@/lib/match-types";
+import { shouldRefetchCachedMatchForRefresh } from "@/lib/match-cache";
 import { shardToPlatform, shardToRouting } from "@/lib/regions";
 import {
   parseDivision,
@@ -301,7 +302,10 @@ async function fetchFreshFromRiot(
       .filter(([matchId]) => Boolean(matchId)),
   );
   const fetchedByMatchId = new Map<string, Match>();
-  const missingMatchIds = matchIds.filter((id) => !cachedByMatchId.has(id));
+  const missingMatchIds = matchIds.filter((id) => {
+    const cached = cachedByMatchId.get(id);
+    return !cached || shouldRefetchCachedMatchForRefresh(cached);
+  });
 
   for (let i = 0; i < missingMatchIds.length; i += MATCH_DETAIL_CONCURRENCY) {
     const batch = missingMatchIds.slice(i, i + MATCH_DETAIL_CONCURRENCY);
