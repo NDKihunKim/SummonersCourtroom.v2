@@ -148,6 +148,56 @@ function parsePersistedVerdictState(raw: string | null): PersistedVerdictState |
   }
 }
 
+function readPersistedVerdictState(key: string): PersistedVerdictState | null {
+  const read = (storage: Storage) => {
+    const saved = parsePersistedVerdictState(storage.getItem(key));
+    if (!saved) storage.removeItem(key);
+    return saved;
+  };
+
+  try {
+    const saved = read(window.sessionStorage);
+    if (saved) return saved;
+  } catch {
+    // Fall back to localStorage below.
+  }
+
+  try {
+    return read(window.localStorage);
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedVerdictState(key: string, payload: PersistedVerdictState) {
+  const serialized = JSON.stringify(payload);
+  try {
+    window.sessionStorage.setItem(key, serialized);
+  } catch {
+    // Ignore storage failures; persistence is only for auth redirects.
+  }
+
+  try {
+    window.localStorage.setItem(key, serialized);
+  } catch {
+    // Ignore storage failures; the in-memory verdict flow still works.
+  }
+}
+
+function removePersistedVerdictState(key: string) {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures; the in-memory verdict flow still works.
+  }
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures; the in-memory verdict flow still works.
+  }
+}
+
 function toFreeForAllContextPlayer(player: Participant): FreeForAllContextPlayer {
   return {
     champion: player.champion,
@@ -541,11 +591,7 @@ export function MatchCard({
   }
 
   const clearPersistedVerdict = useCallback(() => {
-    try {
-      window.sessionStorage.removeItem(persistedVerdictKey);
-    } catch {
-      // Ignore storage failures; the in-memory verdict flow still works.
-    }
+    removePersistedVerdictState(persistedVerdictKey);
   }, [persistedVerdictKey]);
 
   function reset() {
@@ -616,7 +662,7 @@ export function MatchCard({
   useEffect(() => {
     if (sharedVerdict || stage !== "closed" || reasoning) return;
 
-    const saved = parsePersistedVerdictState(window.sessionStorage.getItem(persistedVerdictKey));
+    const saved = readPersistedVerdictState(persistedVerdictKey);
     if (!saved) return;
     if (saved.matchId !== (match.riotMatchId ?? match.id)) return;
     if (saved.userPuuid && match.userPuuid && saved.userPuuid !== match.userPuuid) return;
@@ -670,11 +716,7 @@ export function MatchCard({
       shareUrl,
     };
 
-    try {
-      window.sessionStorage.setItem(persistedVerdictKey, JSON.stringify(payload));
-    } catch {
-      // Ignore storage failures; persistence is only for auth redirects.
-    }
+    writePersistedVerdictState(persistedVerdictKey, payload);
   }, [
     faultMode,
     freeForAllSelection,

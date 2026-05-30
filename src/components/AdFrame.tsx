@@ -22,8 +22,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAnonymousId } from "@/lib/anonymous-id";
 import {
   authRedirectUrl,
+  completeEmailAuthHandoff,
   consumeAuthReturnPath,
   currentAuthReturnPath,
+  listenForEmailAuthHandoff,
+  rememberEmailAuthHandoff,
   rememberAuthReturnPath,
 } from "@/lib/auth-return";
 import {
@@ -44,8 +47,8 @@ const FOOTER_LINKS = [
   { href: "/legal", label: "Legal", key: "footerLegal" },
 ] as const;
 
-function restoreAuthReturnPath() {
-  const nextPath = consumeAuthReturnPath();
+function restoreAuthReturnPath(path?: string | null) {
+  const nextPath = path ?? consumeAuthReturnPath();
   if (!nextPath || typeof window === "undefined") return;
   if (currentAuthReturnPath() === nextPath) return;
   window.location.replace(nextPath);
@@ -127,6 +130,7 @@ export function AdFrame({
     null,
   );
   const [authLoading, setAuthLoading] = useState(false);
+  const [authHandoffParkedPath, setAuthHandoffParkedPath] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [quota, setQuota] = useState<VerdictQuotaStatus | null>(null);
@@ -172,19 +176,33 @@ export function AdFrame({
   useEffect(() => {
     let active = true;
 
+    function handleSignedIn() {
+      const handoff = completeEmailAuthHandoff();
+      if (handoff?.shouldPark) {
+        setAuthHandoffParkedPath(handoff.path);
+        return;
+      }
+      restoreAuthReturnPath(handoff?.path);
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       setSession(data.session ?? null);
-      if (data.session) restoreAuthReturnPath();
+      if (data.session) handleSignedIn();
     });
 
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
-      if (event === "SIGNED_IN" && nextSession) restoreAuthReturnPath();
+      if (event === "SIGNED_IN" && nextSession) handleSignedIn();
+    });
+    const stopEmailHandoffListener = listenForEmailAuthHandoff((path) => {
+      if (!active) return;
+      restoreAuthReturnPath(path);
     });
 
     return () => {
       active = false;
+      stopEmailHandoffListener();
       data.subscription.unsubscribe();
     };
   }, []);
@@ -242,6 +260,7 @@ export function AdFrame({
     try {
       rememberAuthProvider("email");
       rememberAuthReturnPath();
+      rememberEmailAuthHandoff();
       const redirectTo = authRedirectUrl();
       const { error } = await supabase.auth.signInWithOtp({
         email: authEmail.trim(),
@@ -490,6 +509,44 @@ export function AdFrame({
         "Recent searches and saved players are stored in this browser. Shared verdict links expire after 72 hours.",
     },
   ];
+
+  if (authHandoffParkedPath) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background px-4 text-foreground">
+        <div className="w-full max-w-sm rounded-xl border border-border bg-card/95 p-5 text-center shadow-xl">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-gold/50 bg-gold/10 text-gold">
+            <Check className="h-5 w-5" />
+          </div>
+          <h1 className="text-base font-semibold text-foreground">
+            {t?.("dashboardMagicLinkCompleteTitle") ?? "Signed in"}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            {t?.("dashboardMagicLinkCompleteHelp") ??
+              "Continue in your original tab. You can close this duplicate sign-in tab."}
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const path = authHandoffParkedPath;
+                setAuthHandoffParkedPath(null);
+                restoreAuthReturnPath(path);
+              }}
+              className="inline-flex flex-1 items-center justify-center rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
+            >
+              {t?.("dashboardMagicLinkContinueHere") ?? "Continue here"}
+            </button>
+            <a
+              href={homeHref}
+              className="inline-flex flex-1 items-center justify-center rounded-md border border-border bg-background/50 px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {t?.("dashboardHome") ?? "Home"}
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={outer}>

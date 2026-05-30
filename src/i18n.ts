@@ -82,6 +82,10 @@ const translations = {
     dashboardSignOut: "Sign out",
     dashboardSignedOut: "Signed out.",
     dashboardMagicLinkSent: "Check your email for the sign-in link.",
+    dashboardMagicLinkCompleteTitle: "Signed in",
+    dashboardMagicLinkCompleteHelp:
+      "Continue in your original tab. You can close this duplicate sign-in tab.",
+    dashboardMagicLinkContinueHere: "Continue here",
     dashboardOptions: "Options",
     dashboardOptionsComingSoon: "More settings will be added here.",
     dashboardBack: "Back",
@@ -267,6 +271,10 @@ const translations = {
     dashboardSignOut: "로그아웃",
     dashboardSignedOut: "로그아웃되었습니다.",
     dashboardMagicLinkSent: "이메일에서 로그인 링크를 확인해 주세요.",
+    dashboardMagicLinkCompleteTitle: "로그인 완료",
+    dashboardMagicLinkCompleteHelp:
+      "원래 탭에서 계속 이용해 주세요. 중복으로 열린 로그인 탭은 닫아도 됩니다.",
+    dashboardMagicLinkContinueHere: "이 탭에서 계속하기",
     dashboardOptions: "설정",
     dashboardOptionsComingSoon: "추가 설정은 이곳에 추가될 예정입니다.",
     dashboardBack: "뒤로가기",
