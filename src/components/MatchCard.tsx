@@ -41,6 +41,112 @@ type FreeForAllContextPlayer = {
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
 const MIN_VERDICT_GAME_MS = 5 * 60_000;
 const MAX_FULL_GAME_VERDICT_MS = 60 * 60_000;
+const PERSISTED_VERDICT_VERSION = 1;
+const PERSISTED_VERDICT_TTL_MS = 30 * 60_000;
+
+type PersistedVerdictState = {
+  version: typeof PERSISTED_VERDICT_VERSION;
+  createdAt: number;
+  matchId: string;
+  userPuuid?: string;
+  locale: Locale;
+  faultMode: FaultMode;
+  showEnemyTeam: boolean;
+  pickedSubjectA: Participant | null;
+  pickedAlly: Participant;
+  freeForAllSelection: Participant[];
+  reasoning: string;
+  verdictDisplay: VerdictDisplay | null;
+  verdictScope: Scope | null;
+  verdictWindow: [number, number] | null;
+  verdictResultId: string | null;
+  shareUrl: string | null;
+};
+
+function verdictStorageKey(match: Match): string {
+  return `summoners-courtroom:verdict-result:v1:${match.riotMatchId ?? match.id}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isParticipant(value: unknown): value is Participant {
+  return (
+    isRecord(value) &&
+    typeof value.champion === "string" &&
+    typeof value.summoner === "string" &&
+    typeof value.kills === "number" &&
+    typeof value.deaths === "number" &&
+    typeof value.assists === "number"
+  );
+}
+
+function isVerdictDisplay(value: unknown): value is VerdictDisplay {
+  return (
+    isRecord(value) &&
+    typeof value.championName === "string" &&
+    (value.championKey === undefined || typeof value.championKey === "string") &&
+    (value.summonerName === undefined || typeof value.summonerName === "string")
+  );
+}
+
+function isScope(value: unknown): value is Scope {
+  return value === "full" || value === "window";
+}
+
+function isFaultMode(value: unknown): value is FaultMode {
+  return (
+    value === "me-vs-1" ||
+    value === "one-vs-one" ||
+    value === "free-for-all" ||
+    value === "switch-teams"
+  );
+}
+
+function isVerdictWindow(value: unknown): value is [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number"
+  );
+}
+
+function parsePersistedVerdictState(raw: string | null): PersistedVerdictState | null {
+  if (!raw) return null;
+
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!isRecord(value)) return null;
+    if (value.version !== PERSISTED_VERDICT_VERSION) return null;
+    if (typeof value.createdAt !== "number") return null;
+    if (Date.now() - value.createdAt > PERSISTED_VERDICT_TTL_MS) return null;
+    if (typeof value.matchId !== "string") return null;
+    if (value.userPuuid !== undefined && typeof value.userPuuid !== "string") return null;
+    if (value.locale !== "en" && value.locale !== "ko") return null;
+    if (!isFaultMode(value.faultMode)) return null;
+    if (typeof value.showEnemyTeam !== "boolean") return null;
+    if (value.pickedSubjectA !== null && !isParticipant(value.pickedSubjectA)) return null;
+    if (!isParticipant(value.pickedAlly)) return null;
+    if (
+      !Array.isArray(value.freeForAllSelection) ||
+      !value.freeForAllSelection.every(isParticipant)
+    ) {
+      return null;
+    }
+    if (typeof value.reasoning !== "string" || value.reasoning.trim().length === 0) return null;
+    if (value.verdictDisplay !== null && !isVerdictDisplay(value.verdictDisplay)) return null;
+    if (value.verdictScope !== null && !isScope(value.verdictScope)) return null;
+    if (value.verdictWindow !== null && !isVerdictWindow(value.verdictWindow)) return null;
+    if (value.verdictResultId !== null && typeof value.verdictResultId !== "string") return null;
+    if (value.shareUrl !== null && typeof value.shareUrl !== "string") return null;
+
+    return value as PersistedVerdictState;
+  } catch {
+    return null;
+  }
+}
 
 function toFreeForAllContextPlayer(player: Participant): FreeForAllContextPlayer {
   return {
@@ -357,6 +463,7 @@ export function MatchCard({
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const lastOpenJudgeRequestRef = useRef(0);
+  const persistedVerdictKey = verdictStorageKey(match);
   const resetTurnstile = useCallback(() => {
     turnstileRef.current?.reset();
     setTurnstileResetKey((key) => key + 1);
@@ -433,9 +540,18 @@ export function MatchCard({
     mockLoadingTimersRef.current = [];
   }
 
+  const clearPersistedVerdict = useCallback(() => {
+    try {
+      window.sessionStorage.removeItem(persistedVerdictKey);
+    } catch {
+      // Ignore storage failures; the in-memory verdict flow still works.
+    }
+  }, [persistedVerdictKey]);
+
   function reset() {
     mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
     mockLoadingTimersRef.current = [];
+    clearPersistedVerdict();
     setStage("closed");
     setFaultMode("me-vs-1");
     setShowEnemyTeam(false);
@@ -449,11 +565,13 @@ export function MatchCard({
     setVerdictScope(null);
     setVerdictWindow(null);
     setShareUrl(null);
+    setVerdictResultId(null);
     setSharing(false);
   }
 
   function startFreshVerdict() {
     clearMockLoadingTimers();
+    clearPersistedVerdict();
     setStage("pickAlly");
     setFaultMode("me-vs-1");
     setShowEnemyTeam(false);
@@ -467,6 +585,7 @@ export function MatchCard({
     setVerdictScope(null);
     setVerdictWindow(null);
     setShareUrl(null);
+    setVerdictResultId(null);
     setSharing(false);
   }
 
@@ -476,6 +595,7 @@ export function MatchCard({
     if (openJudgeRequest <= 0) return;
 
     clearMockLoadingTimers();
+    clearPersistedVerdict();
     setStage("pickAlly");
     setFaultMode("me-vs-1");
     setShowEnemyTeam(false);
@@ -489,13 +609,98 @@ export function MatchCard({
     setVerdictScope(null);
     setVerdictWindow(null);
     setShareUrl(null);
+    setVerdictResultId(null);
     setSharing(false);
-  }, [openJudgeRequest]);
+  }, [clearPersistedVerdict, openJudgeRequest]);
+
+  useEffect(() => {
+    if (sharedVerdict || stage !== "closed" || reasoning) return;
+
+    const saved = parsePersistedVerdictState(window.sessionStorage.getItem(persistedVerdictKey));
+    if (!saved) return;
+    if (saved.matchId !== (match.riotMatchId ?? match.id)) return;
+    if (saved.userPuuid && match.userPuuid && saved.userPuuid !== match.userPuuid) return;
+    if (saved.locale !== locale) return;
+
+    setFaultMode(saved.faultMode);
+    setShowEnemyTeam(saved.showEnemyTeam);
+    setPickedSubjectA(saved.pickedSubjectA);
+    setPickedAlly(saved.pickedAlly);
+    setFreeForAllSelection(saved.freeForAllSelection);
+    setReasoning(saved.reasoning);
+    setVerdictDisplay(saved.verdictDisplay);
+    setVerdictScope(saved.verdictScope);
+    setVerdictWindow(saved.verdictWindow);
+    setVerdictResultId(saved.verdictResultId);
+    setShareUrl(saved.shareUrl);
+    setSharing(false);
+    setCompleted(new Set(["contextualize", "judge", "parse"]));
+    setActiveStep("parse");
+    setStage("verdict");
+  }, [
+    locale,
+    match.id,
+    match.riotMatchId,
+    match.userPuuid,
+    persistedVerdictKey,
+    reasoning,
+    sharedVerdict,
+    stage,
+  ]);
+
+  useEffect(() => {
+    if (sharedVerdict || stage !== "verdict" || !reasoning || !pickedAlly) return;
+
+    const payload: PersistedVerdictState = {
+      version: PERSISTED_VERDICT_VERSION,
+      createdAt: Date.now(),
+      matchId: match.riotMatchId ?? match.id,
+      ...(match.userPuuid ? { userPuuid: match.userPuuid } : {}),
+      locale,
+      faultMode,
+      showEnemyTeam,
+      pickedSubjectA,
+      pickedAlly,
+      freeForAllSelection,
+      reasoning,
+      verdictDisplay,
+      verdictScope,
+      verdictWindow,
+      verdictResultId,
+      shareUrl,
+    };
+
+    try {
+      window.sessionStorage.setItem(persistedVerdictKey, JSON.stringify(payload));
+    } catch {
+      // Ignore storage failures; persistence is only for auth redirects.
+    }
+  }, [
+    faultMode,
+    freeForAllSelection,
+    locale,
+    match.id,
+    match.riotMatchId,
+    match.userPuuid,
+    pickedAlly,
+    pickedSubjectA,
+    persistedVerdictKey,
+    reasoning,
+    shareUrl,
+    sharedVerdict,
+    showEnemyTeam,
+    stage,
+    verdictDisplay,
+    verdictResultId,
+    verdictScope,
+    verdictWindow,
+  ]);
 
   function showMockWindowResult(windowRange: [number, number]) {
     if (!pickedAlly) return;
     clearMockLoadingTimers();
     setShareUrl(null);
+    setVerdictResultId(null);
     setSharing(false);
     setReasoning(
       [
@@ -519,6 +724,7 @@ export function MatchCard({
   function showMockLoading(windowRange: [number, number]) {
     if (!pickedAlly) return;
     clearMockLoadingTimers();
+    clearPersistedVerdict();
     setReasoning(null);
     setVerdictDisplay(null);
     setShareUrl(null);
@@ -565,6 +771,7 @@ export function MatchCard({
       }
     }
 
+    clearPersistedVerdict();
     setStage("loading");
     setReasoning(null);
     setVerdictDisplay(null);
@@ -1113,7 +1320,7 @@ export function MatchCard({
                 reasoning={reasoning}
                 windowLabel={verdictWindowLabel}
                 onClose={reset}
-                onAgain={() => setStage("pickAlly")}
+                onAgain={startFreshVerdict}
                 onShare={() => void shareVerdict()}
                 sharing={sharing}
                 shareDisabled={!verdictResultId}

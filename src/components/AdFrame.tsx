@@ -21,6 +21,12 @@ import { LOCALES, type Locale, type TranslationKey } from "@/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { getAnonymousId } from "@/lib/anonymous-id";
 import {
+  authRedirectUrl,
+  consumeAuthReturnPath,
+  currentAuthReturnPath,
+  rememberAuthReturnPath,
+} from "@/lib/auth-return";
+import {
   getVerdictQuotaStatus,
   type VerdictQuotaStatus,
 } from "@/functions/verdict-quota.functions";
@@ -37,6 +43,13 @@ const FOOTER_LINKS = [
   { href: "/contact", label: "Contact", key: "footerContact" },
   { href: "/legal", label: "Legal", key: "footerLegal" },
 ] as const;
+
+function restoreAuthReturnPath() {
+  const nextPath = consumeAuthReturnPath();
+  if (!nextPath || typeof window === "undefined") return;
+  if (currentAuthReturnPath() === nextPath) return;
+  window.location.replace(nextPath);
+}
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -160,11 +173,14 @@ export function AdFrame({
     let active = true;
 
     supabase.auth.getSession().then(({ data }) => {
-      if (active) setSession(data.session ?? null);
+      if (!active) return;
+      setSession(data.session ?? null);
+      if (data.session) restoreAuthReturnPath();
     });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === "SIGNED_IN" && nextSession) restoreAuthReturnPath();
     });
 
     return () => {
@@ -225,7 +241,8 @@ export function AdFrame({
     setAuthLoading(true);
     try {
       rememberAuthProvider("email");
-      const redirectTo = typeof window !== "undefined" ? window.location.href : undefined;
+      rememberAuthReturnPath();
+      const redirectTo = authRedirectUrl();
       const { error } = await supabase.auth.signInWithOtp({
         email: authEmail.trim(),
         options: {
@@ -245,7 +262,8 @@ export function AdFrame({
     setAuthLoading(true);
     try {
       rememberAuthProvider(provider);
-      const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+      rememberAuthReturnPath();
+      const redirectTo = authRedirectUrl();
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
