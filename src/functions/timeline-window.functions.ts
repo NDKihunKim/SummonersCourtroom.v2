@@ -50,6 +50,7 @@ type MatchPayload = {
       riotIdGameName?: string;
       riotIdTagline?: string;
       summonerName?: string;
+      win?: boolean;
     }>;
   };
 };
@@ -61,6 +62,7 @@ type ParticipantInfo = {
   puuid?: string;
   teamId?: number;
   teamPosition?: string;
+  win?: boolean;
 };
 
 type SubjectInfo = {
@@ -211,6 +213,18 @@ Use these Korean champion names exactly. Do not transliterate, guess, abbreviate
 ${rows.join("\n")}`;
 }
 
+const FreeForAllTeamInputSchema = z
+  .array(
+    z.object({
+      champion: z.string().min(1),
+      puuid: z.string().optional(),
+      role: z.string().optional(),
+      summoner: z.string().optional(),
+    }),
+  )
+  .max(5)
+  .optional();
+
 const TimelineWindowInputSchema = z.object({
   matchId: z.string().min(3),
   userPuuid: z.string().min(1),
@@ -224,6 +238,9 @@ const TimelineWindowInputSchema = z.object({
     })
     .optional(),
   focusPuuids: z.array(z.string().min(1)).max(10).optional(),
+  locale: z.enum(["en", "ko"]).optional(),
+  verdictMode: z.enum(["duel", "free-for-all"]).optional(),
+  freeForAllTeam: FreeForAllTeamInputSchema,
 });
 
 const TimelineFullGameInputSchema = TimelineWindowInputSchema.omit({
@@ -245,17 +262,7 @@ const JudgeVerdictInputSchema = z.object({
   anonymousId: z.string().min(8).max(128).optional(),
   subjects: TimelineWindowInputSchema.shape.subjects,
   verdictMode: z.enum(["duel", "free-for-all"]).optional(),
-  freeForAllTeam: z
-    .array(
-      z.object({
-        champion: z.string().min(1),
-        puuid: z.string().optional(),
-        role: z.string().optional(),
-        summoner: z.string().optional(),
-      }),
-    )
-    .max(5)
-    .optional(),
+  freeForAllTeam: FreeForAllTeamInputSchema,
 });
 
 const PLATFORM_TO_REGIONAL: Record<string, RegionalRouting> = {
@@ -424,6 +431,7 @@ function buildParticipants(match: MatchPayload): ParticipantInfo[] {
         puuid: participant.puuid,
         teamId: participant.teamId,
         teamPosition: participant.teamPosition,
+        win: participant.win,
       };
     });
 }
@@ -1491,6 +1499,37 @@ function buildJudgePrompt({
   return { upperPrompt, brief, lowerPrompt, prompt };
 }
 
+async function buildServerPromptPayload({
+  brief,
+  locale = "en",
+  match,
+  subjects,
+  verdictMode = "duel",
+  freeForAllTeam,
+}: {
+  brief: string;
+  locale?: Locale;
+  match: MatchPayload;
+  subjects?: z.infer<typeof TimelineWindowInputSchema>["subjects"];
+  verdictMode?: "duel" | "free-for-all";
+  freeForAllTeam?: readonly FreeForAllPlayerInput[];
+}) {
+  const championLocalization = await buildServerChampionLocalization({
+    locale,
+    match,
+  });
+
+  return buildJudgePrompt({
+    brief,
+    locale,
+    championLocalization,
+    subjectAChampion: subjects?.a?.champion,
+    subjectBChampion: subjects?.b?.champion,
+    verdictMode,
+    freeForAllTeam,
+  });
+}
+
 type AiGatewayUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -1589,13 +1628,69 @@ function findMatchParticipant(
   return undefined;
 }
 
+function buildCanonicalFreeForAllTeam(
+  match: MatchPayload,
+  requestedTeam?: readonly FreeForAllPlayerInput[],
+): FreeForAllPlayerInput[] {
+  if (!requestedTeam || requestedTeam.length < 3 || requestedTeam.length > 5) {
+    throw new Error("Free-for-all verdicts require 3 to 5 selected defeated-team players.");
+  }
+
+  const selectedParticipants: Array<Record<string, unknown>> = [];
+  const selectedKeys = new Set<string>();
+
+  for (const requestedPlayer of requestedTeam) {
+    const participant = findMatchParticipant(match, requestedPlayer);
+    if (!participant) {
+      throw new Error("Selected Free-for-All player was not found in this match.");
+    }
+
+    const participantKey =
+      typeof participant.puuid === "string"
+        ? `puuid:${participant.puuid}`
+        : `champion:${String(participant.championName ?? "")}`;
+    if (selectedKeys.has(participantKey)) {
+      throw new Error("Free-for-all verdicts require unique selected players.");
+    }
+
+    selectedKeys.add(participantKey);
+    selectedParticipants.push(participant);
+  }
+
+  if (selectedParticipants.some((participant) => participant.win !== false)) {
+    throw new Error(
+      "Free-for-all verdicts can only judge selected players from the defeated team.",
+    );
+  }
+
+  const selectedTeamIds = new Set(
+    selectedParticipants
+      .map((participant) => (typeof participant.teamId === "number" ? participant.teamId : null))
+      .filter((teamId): teamId is number => teamId != null),
+  );
+  if (selectedTeamIds.size !== 1) {
+    throw new Error("Free-for-all verdicts require selected players from one defeated team.");
+  }
+
+  return selectedParticipants.map((participant) => ({
+    champion:
+      typeof participant.championName === "string" && participant.championName
+        ? participant.championName
+        : "Unknown",
+    puuid: typeof participant.puuid === "string" ? participant.puuid : undefined,
+    role: typeof participant.teamPosition === "string" ? participant.teamPosition : undefined,
+    summoner: participantDisplayName(participant),
+  }));
+}
+
 function buildStoredVerdictPlayers(
   match: MatchPayload,
   data: z.infer<typeof JudgeVerdictInputSchema>,
+  canonicalFreeForAllTeam?: readonly FreeForAllPlayerInput[],
 ): StoredVerdictPlayer[] {
   const selectors =
     data.verdictMode === "free-for-all"
-      ? (data.freeForAllTeam?.map((player) => ({
+      ? (canonicalFreeForAllTeam?.map((player) => ({
           puuid: player.puuid,
           champion: player.champion,
           summoner: player.summoner,
@@ -1917,16 +2012,37 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
       riotGet<TimelinePayload>(`${base}/timeline`),
     ]);
     const timelineEnd = timelineEndMs(timeline);
+    const verdictMode = data.verdictMode ?? "duel";
+    const canonicalFreeForAllTeam =
+      verdictMode === "free-for-all"
+        ? buildCanonicalFreeForAllTeam(match, data.freeForAllTeam)
+        : undefined;
+    const focusPuuids =
+      verdictMode === "free-for-all"
+        ? canonicalFreeForAllTeam
+            ?.map((player) => player.puuid)
+            .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0)
+        : data.focusPuuids;
 
-    return buildWindowResponse({
+    const response = buildWindowResponse({
       startMs: contextStartMinuteMs(data.startMs),
       endMs: contextEndMs(data.endMs, timelineEnd),
       match,
       timeline,
       userPuuid: data.userPuuid,
       subjects: data.subjects,
-      focusPuuids: data.focusPuuids,
+      focusPuuids,
     });
+    const prompt = await buildServerPromptPayload({
+      brief: response.brief,
+      locale: data.locale ?? "en",
+      match,
+      subjects: data.subjects,
+      verdictMode,
+      freeForAllTeam: canonicalFreeForAllTeam,
+    });
+
+    return { ...response, prompt };
   });
 
 export const getTimelineFullGame = createServerFn({ method: "POST" })
@@ -1955,18 +2071,39 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
         "[FULL_GAME_TOO_LONG] Full-game context is unavailable for matches over 60 minutes. Use Specify Time instead.",
       );
     }
+    const verdictMode = data.verdictMode ?? "duel";
+    const canonicalFreeForAllTeam =
+      verdictMode === "free-for-all"
+        ? buildCanonicalFreeForAllTeam(match, data.freeForAllTeam)
+        : undefined;
+    const focusPuuids =
+      verdictMode === "free-for-all"
+        ? canonicalFreeForAllTeam
+            ?.map((player) => player.puuid)
+            .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0)
+        : data.focusPuuids;
 
-    return buildWindowResponse({
+    const response = buildWindowResponse({
       startMs: 0,
       endMs,
       match,
       timeline,
       userPuuid: data.userPuuid,
       subjects: data.subjects,
-      focusPuuids: data.focusPuuids,
+      focusPuuids,
       trimToRelevantEvidence: false,
       extraOmittedEventTypes: ["PAUSE_END"],
     });
+    const prompt = await buildServerPromptPayload({
+      brief: response.brief,
+      locale: data.locale ?? "en",
+      match,
+      subjects: data.subjects,
+      verdictMode,
+      freeForAllTeam: canonicalFreeForAllTeam,
+    });
+
+    return { ...response, prompt };
   });
 
 export const getJudgeVerdict = createServerFn({ method: "POST" })
@@ -2011,9 +2148,13 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
     const actualContextEndMs =
       data.scope === "full" ? timelineEnd : contextEndMs(data.endMs as number, timelineEnd);
     const verdictMode = data.verdictMode ?? "duel";
+    const canonicalFreeForAllTeam =
+      verdictMode === "free-for-all"
+        ? buildCanonicalFreeForAllTeam(match, data.freeForAllTeam)
+        : undefined;
     const focusPuuids =
       verdictMode === "free-for-all"
-        ? data.freeForAllTeam
+        ? canonicalFreeForAllTeam
             ?.map((player) => player.puuid)
             .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0)
         : undefined;
@@ -2048,18 +2189,13 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
             focusPuuids,
           });
 
-    const championLocalization = await buildServerChampionLocalization({
-      locale: data.locale ?? "en",
-      match,
-    });
-    const promptPayload = buildJudgePrompt({
+    const promptPayload = await buildServerPromptPayload({
       brief: windowResponse.brief,
       locale: data.locale ?? "en",
-      championLocalization,
-      subjectAChampion: data.subjects?.a?.champion,
-      subjectBChampion: data.subjects?.b?.champion,
+      match,
+      subjects: data.subjects,
       verdictMode,
-      freeForAllTeam: data.freeForAllTeam,
+      freeForAllTeam: canonicalFreeForAllTeam,
     });
     let quotaReserved = false;
     if (!data.includeRaw) {
@@ -2106,7 +2242,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
     }
     const includeDiagnostics = data.includeRaw === true;
     const costEstimate = aiResult.costEstimate ?? null;
-    const selectedPlayers = buildStoredVerdictPlayers(match, data);
+    const selectedPlayers = buildStoredVerdictPlayers(match, data, canonicalFreeForAllTeam);
     const storedVerdict = parseStoredVerdict(aiResult.content, selectedPlayers);
     let verdictResultId: string | undefined;
     if (!includeDiagnostics) {

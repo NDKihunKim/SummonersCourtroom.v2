@@ -38,6 +38,12 @@ type WindowResponse = {
   evidence: unknown[];
   items?: unknown[];
   error?: string;
+  prompt?: {
+    upperPrompt: string;
+    brief: string;
+    lowerPrompt: string;
+    prompt: string;
+  };
 };
 
 type JudgeRawResult = {
@@ -148,6 +154,10 @@ export function TimelineWindowResult({
           subjectA: subjectAChampion ?? "",
           subjectB: subjectBChampion ?? "",
         });
+  const promptForDisplay = result?.prompt;
+  const displayUpperPromptText = promptForDisplay?.upperPrompt ?? upperPromptText;
+  const displayBriefText = promptForDisplay?.brief ?? result?.brief ?? "";
+  const displayLowerPromptText = promptForDisplay?.lowerPrompt ?? lowerPromptText;
 
   // Fetch is triggered when `runToken` changes (parent bumps it on "Run").
   // We deliberately do NOT depend on startMs/endMs so the user can fine-tune
@@ -168,6 +178,11 @@ export function TimelineWindowResult({
                 matchId,
                 userPuuid,
                 ...(routingRegion ? { routingRegion } : {}),
+                locale,
+                verdictMode,
+                ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                  ? { freeForAllTeam }
+                  : {}),
                 subjects: {
                   a: {
                     champion: subjectAChampion,
@@ -193,6 +208,11 @@ export function TimelineWindowResult({
                 matchId,
                 userPuuid,
                 ...(routingRegion ? { routingRegion } : {}),
+                locale,
+                verdictMode,
+                ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                  ? { freeForAllTeam }
+                  : {}),
                 startMs,
                 endMs,
                 subjects: {
@@ -238,7 +258,9 @@ export function TimelineWindowResult({
   async function copyAll() {
     if (!result) return;
     try {
-      const blob = [upperPromptText, "", result.brief, "", lowerPromptText].join("\n");
+      const blob = [displayUpperPromptText, "", displayBriefText, "", displayLowerPromptText].join(
+        "\n",
+      );
       await navigator.clipboard.writeText(blob);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -337,11 +359,11 @@ export function TimelineWindowResult({
         // FINAL INSTRUCTION → JSON dump. The JSON remains visible for
         // development review, but copyAll intentionally excludes it.
         <div className="flex flex-col gap-3">
-          <PromptBlock label="Upper prompt" text={upperPromptText} tone="intro" />
+          <PromptBlock label="Upper prompt" text={displayUpperPromptText} tone="intro" />
 
-          <PromptBlock label="Structured context brief" text={result.brief} tone="intro" />
+          <PromptBlock label="Structured context brief" text={displayBriefText} tone="intro" />
 
-          <PromptBlock label="Lower prompt" text={lowerPromptText} tone="instruction" />
+          <PromptBlock label="Lower prompt" text={displayLowerPromptText} tone="instruction" />
 
           <pre className="max-h-[400px] overflow-auto rounded border border-border bg-background p-4 font-mono text-[11px] leading-relaxed text-foreground">
             {JSON.stringify(result.evidence ?? result.items ?? [], null, 2)}
