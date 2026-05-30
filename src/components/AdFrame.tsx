@@ -54,6 +54,15 @@ function restoreAuthReturnPath(path?: string | null) {
   window.location.replace(nextPath);
 }
 
+function isAuthCallbackUrl() {
+  if (typeof window === "undefined") return false;
+  const search = new URLSearchParams(window.location.search);
+  if (search.has("code") || search.has("error") || search.has("error_description")) return true;
+
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return hash.has("access_token") || hash.has("refresh_token") || hash.has("error");
+}
+
 function GoogleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
@@ -188,7 +197,7 @@ export function AdFrame({
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       setSession(data.session ?? null);
-      if (data.session) handleSignedIn();
+      if (data.session && isAuthCallbackUrl()) handleSignedIn();
     });
 
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
