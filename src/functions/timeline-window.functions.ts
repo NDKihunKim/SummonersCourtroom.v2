@@ -9,6 +9,8 @@ import {
   buildFreeForAllLowerPrompt,
   buildFreeForAllUpperPrompt,
   buildLowerPrompt,
+  buildV2LowerPrompt,
+  buildV2UpperPrompt,
 } from "@/components/judge-prompts/promptText";
 import { substituteSubjects } from "@/components/judge-prompts/substituteSubjects";
 import type { Locale } from "@/i18n";
@@ -248,11 +250,13 @@ const TimelineFullGameInputSchema = TimelineWindowInputSchema.omit({
   endMs: true,
 });
 
+const TimelineGoldSwingFullGameInputSchema = TimelineFullGameInputSchema;
+
 const JudgeVerdictInputSchema = z.object({
   matchId: z.string().min(3),
   userPuuid: z.string().min(1),
   routingRegion: z.enum(["americas", "europe", "asia", "sea"]).optional(),
-  scope: z.enum(["window", "full"]),
+  scope: z.enum(["window", "full", "v2-full"]),
   startMs: z.number().int().min(0).optional(),
   endMs: z.number().int().min(0).optional(),
   locale: z.enum(["en", "ko"]).optional(),
@@ -289,6 +293,10 @@ const MIN_WINDOW_MS = 5 * 60_000;
 const MAX_WINDOW_MS = 10 * 60_000;
 const MAX_FULL_GAME_CONTEXT_MS = 60 * 60_000;
 const ONE_MINUTE_MS = 60_000;
+const GOLD_SWING_CONTEXT_PADDING_MS = 90_000;
+const FINAL_SEQUENCE_CONTEXT_MS = 180_000;
+const ABSOLUTE_GOLD_SWING_CONTEXT_LIMIT = 3;
+const LOSING_TEAM_COLLAPSE_CONTEXT_LIMIT = 3;
 const END_OF_GAME_TOLERANCE_MS = 15_000;
 
 function contextStartMinuteMs(startMs: number): number {
@@ -1398,6 +1406,242 @@ function timelineEndMs(timeline: TimelinePayload): number {
   return endMs;
 }
 
+function teamGoldForFrame(
+  frame: TimelineFrame,
+  participantsById: Map<number, ParticipantInfo>,
+): { blue: number; red: number } | null {
+  const participantFrames = frame.participantFrames;
+  if (!participantFrames) return null;
+
+  let blue = 0;
+  let red = 0;
+  let seen = false;
+
+  for (const [participantId, rawFrame] of Object.entries(participantFrames)) {
+    const id = rawParticipantId(participantId);
+    const participant = id != null ? participantsById.get(id) : undefined;
+    const totalGold = numberValue(rawFrame, "totalGold");
+    if (!participant || totalGold == null) continue;
+    seen = true;
+    if (participant.teamId === 200) red += totalGold;
+    else blue += totalGold;
+  }
+
+  return seen ? { blue, red } : null;
+}
+
+type GoldSnapshot = {
+  timestampMs: number;
+  blueGold: number;
+  redGold: number;
+  goldDiff: number;
+};
+
+type GoldContextWindow = {
+  startMs: number;
+  endMs: number;
+  centerMs: number;
+  shift: number;
+  reason: "absolute-shift" | "losing-team-collapse" | "max-lead-collapse" | "final-sequence";
+};
+
+function losingTeamId(participants: ParticipantInfo[]): number | undefined {
+  const loser = participants.find((participant) => participant.win === false);
+  return loser?.teamId;
+}
+
+function losingTeamAdvantage(snapshot: GoldSnapshot, losingTeam?: number): number {
+  if (losingTeam === 100) return snapshot.blueGold - snapshot.redGold;
+  if (losingTeam === 200) return snapshot.redGold - snapshot.blueGold;
+  return 0;
+}
+
+function goldSnapshots(timeline: TimelinePayload, participants: ParticipantInfo[]): GoldSnapshot[] {
+  const frames = timeline.info?.frames;
+  if (!Array.isArray(frames)) throw new Error("Riot timeline response is missing frames.");
+
+  const participantsById = new Map(
+    participants.map((participant) => [participant.participantId, participant]),
+  );
+  const snapshots: GoldSnapshot[] = [];
+
+  for (const frame of frames) {
+    const timestampMs = toTimestamp(frame.timestamp);
+    if (timestampMs == null) continue;
+    const gold = teamGoldForFrame(frame, participantsById);
+    if (!gold) continue;
+    snapshots.push({
+      timestampMs,
+      blueGold: gold.blue,
+      redGold: gold.red,
+      goldDiff: gold.blue - gold.red,
+    });
+  }
+
+  return snapshots;
+}
+
+function goldWindow(
+  centerMs: number,
+  timelineEnd: number,
+  shift: number,
+  reason: GoldContextWindow["reason"],
+): GoldContextWindow {
+  return {
+    startMs: Math.max(0, centerMs - GOLD_SWING_CONTEXT_PADDING_MS),
+    endMs: Math.min(timelineEnd, centerMs + GOLD_SWING_CONTEXT_PADDING_MS),
+    centerMs,
+    shift,
+    reason,
+  };
+}
+
+function mergeGoldWindows(windows: GoldContextWindow[]): GoldContextWindow[] {
+  const sorted = [...windows].sort((a, b) => a.startMs - b.startMs);
+  const merged: GoldContextWindow[] = [];
+
+  for (const window of sorted) {
+    const previous = merged[merged.length - 1];
+    if (previous && window.startMs <= previous.endMs) {
+      previous.endMs = Math.max(previous.endMs, window.endMs);
+      previous.shift = Math.max(previous.shift, window.shift);
+      if (previous.reason !== window.reason) previous.reason = "absolute-shift";
+      continue;
+    }
+    merged.push({ ...window });
+  }
+
+  return merged;
+}
+
+function goldSwingWindows(
+  timeline: TimelinePayload,
+  participants: ParticipantInfo[],
+  timelineEnd: number,
+): GoldContextWindow[] {
+  const snapshots = goldSnapshots(timeline, participants);
+  if (snapshots.length < 2) return [];
+
+  const absoluteSwingWindows = snapshots
+    .slice(1)
+    .map((snapshot, index) => ({
+      centerMs: snapshot.timestampMs,
+      shift: Math.abs(snapshot.goldDiff - snapshots[index].goldDiff),
+    }))
+    .filter((swing) => swing.shift > 0)
+    .sort((a, b) => b.shift - a.shift)
+    .slice(0, ABSOLUTE_GOLD_SWING_CONTEXT_LIMIT)
+    .map((swing) => goldWindow(swing.centerMs, timelineEnd, swing.shift, "absolute-shift"));
+
+  const losingTeam = losingTeamId(participants);
+  const losingCollapseWindows =
+    losingTeam == null
+      ? []
+      : snapshots
+          .slice(1)
+          .map((snapshot, index) => {
+            const previousAdvantage = losingTeamAdvantage(snapshots[index], losingTeam);
+            const currentAdvantage = losingTeamAdvantage(snapshot, losingTeam);
+            return {
+              centerMs: snapshot.timestampMs,
+              shift: previousAdvantage - currentAdvantage,
+            };
+          })
+          .filter((swing) => swing.shift > 0)
+          .sort((a, b) => b.shift - a.shift)
+          .slice(0, LOSING_TEAM_COLLAPSE_CONTEXT_LIMIT)
+          .map((swing) =>
+            goldWindow(swing.centerMs, timelineEnd, swing.shift, "losing-team-collapse"),
+          );
+
+  const maxLeadCollapseWindow =
+    losingTeam == null
+      ? []
+      : (() => {
+          let maxLeadIndex = -1;
+          let maxLead = 0;
+          for (const [index, snapshot] of snapshots.entries()) {
+            const advantage = losingTeamAdvantage(snapshot, losingTeam);
+            if (advantage > maxLead) {
+              maxLead = advantage;
+              maxLeadIndex = index;
+            }
+          }
+          if (maxLeadIndex < 0) return [];
+
+          let collapseTarget: { timestampMs: number; shift: number } | null = null;
+          for (const snapshot of snapshots.slice(maxLeadIndex + 1)) {
+            const shift = maxLead - losingTeamAdvantage(snapshot, losingTeam);
+            if (shift <= 0) continue;
+            if (!collapseTarget || shift > collapseTarget.shift) {
+              collapseTarget = { timestampMs: snapshot.timestampMs, shift };
+            }
+          }
+
+          return collapseTarget
+            ? [
+                goldWindow(
+                  collapseTarget.timestampMs,
+                  timelineEnd,
+                  collapseTarget.shift,
+                  "max-lead-collapse",
+                ),
+              ]
+            : [];
+        })();
+
+  const finalWindow =
+    timelineEnd > 0
+      ? [
+          {
+            startMs: Math.max(0, timelineEnd - FINAL_SEQUENCE_CONTEXT_MS),
+            endMs: timelineEnd,
+            centerMs: timelineEnd,
+            shift: 0,
+            reason: "final-sequence" as const,
+          },
+        ]
+      : [];
+
+  return mergeGoldWindows([
+    ...absoluteSwingWindows,
+    ...losingCollapseWindows,
+    ...maxLeadCollapseWindow,
+    ...finalWindow,
+  ]);
+}
+
+function internalItemKey(item: InternalWindowItem): string {
+  return JSON.stringify({
+    kind: item.kind,
+    timestampMs: item.timestampMs,
+    participantRawId: item.participantRawId,
+    type: item.kind === "event" ? eventType(item) : undefined,
+    event: item.kind === "event" ? item : undefined,
+  });
+}
+
+function extractWindowRanges(
+  timeline: TimelinePayload,
+  windows: Array<{ startMs: number; endMs: number }>,
+  champions: Record<number, string>,
+): InternalWindowItem[] {
+  const seen = new Set<string>();
+  const items: InternalWindowItem[] = [];
+
+  for (const window of windows) {
+    for (const item of extractWindow(timeline, window.startMs, window.endMs, champions)) {
+      const key = internalItemKey(item);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push(item);
+    }
+  }
+
+  items.sort((a, b) => a.timestampMs - b.timestampMs);
+  return items;
+}
+
 function buildWindowResponse({
   startMs,
   endMs,
@@ -1444,6 +1688,39 @@ function buildWindowResponse({
       .filter((id): id is number => typeof id === "number"),
   );
   const items = extractWindow(timeline, startMs, endMs, champions);
+  return buildWindowResponseFromItems({
+    startMs,
+    endMs,
+    timeline,
+    participants,
+    items,
+    subjectIds,
+    trimToRelevantEvidence,
+    extraOmittedEventTypes,
+  });
+}
+
+function buildWindowResponseFromItems({
+  startMs,
+  endMs,
+  timeline,
+  participants,
+  items,
+  subjectIds,
+  trimToRelevantEvidence = true,
+  extraOmittedEventTypes = [],
+  focusWindows,
+}: {
+  startMs: number;
+  endMs: number;
+  timeline: TimelinePayload;
+  participants: ParticipantInfo[];
+  items: InternalWindowItem[];
+  subjectIds: Set<number>;
+  trimToRelevantEvidence?: boolean;
+  extraOmittedEventTypes?: readonly string[];
+  focusWindows?: GoldContextWindow[];
+}) {
   const evidence = trimToRelevantEvidence ? trimEvidence(items, subjectIds) : items;
   const outputEvidence = stripInternal(evidence, participants, items, extraOmittedEventTypes);
   const outputItems = stripInternal(items, participants, items, extraOmittedEventTypes);
@@ -1460,7 +1737,75 @@ function buildWindowResponse({
     brief,
     evidence: outputEvidence,
     items: outputItems,
+    ...(focusWindows
+      ? {
+          focusWindows: focusWindows.map((window) => ({
+            start: formatGameTime(window.startMs),
+            end: formatGameTime(window.endMs),
+            center: formatGameTime(window.centerMs),
+            goldShift: window.shift,
+            reason: window.reason,
+          })),
+        }
+      : {}),
   };
+}
+
+function buildGoldSwingFullGameResponse({
+  match,
+  timeline,
+  userPuuid,
+  subjects: inputSubjects,
+  focusPuuids = [],
+  extraOmittedEventTypes = [],
+}: {
+  match: MatchPayload;
+  timeline: TimelinePayload;
+  userPuuid: string;
+  subjects?: z.infer<typeof TimelineWindowInputSchema>["subjects"];
+  focusPuuids?: readonly string[];
+  extraOmittedEventTypes?: readonly string[];
+}) {
+  const champions = buildChampionLookup(match);
+  const participants = buildParticipants(match);
+  const timelineEnd = timelineEndMs(timeline);
+  const windows = goldSwingWindows(timeline, participants, timelineEnd);
+  const fallbackWindows = windows.length ? windows : [{ startMs: 0, endMs: timelineEnd }];
+  const items = extractWindowRanges(timeline, fallbackWindows, champions);
+  const subjects: SubjectInfo[] = [
+    {
+      key: "Subject A",
+      participant: findSubject(participants, inputSubjects?.a ?? { puuid: userPuuid }),
+      fallbackChampion: inputSubjects?.a?.champion,
+    },
+    {
+      key: "Subject B",
+      participant: findSubject(participants, inputSubjects?.b),
+      fallbackChampion: inputSubjects?.b?.champion,
+    },
+  ];
+  const subjectIds = new Set(
+    [
+      ...subjects.map((subject) => subject.participant),
+      ...focusPuuids
+        .map((puuid) => findSubject(participants, { puuid })?.participant)
+        .filter(Boolean),
+    ]
+      .map((participant) => participant?.participantId)
+      .filter((id): id is number => typeof id === "number"),
+  );
+
+  return buildWindowResponseFromItems({
+    startMs: fallbackWindows[0]?.startMs ?? 0,
+    endMs: fallbackWindows[fallbackWindows.length - 1]?.endMs ?? timelineEnd,
+    timeline,
+    participants,
+    items,
+    subjectIds,
+    trimToRelevantEvidence: false,
+    extraOmittedEventTypes,
+    focusWindows: windows,
+  });
 }
 
 function buildJudgePrompt({
@@ -1471,6 +1816,7 @@ function buildJudgePrompt({
   subjectBChampion,
   verdictMode = "duel",
   freeForAllTeam = [],
+  promptVariant = "standard",
 }: {
   brief: string;
   locale: Locale;
@@ -1479,6 +1825,7 @@ function buildJudgePrompt({
   subjectBChampion?: string;
   verdictMode?: "duel" | "free-for-all";
   freeForAllTeam?: readonly FreeForAllPlayerInput[];
+  promptVariant?: "standard" | "v2";
 }) {
   const subjects = {
     subjectA: subjectAChampion ?? "",
@@ -1488,13 +1835,31 @@ function buildJudgePrompt({
     ? freeForAllTeam.map((player) => `- ${player.champion}`).join("\n")
     : "- Selected defeated-team roster unavailable.";
   const upperPrompt =
-    verdictMode === "free-for-all"
-      ? buildFreeForAllUpperPrompt(freeForAllTeam.map((player) => player.champion))
-      : substituteSubjects(UPPER_PROMPT, subjects);
+    promptVariant === "v2"
+      ? substituteSubjects(
+          buildV2UpperPrompt({
+            verdictMode,
+            champions: freeForAllTeam.map((player) => player.champion),
+          }),
+          subjects,
+        )
+      : verdictMode === "free-for-all"
+        ? buildFreeForAllUpperPrompt(freeForAllTeam.map((player) => player.champion))
+        : substituteSubjects(UPPER_PROMPT, subjects);
   const lowerPrompt =
-    verdictMode === "free-for-all"
-      ? buildFreeForAllLowerPrompt(locale, championLocalization, teamRoster)
-      : substituteSubjects(buildLowerPrompt(locale, championLocalization), subjects);
+    promptVariant === "v2"
+      ? substituteSubjects(
+          buildV2LowerPrompt({
+            locale,
+            championLocalization,
+            verdictMode,
+            teamRoster,
+          }),
+          subjects,
+        )
+      : verdictMode === "free-for-all"
+        ? buildFreeForAllLowerPrompt(locale, championLocalization, teamRoster)
+        : substituteSubjects(buildLowerPrompt(locale, championLocalization), subjects);
   const prompt = [upperPrompt, "", brief, "", lowerPrompt].join("\n");
   return { upperPrompt, brief, lowerPrompt, prompt };
 }
@@ -1506,6 +1871,7 @@ async function buildServerPromptPayload({
   subjects,
   verdictMode = "duel",
   freeForAllTeam,
+  promptVariant = "standard",
 }: {
   brief: string;
   locale?: Locale;
@@ -1513,6 +1879,7 @@ async function buildServerPromptPayload({
   subjects?: z.infer<typeof TimelineWindowInputSchema>["subjects"];
   verdictMode?: "duel" | "free-for-all";
   freeForAllTeam?: readonly FreeForAllPlayerInput[];
+  promptVariant?: "standard" | "v2";
 }) {
   const championLocalization = await buildServerChampionLocalization({
     locale,
@@ -1527,6 +1894,7 @@ async function buildServerPromptPayload({
     subjectBChampion: subjects?.b?.champion,
     verdictMode,
     freeForAllTeam,
+    promptVariant,
   });
 }
 
@@ -1809,7 +2177,7 @@ async function resolveVerdictResultOwner(accessToken?: string): Promise<{
 type VerdictAnalyticsEvent = {
   success: boolean;
   matchId: string;
-  scope: "full" | "window";
+  scope: "full" | "window" | "v2-full";
   routingRegion: RegionalRouting;
   locale: Locale;
   model?: string;
@@ -2106,12 +2474,72 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
     return { ...response, prompt };
   });
 
+export const getTimelineGoldSwingFullGame = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => TimelineGoldSwingFullGameInputSchema.parse(input))
+  .handler(async ({ data }) => {
+    assertContextInspectionAllowed();
+    assertRateLimit({
+      scope: "timeline-v2-full-game",
+      limit: 4,
+      windowMs: ONE_MINUTE_MS,
+      message: "Too many V2 full-game context requests. Please wait a minute and try again.",
+    });
+
+    const routing = inferRouting(data.matchId, data.routingRegion);
+    const base = `https://${routing}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(
+      data.matchId,
+    )}`;
+
+    const [match, timeline] = await Promise.all([
+      riotGet<MatchPayload>(base),
+      riotGet<TimelinePayload>(`${base}/timeline`),
+    ]);
+    const endMs = timelineEndMs(timeline);
+    if (endMs > MAX_FULL_GAME_CONTEXT_MS) {
+      throw new Error(
+        "[FULL_GAME_TOO_LONG] V2 full-game context is unavailable for matches over 60 minutes. Use Specify Time instead.",
+      );
+    }
+    const verdictMode = data.verdictMode ?? "duel";
+    const canonicalFreeForAllTeam =
+      verdictMode === "free-for-all"
+        ? buildCanonicalFreeForAllTeam(match, data.freeForAllTeam)
+        : undefined;
+    const focusPuuids =
+      verdictMode === "free-for-all"
+        ? canonicalFreeForAllTeam
+            ?.map((player) => player.puuid)
+            .filter((puuid): puuid is string => typeof puuid === "string" && puuid.length > 0)
+        : data.focusPuuids;
+
+    const response = buildGoldSwingFullGameResponse({
+      match,
+      timeline,
+      userPuuid: data.userPuuid,
+      subjects: data.subjects,
+      focusPuuids,
+      extraOmittedEventTypes: ["PAUSE_END"],
+    });
+    const prompt = await buildServerPromptPayload({
+      brief: response.brief,
+      locale: data.locale ?? "en",
+      match,
+      subjects: data.subjects,
+      verdictMode,
+      freeForAllTeam: canonicalFreeForAllTeam,
+      promptVariant: "v2",
+    });
+
+    return { ...response, prompt };
+  });
+
 export const getJudgeVerdict = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => JudgeVerdictInputSchema.parse(input))
   .handler(async ({ data }) => {
     const requestStartedAt = Date.now();
     const requestSignal = getRequest().signal;
     if (data.includeRaw) assertContextInspectionAllowed();
+    if (data.scope !== "v2-full") assertContextInspectionAllowed();
     assertRateLimit({
       scope: "judge-verdict",
       limit: 4,
@@ -2144,9 +2572,13 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
     const requestedWindowMs =
       data.scope === "window" ? (data.endMs as number) - (data.startMs as number) : undefined;
     const actualContextStartMs =
-      data.scope === "full" ? 0 : contextStartMinuteMs(data.startMs as number);
+      data.scope === "full" || data.scope === "v2-full"
+        ? 0
+        : contextStartMinuteMs(data.startMs as number);
     const actualContextEndMs =
-      data.scope === "full" ? timelineEnd : contextEndMs(data.endMs as number, timelineEnd);
+      data.scope === "full" || data.scope === "v2-full"
+        ? timelineEnd
+        : contextEndMs(data.endMs as number, timelineEnd);
     const verdictMode = data.verdictMode ?? "duel";
     const canonicalFreeForAllTeam =
       verdictMode === "free-for-all"
@@ -2160,14 +2592,42 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
         : undefined;
 
     const windowResponse =
-      data.scope === "full"
+      data.scope === "v2-full"
         ? (() => {
             if (timelineEnd > MAX_FULL_GAME_CONTEXT_MS) {
               throw new Error(
-                "[FULL_GAME_TOO_LONG] Full-game context is unavailable for matches over 60 minutes. Use Specify Time instead.",
+                "[FULL_GAME_TOO_LONG] V2 full-game context is unavailable for matches over 60 minutes. Use Specify Time instead.",
               );
             }
-            return buildWindowResponse({
+            return buildGoldSwingFullGameResponse({
+              match,
+              timeline,
+              userPuuid: data.userPuuid,
+              subjects: data.subjects,
+              focusPuuids,
+              extraOmittedEventTypes: ["PAUSE_END"],
+            });
+          })()
+        : data.scope === "full"
+          ? (() => {
+              if (timelineEnd > MAX_FULL_GAME_CONTEXT_MS) {
+                throw new Error(
+                  "[FULL_GAME_TOO_LONG] Full-game context is unavailable for matches over 60 minutes. Use Specify Time instead.",
+                );
+              }
+              return buildWindowResponse({
+                startMs: actualContextStartMs,
+                endMs: actualContextEndMs,
+                match,
+                timeline,
+                userPuuid: data.userPuuid,
+                subjects: data.subjects,
+                focusPuuids,
+                trimToRelevantEvidence: false,
+                extraOmittedEventTypes: ["PAUSE_END"],
+              });
+            })()
+          : buildWindowResponse({
               startMs: actualContextStartMs,
               endMs: actualContextEndMs,
               match,
@@ -2175,19 +2635,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
               userPuuid: data.userPuuid,
               subjects: data.subjects,
               focusPuuids,
-              trimToRelevantEvidence: false,
-              extraOmittedEventTypes: ["PAUSE_END"],
             });
-          })()
-        : buildWindowResponse({
-            startMs: actualContextStartMs,
-            endMs: actualContextEndMs,
-            match,
-            timeline,
-            userPuuid: data.userPuuid,
-            subjects: data.subjects,
-            focusPuuids,
-          });
 
     const promptPayload = await buildServerPromptPayload({
       brief: windowResponse.brief,
@@ -2196,6 +2644,7 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       subjects: data.subjects,
       verdictMode,
       freeForAllTeam: canonicalFreeForAllTeam,
+      promptVariant: data.scope === "v2-full" ? "v2" : "standard",
     });
     let quotaReserved = false;
     if (!data.includeRaw) {

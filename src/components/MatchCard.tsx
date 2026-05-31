@@ -27,7 +27,7 @@ import { getAnonymousId } from "@/lib/anonymous-id";
 
 type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "verdict";
 type PipelineStep = "contextualize" | "judge" | "parse";
-type Scope = "full" | "window";
+type Scope = "full" | "window" | "v2-full";
 type FaultMode = "me-vs-1" | "one-vs-one" | "free-for-all" | "switch-teams";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 type VerdictDisplay = { championName: string; championKey?: string; summonerName?: string };
@@ -42,6 +42,7 @@ type FreeForAllContextPlayer = {
 const SHOW_DEV_CONTEXT = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_CONTEXT === "true";
 const MIN_VERDICT_GAME_MS = 5 * 60_000;
 const MAX_FULL_GAME_VERDICT_MS = 60 * 60_000;
+const MIN_CONTEXTUALIZE_LOADING_MS = 1800;
 const PERSISTED_VERDICT_VERSION = 1;
 const PERSISTED_VERDICT_TTL_MS = 30 * 60_000;
 
@@ -93,7 +94,7 @@ function isVerdictDisplay(value: unknown): value is VerdictDisplay {
 }
 
 function isScope(value: unknown): value is Scope {
-  return value === "full" || value === "window";
+  return value === "full" || value === "window" || value === "v2-full";
 }
 
 function isFaultMode(value: unknown): value is FaultMode {
@@ -544,7 +545,11 @@ export function MatchCard({
         ? `${t("fullGame")} - ${
             matchDurationMs != null ? formatWindowLength(matchDurationMs, t) : match.duration
           }`
-        : null;
+        : verdictScope === "v2-full"
+          ? `${t("fullGame")} - ${
+              matchDurationMs != null ? formatWindowLength(matchDurationMs, t) : match.duration
+            }`
+          : null;
   const viewedParticipant: Participant = {
     champion: match.champion,
     summoner: you?.summoner ?? "You",
@@ -804,7 +809,7 @@ export function MatchCard({
       toast.warning(t("verdictGameTooShortWarning"));
       return;
     }
-    if (scope === "full") {
+    if (scope === "full" || scope === "v2-full") {
       if (durationMs != null && durationMs > MAX_FULL_GAME_VERDICT_MS) {
         toast.warning(t("fullGameTooLongWarning"));
         return;
@@ -819,6 +824,7 @@ export function MatchCard({
     setSharing(false);
     setCompleted(new Set());
     setActiveStep("contextualize");
+    const contextualizeStartedAt = Date.now();
 
     if (!match.riotMatchId || !match.userPuuid) {
       toast.error("Match metadata unavailable for AI verdict.");
@@ -839,7 +845,7 @@ export function MatchCard({
       const turnstileToken = await executeTurnstile();
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
-      await wait(250);
+      await wait(Math.max(0, MIN_CONTEXTUALIZE_LOADING_MS - (Date.now() - contextualizeStartedAt)));
       setCompleted((s) => new Set(s).add("contextualize"));
       setActiveStep("judge");
 
@@ -1253,7 +1259,40 @@ export function MatchCard({
 
           {!sharedVerdict && stage === "pickScope" && (
             <ScopeActions
-              onFullGame={() => runJudge("full")}
+              onFullGame={() => runJudge("v2-full")}
+              onLegacyFullGame={
+                SHOW_DEV_CONTEXT &&
+                match.riotMatchId &&
+                match.userPuuid &&
+                !isShortVerdictGame &&
+                subjectsReady
+                  ? () => runJudge("full")
+                  : undefined
+              }
+              onV2FullContext={
+                SHOW_DEV_CONTEXT &&
+                match.riotMatchId &&
+                match.userPuuid &&
+                !isShortVerdictGame &&
+                subjectsReady
+                  ? () => {
+                      const params = new URLSearchParams();
+                      params.set("scope", "v2-full");
+                      params.set("locale", locale);
+                      params.set("puuid", match.userPuuid as string);
+                      if (match.routingRegion) params.set("region", match.routingRegion);
+                      params.set("subjectA", subjectA.champion);
+                      if (pickedAlly) params.set("subjectB", pickedAlly.champion);
+                      if (faultMode === "free-for-all") {
+                        addFreeForAllContextParams(params, orderedSelectedFreeForAllPlayers);
+                      }
+                      window.open(
+                        `/dev/context/${match.riotMatchId}?${params.toString()}`,
+                        "_blank",
+                      );
+                    }
+                  : undefined
+              }
               isWin={showEnemyTeam ? !win : win}
               isShortGame={isShortVerdictGame}
               subjectsReady={subjectsReady}
@@ -1681,6 +1720,8 @@ function PlayerTile({
 function ScopeActions({
   onFullGame,
   onSpecifyTime,
+  onLegacyFullGame,
+  onV2FullContext,
   isWin,
   isShortGame,
   subjectsReady,
@@ -1688,6 +1729,8 @@ function ScopeActions({
   t,
 }: {
   onFullGame: () => void;
+  onLegacyFullGame?: () => void;
+  onV2FullContext?: () => void;
   /**
    * When provided, the "Specify Time" button is enabled and triggers this
    * callback. Omitted (undefined) for matches that lack the matchId/puuid
@@ -1721,24 +1764,26 @@ function ScopeActions({
       : onSpecifyTime
         ? "Pick a 5-10 min slice of the game"
         : "Match metadata unavailable";
+  const v2FullContextTitle = isShortGame
+    ? t("verdictGameTooShortWarning")
+    : !subjectsReady
+      ? undefined
+      : onV2FullContext
+        ? "Open V2 full-game context from top gold-shift windows"
+        : "Match metadata unavailable";
+  const legacyFullGameTitle = isShortGame
+    ? t("verdictGameTooShortWarning")
+    : !subjectsReady
+      ? undefined
+      : isWin
+        ? t("fullGameVictoryUnavailable")
+        : onLegacyFullGame
+          ? "Run legacy V1 full-game verdict"
+          : "Match metadata unavailable";
 
   return (
     <div className="mt-4 animate-fade-in">
       <div className="flex flex-wrap justify-center gap-3">
-        {/* Full-game scope is Defeat-only. Victory rows still show the
-            option disabled so users understand the feature boundary. */}
-        <button
-          onClick={fullGameDisabled ? undefined : onFullGame}
-          disabled={fullGameDisabled}
-          title={fullGameTitle}
-          className={
-            fullGameDisabled
-              ? "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
-              : "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
-          }
-        >
-          {t("fullGame")}
-        </button>
         {showSpecifyTime && (
           <button
             onClick={onSpecifyTime}
@@ -1753,6 +1798,48 @@ function ScopeActions({
             {t("specifyTime")}
           </button>
         )}
+        {showSpecifyTime && (
+          <button
+            onClick={fullGameDisabled ? undefined : onLegacyFullGame}
+            disabled={fullGameDisabled || !onLegacyFullGame}
+            className={
+              !fullGameDisabled && onLegacyFullGame
+                ? "rounded-lg border border-border px-5 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold"
+                : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
+            }
+            title={legacyFullGameTitle}
+          >
+            V1 Verdict
+          </button>
+        )}
+        {showSpecifyTime && (
+          <button
+            onClick={onV2FullContext}
+            disabled={!onV2FullContext || !subjectsReady}
+            className={
+              onV2FullContext && subjectsReady
+                ? "rounded-lg border border-border px-5 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold"
+                : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
+            }
+            title={v2FullContextTitle}
+          >
+            V2 Full Context
+          </button>
+        )}
+        {/* Full-game scope is Defeat-only. Victory rows still show the
+            option disabled so users understand the feature boundary. */}
+        <button
+          onClick={fullGameDisabled ? undefined : onFullGame}
+          disabled={fullGameDisabled}
+          title={fullGameTitle}
+          className={
+            fullGameDisabled
+              ? "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
+              : "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
+          }
+        >
+          {t("fullGame")}
+        </button>
       </div>
     </div>
   );

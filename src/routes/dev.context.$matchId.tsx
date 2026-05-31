@@ -11,7 +11,7 @@ import type { Locale } from "@/i18n";
  */
 
 type Search = {
-  scope?: "full" | "window";
+  scope?: "full" | "window" | "v2-full";
   puuid?: string;
   region?: "americas" | "europe" | "asia" | "sea";
   subjectA?: string;
@@ -68,7 +68,14 @@ export const Route = createFileRoute("/dev/context/$matchId")({
     meta: [{ name: "robots", content: "noindex,nofollow" }],
   }),
   validateSearch: (raw: Record<string, unknown>): Search => ({
-    scope: raw.scope === "window" ? "window" : raw.scope === "full" ? "full" : undefined,
+    scope:
+      raw.scope === "window"
+        ? "window"
+        : raw.scope === "full"
+          ? "full"
+          : raw.scope === "v2-full"
+            ? "v2-full"
+            : undefined,
     puuid: typeof raw.puuid === "string" ? raw.puuid : undefined,
     region:
       raw.region === "americas" ||
@@ -165,14 +172,14 @@ function DevContextPage() {
             freeForAllTeam={search.freeForAllTeam}
             onGameLengthChange={setGameLength}
           />
-        ) : search.scope === "full" && search.puuid ? (
+        ) : (search.scope === "full" || search.scope === "v2-full") && search.puuid ? (
           <TimelineWindowResult
             matchId={matchId}
             userPuuid={search.puuid}
             routingRegion={search.region}
             startMs={0}
             endMs={0}
-            scope="full"
+            scope={search.scope}
             // Auto-fetch on mount so the user immediately sees the
             // full-game prompt sandwich without an extra Run click.
             runToken={1}

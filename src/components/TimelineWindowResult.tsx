@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   getJudgeVerdict,
+  getTimelineGoldSwingFullGame,
   getTimelineFullGame,
   getTimelineWindow,
 } from "@/functions/timeline-window.functions";
@@ -34,6 +35,13 @@ type WindowResponse = {
   gameLength?: string;
   count: number;
   totalItems?: number;
+  focusWindows?: Array<{
+    start: string;
+    end: string;
+    center: string;
+    goldShift: number;
+    reason?: string;
+  }>;
   brief: string;
   evidence: unknown[];
   items?: unknown[];
@@ -88,7 +96,7 @@ export function TimelineWindowResult({
   routingRegion?: "americas" | "europe" | "asia" | "sea";
   startMs: number;
   endMs: number;
-  scope?: "window" | "full";
+  scope?: "window" | "full" | "v2-full";
   runToken: number;
   /**
    * Champion names used to substitute SUBJECT_A / SUBJECT_B placeholders in
@@ -172,8 +180,8 @@ export function TimelineWindowResult({
     const t0 = performance.now();
     try {
       const data =
-        scope === "full"
-          ? await getTimelineFullGame({
+        scope === "v2-full"
+          ? await getTimelineGoldSwingFullGame({
               data: {
                 matchId,
                 userPuuid,
@@ -203,38 +211,71 @@ export function TimelineWindowResult({
                   : {}),
               },
             })
-          : await getTimelineWindow({
-              data: {
-                matchId,
-                userPuuid,
-                ...(routingRegion ? { routingRegion } : {}),
-                locale,
-                verdictMode,
-                ...(verdictMode === "free-for-all" && freeForAllTeam?.length
-                  ? { freeForAllTeam }
-                  : {}),
-                startMs,
-                endMs,
-                subjects: {
-                  a: {
-                    champion: subjectAChampion,
-                    puuid: you?.puuid ?? userPuuid,
+          : scope === "full"
+            ? await getTimelineFullGame({
+                data: {
+                  matchId,
+                  userPuuid,
+                  ...(routingRegion ? { routingRegion } : {}),
+                  locale,
+                  verdictMode,
+                  ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                    ? { freeForAllTeam }
+                    : {}),
+                  subjects: {
+                    a: {
+                      champion: subjectAChampion,
+                      puuid: you?.puuid ?? userPuuid,
+                    },
+                    b: {
+                      champion: subjectBChampion,
+                    },
                   },
-                  b: {
-                    champion: subjectBChampion,
-                  },
+                  ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                    ? {
+                        focusPuuids: freeForAllTeam
+                          .map((player) => player.puuid)
+                          .filter(
+                            (puuid): puuid is string =>
+                              typeof puuid === "string" && puuid.length > 0,
+                          ),
+                      }
+                    : {}),
                 },
-                ...(verdictMode === "free-for-all" && freeForAllTeam?.length
-                  ? {
-                      focusPuuids: freeForAllTeam
-                        .map((player) => player.puuid)
-                        .filter(
-                          (puuid): puuid is string => typeof puuid === "string" && puuid.length > 0,
-                        ),
-                    }
-                  : {}),
-              },
-            });
+              })
+            : await getTimelineWindow({
+                data: {
+                  matchId,
+                  userPuuid,
+                  ...(routingRegion ? { routingRegion } : {}),
+                  locale,
+                  verdictMode,
+                  ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                    ? { freeForAllTeam }
+                    : {}),
+                  startMs,
+                  endMs,
+                  subjects: {
+                    a: {
+                      champion: subjectAChampion,
+                      puuid: you?.puuid ?? userPuuid,
+                    },
+                    b: {
+                      champion: subjectBChampion,
+                    },
+                  },
+                  ...(verdictMode === "free-for-all" && freeForAllTeam?.length
+                    ? {
+                        focusPuuids: freeForAllTeam
+                          .map((player) => player.puuid)
+                          .filter(
+                            (puuid): puuid is string =>
+                              typeof puuid === "string" && puuid.length > 0,
+                          ),
+                      }
+                    : {}),
+                },
+              });
       setDurationMs(Math.round(performance.now() - t0));
       if (data.error) throw new Error(data.error);
       onGameLengthChange?.(data.gameLength ?? null);
@@ -330,6 +371,11 @@ export function TimelineWindowResult({
             {typeof result.totalItems === "number" && result.totalItems !== result.count && (
               <span className="text-muted-foreground">{result.totalItems} extracted</span>
             )}
+            {result.focusWindows?.length ? (
+              <span className="text-muted-foreground">
+                {result.focusWindows.length} V2 focus windows
+              </span>
+            ) : null}
             {durationMs != null && <span className="text-muted-foreground">{durationMs} ms</span>}
             <button
               onClick={() => void copyAll()}

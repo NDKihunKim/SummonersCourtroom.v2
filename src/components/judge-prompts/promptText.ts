@@ -123,6 +123,10 @@ Consider these factors:
 
 - Do not punish normal farming, split pushing, side-lane pressure, or base defense when it creates visible pressure, trades for an objective/building, or is reasonable for the game state. Blame it only when the brief shows it was low-value compared with a relevant fight, objective, building defense, or game-ending sequence.
 
+- Do not blame a side-lane player for failing to defend an off-lane turret or structure unless the brief shows they were already near that area, their role made them directly responsible for that area, or the event was part of a decisive grouped objective/base defense sequence. A top laner being top while mid outer turret falls is not fault by itself.
+
+- Treat normal lane presence as reasonable unless the brief shows a clearly higher-value event the player missed, such as a major neutral objective, inhibitor/nexus defense, or a decisive teamfight with enough timing/location evidence.
+
 - Do not claim a subject intentionally threw, trolled, gave up, or refused to play. Intent is not visible. Judge only observable repeated non-participation, irrelevant farming, avoidable isolation, or lack of useful pressure shown in the brief.
 
 - Do not reward or punish actions that require unseen vision, cooldown, communication, or intent.
@@ -244,4 +248,105 @@ Judge only these selected defeated-team players with name of champions only:
 ${teamRoster}
 
 The verdict must be one champion from this list. Do not judge players from the winning team or outside this list.`;
+}
+
+export function buildV2UpperPrompt({
+  verdictMode = "duel",
+  champions = [],
+}: {
+  verdictMode?: "duel" | "free-for-all";
+  champions?: readonly string[];
+} = {}) {
+  if (verdictMode === "free-for-all") {
+    const championList =
+      champions.length > 0 ? champions.join(", ") : "the selected defeated-team champions";
+
+    return `You are an expert League of Legends post-game analyst. Your task is to judge the defeated team champions: ${championList}. Decide which one champion shows the greatest process fault within the provided V2 highlight context.
+
+Use the Structured Context Brief as the only source of truth. It contains the same match data format as the standard verdict, but only for selected high-impact windows: major gold-difference shifts, losing-team collapse moments, and the final game sequence.
+
+Analyze each highlighted moment thoroughly. Prioritize mistakes that helped turn a playable game into a loss, especially late-game collapses, deaths or absences before decisive objectives/buildings, and low-value actions during a shown swing.
+
+Do not use outside match knowledge, hidden information, matchup theory, vision assumptions, summoner spell assumptions, player intent, or facts not shown in the brief.`;
+  }
+
+  return `You are an expert League of Legends post-game analyst. Your task is to compare SUBJECT_A and SUBJECT_B and decide which subject shows greater process fault within the provided V2 highlight context.
+
+Use the Structured Context Brief as the only source of truth. It contains the same match data format as the standard verdict, but only for selected high-impact windows: major gold-difference shifts, losing-team collapse moments, and the final game sequence.
+
+Analyze each highlighted moment thoroughly. Prioritize mistakes that helped turn a playable game into a loss, especially late-game collapses, deaths or absences before decisive objectives/buildings, and low-value actions during a shown swing.
+
+Do not use outside match knowledge, hidden information, matchup theory, vision assumptions, summoner spell assumptions, player intent, or facts not shown in the brief.`;
+}
+
+export function buildV2LowerPrompt({
+  locale = "en",
+  championLocalization = "",
+  verdictMode = "duel",
+  teamRoster = "",
+}: {
+  locale?: Locale;
+  championLocalization?: string;
+  verdictMode?: "duel" | "free-for-all";
+  teamRoster?: string;
+} = {}) {
+  const subjectLabel =
+    verdictMode === "free-for-all" ? "any selected defeated-team player" : "SUBJECT_A or SUBJECT_B";
+  const comparisonLabel =
+    verdictMode === "free-for-all"
+      ? "the selected defeated-team players"
+      : "SUBJECT_A and SUBJECT_B";
+  const firstLineRule =
+    verdictMode === "free-for-all"
+      ? "- Line 1: Output only the champion name of the selected defeated-team player who was most at fault. Pick exactly one player from the selected defeated-team list."
+      : "- Line 1: Output only the selected champion name. Pick exactly one subject.";
+  const freeForAllOverride =
+    verdictMode === "free-for-all"
+      ? `
+
+**FREE FOR ALL MODE OVERRIDE:**
+
+Judge only these selected defeated-team players with name of champions only:
+${teamRoster}
+
+The verdict must be one champion from this list. Do not judge players from the winning team or outside this list.`
+      : "";
+
+  return `--- FINAL INSTRUCTION ---
+
+${outputLanguageInstruction(locale, championLocalization)}
+
+**V2 HIGHLIGHT METHOD:**
+
+The Structured Context Brief is intentionally compressed around the game's largest swing moments. Judge only from those shown moments. Do not assume missing minutes were neutral, good, or bad.
+
+First check whether the brief contains actionable evidence for ${subjectLabel}. If it does not, output only the tie line from OUTPUT LANGUAGE and stop.
+
+When evidence exists, decide which player from ${comparisonLabel} showed the greatest process fault in bringing the game toward defeat. Prioritize:
+- Losing-team collapses, especially after the losing team had a lead or a playable state.
+- Late-game negative swings and the final 3 minutes.
+- Deaths, bad positioning, late arrivals, or absence that directly enabled fights, objectives, buildings, or game-ending pressure.
+- Repeated low-value farming or isolation only when the brief shows the player missed a meaningful fight/objective/building trade.
+- Resource gaps only when they explain a visible decision or inability to contribute.
+
+**STRICT EVIDENCE RULES:**
+
+- Every reason must be traceable to the Structured Context Brief.
+- Use exactly one strongest example per reason. Do not stack several unrelated examples.
+- Keep timestamps close to the event being explained; do not claim direct absence from stale position evidence.
+- When using frame snapshot evidence, avoid presenting the snapshot timestamp as the main proof unless timing is essential. Prefer natural wording such as "around this stage of the game" or "when Sylas was level 4..." instead of "at 07:00...".
+- Use exact level, CS, jungle CS, gold, or KDA numbers when they help explain the gap. Avoid raw champion damage numbers unless the exact number is necessary; describe damage as low, limited, high, or meaningful instead.
+- For jungle or resource comparisons, compare the player to the opposing role when available, but explain how the gap affected objective control, skirmishing, or map pressure. Do not make the reason sound like scoreboard blame only.
+- Do not blame a side-lane player for not defending an off-lane outer turret unless the shown moment proves that rotation was expected, nearby, or part of a decisive grouped defense. Normal lane presence is reasonable unless a higher-value missed fight, neutral objective, inhibitor/nexus defense, or game-ending sequence is shown.
+- Do not mention internal source words such as "brief", "context", "snapshot", "frame", "data", or "prompt".
+- Do not print raw coordinates. Convert locations to readable landmarks such as dragon pit, Baron, river side, jungle side, lane, or named turret/inhibitor.
+- Do not claim intent such as throwing, trolling, giving up, or refusing to play.
+
+**OUTPUT FORMAT:**
+
+${firstLineRule}
+- Then list 1 to 3 numbered reasons, ordered from most impactful to least impactful.
+- Each reason must describe a broader fault pattern and include exactly one strongest example using wording like "for example, ...".
+- Write "Blue team" or "Red team", not just "Blue" or "Red".
+- Do not add a summary paragraph or any text after the final reason.${freeForAllOverride}`;
 }
