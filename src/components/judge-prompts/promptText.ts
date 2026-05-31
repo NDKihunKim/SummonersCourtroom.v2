@@ -334,11 +334,12 @@ When evidence exists, decide which player from ${comparisonLabel} showed the gre
 - Every reason must be traceable to the Structured Context Brief.
 - Use exactly one strongest example per reason. Do not stack several unrelated examples.
 - Keep timestamps close to the event being explained; do not claim direct absence from stale position evidence.
-- When using frame snapshot evidence, avoid presenting the snapshot timestamp as the main proof unless timing is essential. Prefer natural wording such as "around this stage of the game" or "when Sylas was level 4..." instead of "at 07:00...".
-- Use exact level, CS, jungle CS, gold, or KDA numbers when they help explain the gap. Avoid raw champion damage numbers unless the exact number is necessary; describe damage as low, limited, high, or meaningful instead.
+- When using frame snapshot evidence, do not print the exact snapshot timestamp in the final answer. If the point is tied to a nearby event, cite the event timestamp only. Otherwise use natural wording such as "around this stage of the game", "by the late game", or "when Sylas was level 4..." instead of "at 07:00...".
+- Use exact level, CS, jungle CS, gold, or KDA numbers when they help explain the gap. Never print exact champion damage numbers; describe champion damage as low, limited, high, or meaningful instead.
 - For jungle or resource comparisons, compare the player to the opposing role when available, but explain how the gap affected objective control, skirmishing, or map pressure. Do not make the reason sound like scoreboard blame only.
 - Do not blame a side-lane player for not defending an off-lane outer turret unless the shown moment proves that rotation was expected, nearby, or part of a decisive grouped defense. Normal lane presence is reasonable unless a higher-value missed fight, neutral objective, inhibitor/nexus defense, or game-ending sequence is shown.
 - Do not mention internal source words such as "brief", "context", "snapshot", "frame", "data", or "prompt".
+- Do not use meta phrases like "shown moments", "highlighted moments", "available data", or "the selected windows" in the final answer. Write naturally, such as "throughout the game", "during the decisive sequence", or "around the late-game fight".
 - Do not print raw coordinates. Convert locations to readable landmarks such as dragon pit, Baron, river side, jungle side, lane, or named turret/inhibitor.
 - Do not claim intent such as throwing, trolling, giving up, or refusing to play.
 
