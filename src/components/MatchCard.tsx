@@ -1390,6 +1390,14 @@ export function MatchCard({
                   {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
                 </ModeButton>
               </div>
+              <MatchScoreboard
+                match={match}
+                viewedParticipant={viewedParticipant}
+                open={scoreboardOpen}
+                formatChampionName={formatChampionName}
+                t={t}
+                locale={locale}
+              />
               {/* Pinned "You vs Ally" matchup card so the user always knows
                   which two subjects the Judge is comparing while the
                   pipeline runs. Reuses PlayerTile for visual parity with
@@ -1413,14 +1421,6 @@ export function MatchCard({
                   formatChampionName={formatChampionName}
                 />
               )}
-              <MatchScoreboard
-                match={match}
-                viewedParticipant={viewedParticipant}
-                open={scoreboardOpen}
-                formatChampionName={formatChampionName}
-                t={t}
-                locale={locale}
-              />
               <JudgeLoading active={activeStep} completed={completed} t={t} />
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 {t("judgeLoadingNotice")}
@@ -1438,6 +1438,14 @@ export function MatchCard({
                   {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
                 </ModeButton>
               </div>
+              <MatchScoreboard
+                match={match}
+                viewedParticipant={viewedParticipant}
+                open={scoreboardOpen}
+                formatChampionName={formatChampionName}
+                t={t}
+                locale={locale}
+              />
               {/* Same matchup header on the verdict screen so the ruling
                   is always read in the context of the two compared
                   players (especially useful after re-judging). */}
@@ -1459,14 +1467,6 @@ export function MatchCard({
                   formatChampionName={formatChampionName}
                 />
               )}
-              <MatchScoreboard
-                match={match}
-                viewedParticipant={viewedParticipant}
-                open={scoreboardOpen}
-                formatChampionName={formatChampionName}
-                t={t}
-                locale={locale}
-              />
               <Verdict
                 verdictDisplay={verdictDisplay}
                 reasoning={reasoning}
@@ -1598,7 +1598,9 @@ function ScoreboardTeam({
 }) {
   return (
     <div>
-      <div className={`mb-2 text-xs font-bold uppercase tracking-[0.2em] ${accentClass}`}>
+      <div
+        className={`mb-2 text-center text-xs font-bold uppercase tracking-[0.2em] ${accentClass}`}
+      >
         {title}
       </div>
       <div className="space-y-1.5">
@@ -1633,7 +1635,7 @@ function ScoreboardRow({
   const trinket = player.trinket ?? 0;
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_48px_72px_112px] items-center gap-2 rounded-md bg-background/45 px-2 py-1.5">
+    <div className="grid grid-cols-[minmax(0,148px)_minmax(0,1fr)_minmax(0,1fr)_minmax(118px,1fr)] items-center gap-2 rounded-md border border-border/60 bg-background/45 px-2 py-1.5 shadow-[0_0_16px_rgba(255,199,89,0.03)]">
       <div className="flex min-w-0 items-center gap-2">
         <ChampionIcon champion={player.champion} size={30} ring={false} />
         <div className="min-w-0">
@@ -1663,7 +1665,9 @@ function ScoreboardRow({
         <div className="mb-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t("scoreboardItems")}
         </div>
-        <ItemGrid items={items} trinket={trinket} size={17} locale={locale} />
+        <div className="flex justify-center">
+          <ItemGrid items={items} trinket={trinket} size={17} locale={locale} />
+        </div>
       </div>
     </div>
   );
