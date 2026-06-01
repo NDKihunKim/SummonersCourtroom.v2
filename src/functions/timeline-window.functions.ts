@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import type { RegionalRouting } from "@/server/riot";
+import { fetchRiotWithBackoff } from "@/server/riot-rate-limit-backoff";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 import {
@@ -353,7 +354,7 @@ function inferRouting(matchId: string, override?: RegionalRouting): RegionalRout
 }
 
 async function riotGet<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetchRiotWithBackoff(url, {
     headers: { "X-Riot-Token": apiKey() },
   });
 

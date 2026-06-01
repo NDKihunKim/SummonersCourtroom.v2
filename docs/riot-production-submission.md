@@ -19,23 +19,29 @@ Set production secrets in Cloudflare, not in committed files:
 
 ```bash
 wrangler secret put RIOT_API_KEY
-wrangler secret put SUPABASE_URL
 wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+wrangler secret put TURNSTILE_SECRET_KEY
+wrangler secret put AI_GATEWAY_TOKEN
 ```
 
-Public frontend Supabase values may be configured as non-secret environment variables when needed:
+Set production runtime values in Cloudflare as non-secret environment variables:
 
 ```bash
+SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
 VITE_SUPABASE_PROJECT_ID
+VITE_TURNSTILE_SITE_KEY
+AI_GATEWAY_URL
+VITE_ENABLE_DEV_CONTEXT=false
 ```
 
 Production context inspection must stay disabled:
 
 - Leave `VITE_ENABLE_DEV_CONTEXT` unset or `false`.
 - Do not expose `ADMIN_CONTEXT_TOKEN` to the browser.
-- Do not put Riot keys or Supabase service-role keys in any `VITE_*` variable.
+- Do not put Riot keys, Supabase service-role keys, Turnstile secret keys, or AI gateway tokens in any `VITE_*` variable.
 
 ## Positioning
 
@@ -52,6 +58,18 @@ Production context inspection must stay disabled:
 - Ranked data: show ranked solo tier when available.
 - Completed match history: load recent completed matches for the searched player.
 - Completed match detail/timeline: used only for post-game review/context, not live-game assistance.
+
+## Riot Rate-Limit Protection
+
+- App-level search, refresh, verdict, share, feedback, and account actions are rate limited before expensive server work.
+- Riot `429` responses are converted to safe user-facing errors.
+- Riot `Retry-After` is stored in `riot_rate_limit_backoffs` by Riot routing scope so later Worker isolates stop future Riot calls for that scope until the backoff expires.
+- Match-history caching reuses cached match detail objects and fetches only new recent match details when refreshing a player.
+- Add Cloudflare WAF/rate-limit rules as an outer abuse layer:
+  - rate limit search/profile fetch requests by IP.
+  - rate limit refresh requests more strictly because refresh intentionally rechecks Riot.
+  - rate limit verdict requests by IP/session because verdict context may fetch match detail and timeline.
+  - return a generic retry message instead of exposing internal route or provider details.
 
 ## Public Pages
 
@@ -82,6 +100,9 @@ Verify these routes on the deployed HTTPS URL:
 - Footer links open About, Privacy, Terms, Contact, and Legal.
 - Browser source, bundled JS, localStorage, and network responses do not expose `RIOT_API_KEY` or Supabase service-role keys.
 
-## Known Approval Risk
+## Current Approval Notes
 
-The visible verdict flow currently presents a preview/mock verdict. A deployed HTTPS prototype is useful now, but the final Riot production-key request will be stronger after the real post-game AI verdict pipeline is connected.
+- The public ranked completed-match verdict flow is connected to the server-side AI verdict pipeline.
+- Normal users can request a verdict, view the result, create a 72-hour share link, and submit an objection for future quality review.
+- Internal prompt/context inspection remains unavailable to normal production users.
+- Before submitting, run the manual verification checklist above on the final custom domain and capture the required screenshots from that domain.

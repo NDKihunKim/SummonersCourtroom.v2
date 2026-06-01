@@ -104,6 +104,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      riot_rate_limit_backoffs: {
+        Row: {
+          blocked_until: string;
+          retry_after_seconds: number | null;
+          scope: string;
+          source_status: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          blocked_until: string;
+          retry_after_seconds?: number | null;
+          scope: string;
+          source_status?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          blocked_until?: string;
+          retry_after_seconds?: number | null;
+          scope?: string;
+          source_status?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       shared_verdicts: {
         Row: {
           created_at: string;

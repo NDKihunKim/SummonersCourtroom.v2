@@ -4,6 +4,7 @@
  * IMPORTANT: this file uses RIOT_API_KEY from process.env. Only import it from
  * `createServerFn` handlers — never from client/route components.
  */
+import { fetchRiotWithBackoff } from "./riot-rate-limit-backoff";
 
 export type RegionalRouting = "americas" | "europe" | "asia" | "sea";
 
@@ -41,7 +42,7 @@ function apiKey(): string {
 }
 
 async function riotGet<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetchRiotWithBackoff(url, {
     headers: { "X-Riot-Token": apiKey() },
   });
   if (!res.ok) {

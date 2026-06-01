@@ -8,6 +8,7 @@
  * IMPORTANT: this file uses RIOT_API_KEY from process.env. Only import it
  * from `createServerFn` handlers — never from client/route components.
  */
+import { fetchRiotWithBackoff } from "./riot-rate-limit-backoff";
 
 /** Subset of the league-v4 entry payload we actually use. */
 export interface LeagueEntry {
@@ -37,7 +38,7 @@ export async function getLeagueEntriesByPuuid(
   platform: string,
 ): Promise<LeagueEntry[]> {
   const url = `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`;
-  const res = await fetch(url, { headers: { "X-Riot-Token": apiKey() } });
+  const res = await fetchRiotWithBackoff(url, { headers: { "X-Riot-Token": apiKey() } });
   if (!res.ok) {
     // 404 from this endpoint is unusual but treat as "no entries" defensively.
     if (res.status === 404) return [];
