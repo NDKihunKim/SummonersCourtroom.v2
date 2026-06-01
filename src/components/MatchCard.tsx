@@ -1259,6 +1259,7 @@ export function MatchCard({
                 setPickedAlly(null);
                 setStage("pickAlly");
               }}
+              match={match}
               scoreboardOpen={scoreboardOpen}
               onToggleScoreboard={() => setScoreboardOpen((open) => !open)}
               you={viewedParticipant}
@@ -1270,6 +1271,7 @@ export function MatchCard({
               selectedA={stage === "pickScope" ? subjectA : undefined}
               selectedB={stage === "pickScope" ? (pickedAlly ?? undefined) : undefined}
               t={t}
+              locale={locale}
               formatChampionName={formatChampionName}
               onPick={(a) => {
                 setPickedSubjectA(null);
@@ -1293,17 +1295,6 @@ export function MatchCard({
                 setPickedAlly(players[1] ?? null);
                 setStage("pickScope");
               }}
-            />
-          )}
-
-          {!sharedVerdict && (stage === "pickAlly" || stage === "pickScope") && (
-            <MatchScoreboard
-              match={match}
-              viewedParticipant={viewedParticipant}
-              open={scoreboardOpen}
-              formatChampionName={formatChampionName}
-              t={t}
-              locale={locale}
             />
           )}
 
@@ -1552,28 +1543,38 @@ function MatchScoreboard({
   const red = sortByRole(roster.filter((player) => player.teamId === 200));
 
   if (blue.length === 0 && red.length === 0) return null;
-  if (!open) return null;
 
   return (
-    <div className="mt-4">
-      <div className="overflow-x-auto rounded-lg border border-border bg-card/70 p-3 animate-fade-in">
-        <div className="grid min-w-[760px] grid-cols-2 gap-3">
-          <ScoreboardTeam
-            title={t("scoreboardBlueTeam")}
-            players={blue}
-            accentClass="text-hex-blue"
-            formatChampionName={formatChampionName}
-            t={t}
-            locale={locale}
-          />
-          <ScoreboardTeam
-            title={t("scoreboardRedTeam")}
-            players={red}
-            accentClass="text-destructive"
-            formatChampionName={formatChampionName}
-            t={t}
-            locale={locale}
-          />
+    <div
+      className={`grid overflow-hidden transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
+        open ? "mb-4 mt-4 grid-rows-[1fr] opacity-100" : "my-0 grid-rows-[0fr] opacity-0"
+      }`}
+      aria-hidden={!open}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div
+          className={`overflow-x-auto rounded-lg border border-border bg-card/70 p-3 transition-transform duration-300 ease-out ${
+            open ? "translate-y-0" : "-translate-y-2"
+          }`}
+        >
+          <div className="grid min-w-[760px] grid-cols-2 gap-3">
+            <ScoreboardTeam
+              title={t("scoreboardBlueTeam")}
+              players={blue}
+              accentClass="text-hex-blue"
+              formatChampionName={formatChampionName}
+              t={t}
+              locale={locale}
+            />
+            <ScoreboardTeam
+              title={t("scoreboardRedTeam")}
+              players={red}
+              accentClass="text-destructive"
+              formatChampionName={formatChampionName}
+              t={t}
+              locale={locale}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -1673,6 +1674,7 @@ function PickAlly({
   onModeChange,
   showEnemyTeam,
   onSwitchTeams,
+  match,
   you,
   allies,
   enemies,
@@ -1689,12 +1691,14 @@ function PickAlly({
   selectedA,
   selectedB,
   t,
+  locale,
   formatChampionName,
 }: {
   mode: FaultMode;
   onModeChange: (mode: FaultMode) => void;
   showEnemyTeam: boolean;
   onSwitchTeams: () => void;
+  match: Match;
   you: Participant;
   allies: Participant[];
   enemies: Participant[];
@@ -1711,6 +1715,7 @@ function PickAlly({
   selectedA?: Participant;
   selectedB?: Participant;
   t: Translate;
+  locale: Locale;
   formatChampionName: (champion: string) => string;
 }) {
   const [duelPicks, setDuelPicks] = useState<Participant[]>([]);
@@ -1791,11 +1796,11 @@ function PickAlly({
           </ModeButton>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ModeButton active={showEnemyTeam} onClick={switchTeams}>
-            Switch Teams
-          </ModeButton>
           <ModeButton active={scoreboardOpen} onClick={onToggleScoreboard}>
             {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
+          </ModeButton>
+          <ModeButton active={showEnemyTeam} onClick={switchTeams}>
+            Switch Teams
           </ModeButton>
           <button
             onClick={onCancel}
@@ -1805,6 +1810,15 @@ function PickAlly({
           </button>
         </div>
       </div>
+
+      <MatchScoreboard
+        match={match}
+        viewedParticipant={you}
+        open={scoreboardOpen}
+        formatChampionName={formatChampionName}
+        t={t}
+        locale={locale}
+      />
 
       <p className="mb-3 text-center text-xs text-muted-foreground">{pickHint}</p>
 
