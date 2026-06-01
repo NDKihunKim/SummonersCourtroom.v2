@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type Locale = "en" | "ko";
 
@@ -427,14 +427,14 @@ export function useLocale() {
     setLocaleState(readStoredLocale() ?? detectLocale());
   }, []);
 
-  const setLocale = (next: Locale) => {
+  const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {
       /* ignore */
     }
-  };
+  }, []);
 
   const t = useMemo(
     () => (key: TranslationKey, vars?: Record<string, string | number>) => {

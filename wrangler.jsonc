@@ -25,13 +25,13 @@
       "dataset": "analytic_events"
     }
   ],
+  // Public environment variables.
+  // For local development, set values in .dev.vars (gitignored).
+  // For production, set these in the Cloudflare Dashboard (Workers & Pages >
+  // Settings > Variables and Secrets) or via `wrangler secret put`.
+  // Actual secrets (RIOT_API_KEY, SUPABASE_SERVICE_ROLE_KEY, etc.) MUST be
+  // set via `wrangler secret put` or the Cloudflare Dashboard — never here.
   "vars": {
-    "SUPABASE_URL": "https://gbbbwazmqnqbvcgjhnvz.supabase.co",
-    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_CiDVjfQ4VzII1-vt8w51Sw_ozTpKuLA",
-    "VITE_SUPABASE_URL": "https://gbbbwazmqnqbvcgjhnvz.supabase.co",
-    "VITE_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_CiDVjfQ4VzII1-vt8w51Sw_ozTpKuLA",
-    "VITE_SUPABASE_PROJECT_ID": "gbbbwazmqnqbvcgjhnvz",
-    "VITE_TURNSTILE_SITE_KEY": "0x4AAAAAADR21K5nOwdQvXRN",
     "VITE_ENABLE_DEV_CONTEXT": "false"
   }
 }

@@ -4,8 +4,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { accountIdentityForUser } from "@/functions/account-identity.server";
 
 const ANONYMOUS_DAILY_LIMIT = 3;
-const FREE_DAILY_LIMIT = 5;
-const PAID_DAILY_LIMIT = 30;
+const FREE_DAILY_LIMIT = 10;
+const PAID_DAILY_LIMIT = 50;
 
 export type AccountPlan = "anonymous" | "free" | "paid" | "unli";
 

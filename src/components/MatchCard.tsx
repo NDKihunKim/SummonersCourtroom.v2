@@ -1201,102 +1201,112 @@ export function MatchCard({
       </div>
 
       {/* Expanded Judge slide */}
-      {expanded && (
-        <div className="border-t border-border bg-background/40 px-4 py-5 animate-fade-in">
-          {sharedVerdict && stage === "closed" && (
-            <SharedVerdictResult verdict={sharedVerdict} t={t} onNewVerdict={onSharedNewVerdict} />
-          )}
+      <div
+        className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+        aria-hidden={!expanded}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="border-t border-border bg-background/40 px-4 py-5">
+            {sharedVerdict && stage === "closed" && (
+              <SharedVerdictResult
+                verdict={sharedVerdict}
+                t={t}
+                onNewVerdict={onSharedNewVerdict}
+              />
+            )}
 
-          {!sharedVerdict && (stage === "pickAlly" || stage === "pickScope") && (
-            <PickAlly
-              mode={faultMode}
-              onModeChange={(nextMode) => {
-                setFaultMode(nextMode);
-                if (nextMode === "me-vs-1") setShowEnemyTeam(false);
-                setPickedSubjectA(null);
-                setPickedAlly(null);
-                setFreeForAllSelection([]);
-                if (nextMode === "free-for-all") {
-                  const members = sortByRole(
-                    showEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
-                  );
-                  setFreeForAllSelection(members);
-                  setPickedSubjectA(members[0] ?? null);
-                  setPickedAlly(members[1] ?? null);
-                  setStage(members.length >= 2 ? "pickScope" : "pickAlly");
-                  return;
-                }
-                setStage("pickAlly");
-              }}
-              showEnemyTeam={showEnemyTeam}
-              onSwitchTeams={() => {
-                const nextShowEnemyTeam = !showEnemyTeam;
-                setShowEnemyTeam(nextShowEnemyTeam);
-                const nextMode =
-                  faultMode === "free-for-all"
-                    ? "free-for-all"
-                    : nextShowEnemyTeam
-                      ? "one-vs-one"
-                      : "me-vs-1";
-                setFaultMode(nextMode);
-                setPickedSubjectA(null);
-                setPickedAlly(null);
-                setFreeForAllSelection([]);
-                if (nextMode === "free-for-all") {
-                  const members = sortByRole(
-                    nextShowEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
-                  );
-                  setFreeForAllSelection(members);
-                  setPickedSubjectA(members[0] ?? null);
-                  setPickedAlly(members[1] ?? null);
-                  setStage(members.length >= 2 ? "pickScope" : "pickAlly");
-                  return;
-                }
-                setStage("pickAlly");
-              }}
-              onClearSelection={() => {
-                setPickedSubjectA(null);
-                setPickedAlly(null);
-                setStage("pickAlly");
-              }}
-              match={match}
-              scoreboardOpen={scoreboardOpen}
-              onToggleScoreboard={() => setScoreboardOpen((open) => !open)}
-              you={viewedParticipant}
-              allies={match.team}
-              enemies={match.enemies}
-              freeForAllPlayers={visibleTeamMembers}
-              selectedFreeForAllPlayers={selectedFreeForAllPlayers}
-              onCancel={reset}
-              selectedA={stage === "pickScope" ? subjectA : undefined}
-              selectedB={stage === "pickScope" ? (pickedAlly ?? undefined) : undefined}
-              t={t}
-              locale={locale}
-              formatChampionName={formatChampionName}
-              onPick={(a) => {
-                setPickedSubjectA(null);
-                setPickedAlly(a);
-                setStage("pickScope");
-              }}
-              onPickDuel={(a, b) => {
-                setPickedSubjectA(a);
-                setPickedAlly(b);
-                setStage("pickScope");
-              }}
-              onDuelSelectionChange={(players) => {
-                if (faultMode !== "one-vs-one" && !showEnemyTeam) return;
-                setPickedSubjectA(players[0] ?? null);
-                setPickedAlly(players.length >= 2 ? players[1] : null);
-                setStage("pickScope");
-              }}
-              onFreeForAllSelectionChange={(players) => {
-                setFreeForAllSelection(players);
-                setPickedSubjectA(players[0] ?? null);
-                setPickedAlly(players[1] ?? null);
-                setStage("pickScope");
-              }}
-            />
-          )}
+            {!sharedVerdict && (stage === "pickAlly" || stage === "pickScope") && (
+              <PickAlly
+                mode={faultMode}
+                onModeChange={(nextMode) => {
+                  setFaultMode(nextMode);
+                  if (nextMode === "me-vs-1") setShowEnemyTeam(false);
+                  setPickedSubjectA(null);
+                  setPickedAlly(null);
+                  setFreeForAllSelection([]);
+                  if (nextMode === "free-for-all") {
+                    const members = sortByRole(
+                      showEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
+                    );
+                    setFreeForAllSelection(members);
+                    setPickedSubjectA(members[0] ?? null);
+                    setPickedAlly(members[1] ?? null);
+                    setStage(members.length >= 2 ? "pickScope" : "pickAlly");
+                    return;
+                  }
+                  setStage("pickAlly");
+                }}
+                showEnemyTeam={showEnemyTeam}
+                onSwitchTeams={() => {
+                  const nextShowEnemyTeam = !showEnemyTeam;
+                  setShowEnemyTeam(nextShowEnemyTeam);
+                  const nextMode =
+                    faultMode === "free-for-all"
+                      ? "free-for-all"
+                      : nextShowEnemyTeam
+                        ? "one-vs-one"
+                        : "me-vs-1";
+                  setFaultMode(nextMode);
+                  setPickedSubjectA(null);
+                  setPickedAlly(null);
+                  setFreeForAllSelection([]);
+                  if (nextMode === "free-for-all") {
+                    const members = sortByRole(
+                      nextShowEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
+                    );
+                    setFreeForAllSelection(members);
+                    setPickedSubjectA(members[0] ?? null);
+                    setPickedAlly(members[1] ?? null);
+                    setStage(members.length >= 2 ? "pickScope" : "pickAlly");
+                    return;
+                  }
+                  setStage("pickAlly");
+                }}
+                onClearSelection={() => {
+                  setPickedSubjectA(null);
+                  setPickedAlly(null);
+                  setStage("pickAlly");
+                }}
+                match={match}
+                scoreboardOpen={scoreboardOpen}
+                onToggleScoreboard={() => setScoreboardOpen((open) => !open)}
+                you={viewedParticipant}
+                allies={match.team}
+                enemies={match.enemies}
+                freeForAllPlayers={visibleTeamMembers}
+                selectedFreeForAllPlayers={selectedFreeForAllPlayers}
+                onCancel={reset}
+                selectedA={stage === "pickScope" ? subjectA : undefined}
+                selectedB={stage === "pickScope" ? (pickedAlly ?? undefined) : undefined}
+                t={t}
+                locale={locale}
+                formatChampionName={formatChampionName}
+                onPick={(a) => {
+                  setPickedSubjectA(null);
+                  setPickedAlly(a);
+                  setStage("pickScope");
+                }}
+                onPickDuel={(a, b) => {
+                  setPickedSubjectA(a);
+                  setPickedAlly(b);
+                  setStage("pickScope");
+                }}
+                onDuelSelectionChange={(players) => {
+                  if (faultMode !== "one-vs-one" && !showEnemyTeam) return;
+                  setPickedSubjectA(players[0] ?? null);
+                  setPickedAlly(players.length >= 2 ? players[1] : null);
+                  setStage("pickScope");
+                }}
+                onFreeForAllSelectionChange={(players) => {
+                  setFreeForAllSelection(players);
+                  setPickedSubjectA(players[0] ?? null);
+                  setPickedAlly(players[1] ?? null);
+                  setStage("pickScope");
+                }}
+              />
+            )}
 
           {!sharedVerdict && stage === "pickScope" && (
             <ScopeActions
@@ -1502,8 +1512,9 @@ export function MatchCard({
               />
             </>
           )}
+          </div>
         </div>
-      )}
+      </div>
       <TurnstileWidget ref={turnstileRef} siteKey={turnstileSiteKey} resetKey={turnstileResetKey} />
     </div>
   );
@@ -1557,7 +1568,7 @@ function MatchScoreboard({
             open ? "translate-y-0" : "-translate-y-2"
           }`}
         >
-          <div className="grid min-w-[760px] grid-cols-2 gap-3">
+          <div className="grid min-w-[820px] grid-cols-[minmax(0,1fr)_4rem_minmax(0,1fr)] items-stretch gap-3">
             <ScoreboardTeam
               title={t("scoreboardBlueTeam")}
               players={blue}
@@ -1566,6 +1577,11 @@ function MatchScoreboard({
               t={t}
               locale={locale}
             />
+            <div className="flex items-center justify-center">
+              <span className="text-xl font-black uppercase tracking-wider text-gold">
+                VS
+              </span>
+            </div>
             <ScoreboardTeam
               title={t("scoreboardRedTeam")}
               players={red}

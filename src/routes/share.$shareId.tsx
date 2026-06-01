@@ -76,7 +76,11 @@ function SharePage() {
       try {
         const shared = await getSharedVerdict({ data: { id: shareId } });
         if (cancelled) return;
-        if (shared.locale !== locale) setLocale(shared.locale);
+
+        if (shared.locale !== locale) {
+          setLocale(shared.locale);
+        }
+
         setVerdict(shared);
 
         if (!shared.profile || !isKnownShard(shared.profile.shard)) {
@@ -105,7 +109,10 @@ function SharePage() {
     return () => {
       cancelled = true;
     };
-  }, [locale, setLocale, shareId]);
+    // Intentionally omit locale / setLocale so a locale mismatch does not
+    // re-fetch the share.  The share payload is the same for every locale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareId]);
 
   if (error) {
     return (
