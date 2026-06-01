@@ -10,6 +10,15 @@ export type Participant = {
   kills: number;
   deaths: number;
   assists: number;
+  /** End-game creep score. Optional for older cached match rows. */
+  cs?: number;
+  /**
+   * The 6 main inventory slots (item0..item5), preserved positionally.
+   * Optional for cached rows written before full scoreboard support.
+   */
+  items?: number[];
+  /** Trinket slot (item6). Optional for older cached match rows. */
+  trinket?: number;
   /** Riot PUUID for the ally — required for the judge pipeline. */
   puuid?: string;
   /**

@@ -36,3 +36,22 @@ test("cached matches with a usable playedAtMs can be reused on refresh", () => {
     false,
   );
 });
+
+test("legacy cached matches without participant scoreboard fields are refetched on refresh", () => {
+  assert.equal(
+    shouldRefetchCachedMatchForRefresh({
+      ...baseMatch,
+      playedAtMs: 1_700_000_000_000,
+      team: [
+        {
+          champion: "Lux",
+          summoner: "Lux#KR1",
+          kills: 1,
+          deaths: 2,
+          assists: 3,
+        },
+      ],
+    }),
+    true,
+  );
+});

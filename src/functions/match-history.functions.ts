@@ -51,6 +51,9 @@ function toParticipant(p: RiotMatchParticipant): Participant {
     kills: p.kills,
     deaths: p.deaths,
     assists: p.assists,
+    cs: p.totalMinionsKilled + p.neutralMinionsKilled,
+    items: [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5],
+    trinket: p.item6 ?? 0,
     puuid: p.puuid,
     // Carry side + lane through to the client so RosterColumns can sort
     // each column by canonical role order (TOP → JUNGLE → MIDDLE → BOTTOM

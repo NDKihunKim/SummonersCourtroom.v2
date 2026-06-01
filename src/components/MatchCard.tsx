@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Gavel, ArrowLeft, Check, Share2, MessageSquareWarning } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
@@ -481,7 +481,7 @@ export function MatchCard({
   const championLabel = formatChampionName(match.champion);
 
   const [stage, setStage] = useState<Stage>("closed");
-  const [faultMode, setFaultMode] = useState<FaultMode>("me-vs-1");
+  const [faultMode, setFaultMode] = useState<FaultMode>("free-for-all");
   const [showEnemyTeam, setShowEnemyTeam] = useState(false);
   const [pickedSubjectA, setPickedSubjectA] = useState<Participant | null>(null);
   const [pickedAlly, setPickedAlly] = useState<Participant | null>(null);
@@ -495,6 +495,7 @@ export function MatchCard({
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [verdictResultId, setVerdictResultId] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [scoreboardOpen, setScoreboardOpen] = useState(false);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const verdictAbortControllerRef = useRef<AbortController | null>(null);
@@ -550,18 +551,42 @@ export function MatchCard({
               matchDurationMs != null ? formatWindowLength(matchDurationMs, t) : match.duration
             }`
           : null;
-  const viewedParticipant: Participant = {
-    champion: match.champion,
-    summoner: you?.summoner ?? "You",
-    kills: match.kills,
-    deaths: match.deaths,
-    assists: match.assists,
-    puuid: you?.puuid ?? match.userPuuid,
-    teamId: match.userTeamId,
-    teamPosition: match.userTeamPosition,
-  };
-  const visibleTeamMembers = sortByRole(
-    showEnemyTeam ? match.enemies : [...match.team, viewedParticipant],
+  const viewedParticipant: Participant = useMemo(
+    () => ({
+      champion: match.champion,
+      summoner: you?.summoner ?? "You",
+      kills: match.kills,
+      deaths: match.deaths,
+      assists: match.assists,
+      cs: match.cs,
+      items: match.items,
+      trinket: match.trinket,
+      puuid: you?.puuid ?? match.userPuuid,
+      teamId: match.userTeamId,
+      teamPosition: match.userTeamPosition,
+    }),
+    [
+      match.assists,
+      match.champion,
+      match.cs,
+      match.deaths,
+      match.items,
+      match.kills,
+      match.trinket,
+      match.userPuuid,
+      match.userTeamId,
+      match.userTeamPosition,
+      you?.puuid,
+      you?.summoner,
+    ],
+  );
+  const ownTeamMembers = useMemo(
+    () => sortByRole([...match.team, viewedParticipant]),
+    [match.team, viewedParticipant],
+  );
+  const visibleTeamMembers = useMemo(
+    () => (showEnemyTeam ? sortByRole(match.enemies) : ownTeamMembers),
+    [match.enemies, ownTeamMembers, showEnemyTeam],
   );
   const selectedFreeForAllPlayers =
     faultMode === "free-for-all" ? freeForAllSelection : visibleTeamMembers;
@@ -597,12 +622,21 @@ export function MatchCard({
     removePersistedVerdictState(persistedVerdictKey);
   }, [persistedVerdictKey]);
 
+  function openDefaultFreeForAllPicker() {
+    setStage(ownTeamMembers.length >= 2 ? "pickScope" : "pickAlly");
+    setFaultMode("free-for-all");
+    setShowEnemyTeam(false);
+    setPickedSubjectA(ownTeamMembers[0] ?? null);
+    setPickedAlly(ownTeamMembers[1] ?? null);
+    setFreeForAllSelection(ownTeamMembers);
+  }
+
   function reset() {
     mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
     mockLoadingTimersRef.current = [];
     clearPersistedVerdict();
     setStage("closed");
-    setFaultMode("me-vs-1");
+    setFaultMode("free-for-all");
     setShowEnemyTeam(false);
     setPickedSubjectA(null);
     setPickedAlly(null);
@@ -616,17 +650,18 @@ export function MatchCard({
     setShareUrl(null);
     setVerdictResultId(null);
     setSharing(false);
+    setScoreboardOpen(false);
   }
 
   function startFreshVerdict() {
     clearMockLoadingTimers();
     clearPersistedVerdict();
-    setStage("pickAlly");
-    setFaultMode("me-vs-1");
+    setStage(ownTeamMembers.length >= 2 ? "pickScope" : "pickAlly");
+    setFaultMode("free-for-all");
     setShowEnemyTeam(false);
-    setPickedSubjectA(null);
-    setPickedAlly(null);
-    setFreeForAllSelection([]);
+    setPickedSubjectA(ownTeamMembers[0] ?? null);
+    setPickedAlly(ownTeamMembers[1] ?? null);
+    setFreeForAllSelection(ownTeamMembers);
     setReasoning(null);
     setVerdictDisplay(null);
     setCompleted(new Set());
@@ -636,6 +671,7 @@ export function MatchCard({
     setShareUrl(null);
     setVerdictResultId(null);
     setSharing(false);
+    setScoreboardOpen(false);
   }
 
   useEffect(() => {
@@ -645,12 +681,12 @@ export function MatchCard({
 
     clearMockLoadingTimers();
     clearPersistedVerdict();
-    setStage("pickAlly");
-    setFaultMode("me-vs-1");
+    setStage(ownTeamMembers.length >= 2 ? "pickScope" : "pickAlly");
+    setFaultMode("free-for-all");
     setShowEnemyTeam(false);
-    setPickedSubjectA(null);
-    setPickedAlly(null);
-    setFreeForAllSelection([]);
+    setPickedSubjectA(ownTeamMembers[0] ?? null);
+    setPickedAlly(ownTeamMembers[1] ?? null);
+    setFreeForAllSelection(ownTeamMembers);
     setReasoning(null);
     setVerdictDisplay(null);
     setCompleted(new Set());
@@ -660,7 +696,8 @@ export function MatchCard({
     setShareUrl(null);
     setVerdictResultId(null);
     setSharing(false);
-  }, [clearPersistedVerdict, openJudgeRequest]);
+    setScoreboardOpen(false);
+  }, [clearPersistedVerdict, openJudgeRequest, ownTeamMembers]);
 
   useEffect(() => {
     if (sharedVerdict || stage !== "closed" || reasoning) return;
@@ -1136,7 +1173,7 @@ export function MatchCard({
                 <ExpandToggle
                   onClick={() => {
                     onProfileInteraction?.(match.riotMatchId ?? match.id);
-                    setStage("pickAlly");
+                    openDefaultFreeForAllPicker();
                   }}
                 />
               ) : (
@@ -1222,6 +1259,8 @@ export function MatchCard({
                 setPickedAlly(null);
                 setStage("pickAlly");
               }}
+              scoreboardOpen={scoreboardOpen}
+              onToggleScoreboard={() => setScoreboardOpen((open) => !open)}
               you={viewedParticipant}
               allies={match.team}
               enemies={match.enemies}
@@ -1254,6 +1293,17 @@ export function MatchCard({
                 setPickedAlly(players[1] ?? null);
                 setStage("pickScope");
               }}
+            />
+          )}
+
+          {!sharedVerdict && (stage === "pickAlly" || stage === "pickScope") && (
+            <MatchScoreboard
+              match={match}
+              viewedParticipant={viewedParticipant}
+              open={scoreboardOpen}
+              formatChampionName={formatChampionName}
+              t={t}
+              locale={locale}
             />
           )}
 
@@ -1341,6 +1391,14 @@ export function MatchCard({
 
           {!sharedVerdict && stage === "loading" && (
             <>
+              <div className="mb-3 flex justify-center">
+                <ModeButton
+                  active={scoreboardOpen}
+                  onClick={() => setScoreboardOpen((open) => !open)}
+                >
+                  {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
+                </ModeButton>
+              </div>
               {/* Pinned "You vs Ally" matchup card so the user always knows
                   which two subjects the Judge is comparing while the
                   pipeline runs. Reuses PlayerTile for visual parity with
@@ -1364,6 +1422,14 @@ export function MatchCard({
                   formatChampionName={formatChampionName}
                 />
               )}
+              <MatchScoreboard
+                match={match}
+                viewedParticipant={viewedParticipant}
+                open={scoreboardOpen}
+                formatChampionName={formatChampionName}
+                t={t}
+                locale={locale}
+              />
               <JudgeLoading active={activeStep} completed={completed} t={t} />
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 {t("judgeLoadingNotice")}
@@ -1373,6 +1439,14 @@ export function MatchCard({
 
           {!sharedVerdict && stage === "verdict" && reasoning && (
             <>
+              <div className="mb-3 flex justify-center">
+                <ModeButton
+                  active={scoreboardOpen}
+                  onClick={() => setScoreboardOpen((open) => !open)}
+                >
+                  {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
+                </ModeButton>
+              </div>
               {/* Same matchup header on the verdict screen so the ruling
                   is always read in the context of the two compared
                   players (especially useful after re-judging). */}
@@ -1394,6 +1468,14 @@ export function MatchCard({
                   formatChampionName={formatChampionName}
                 />
               )}
+              <MatchScoreboard
+                match={match}
+                viewedParticipant={viewedParticipant}
+                open={scoreboardOpen}
+                formatChampionName={formatChampionName}
+                t={t}
+                locale={locale}
+              />
               <Verdict
                 verdictDisplay={verdictDisplay}
                 reasoning={reasoning}
@@ -1440,6 +1522,152 @@ export function MatchCard({
 // by the dedicated `RosterColumns` component (see ./RosterColumns.tsx),
 // which adds truncation + tooltip + champion icon + zebra striping.
 
+function withFallbackTeam(player: Participant, fallbackTeamId: Participant["teamId"]): Participant {
+  return player.teamId ? player : { ...player, teamId: fallbackTeamId };
+}
+
+function MatchScoreboard({
+  match,
+  viewedParticipant,
+  open,
+  formatChampionName,
+  t,
+  locale,
+}: {
+  match: Match;
+  viewedParticipant: Participant;
+  open: boolean;
+  formatChampionName: (champion: string) => string;
+  t: Translate;
+  locale: Locale;
+}) {
+  const viewedTeamId = match.userTeamId;
+  const enemyTeamId = viewedTeamId === 100 ? 200 : viewedTeamId === 200 ? 100 : undefined;
+  const allies = [viewedParticipant, ...match.team].map((player) =>
+    withFallbackTeam(player, viewedTeamId),
+  );
+  const enemies = match.enemies.map((player) => withFallbackTeam(player, enemyTeamId));
+  const roster = [...allies, ...enemies];
+  const blue = sortByRole(roster.filter((player) => player.teamId === 100));
+  const red = sortByRole(roster.filter((player) => player.teamId === 200));
+
+  if (blue.length === 0 && red.length === 0) return null;
+  if (!open) return null;
+
+  return (
+    <div className="mt-4">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card/70 p-3 animate-fade-in">
+        <div className="grid min-w-[760px] grid-cols-2 gap-3">
+          <ScoreboardTeam
+            title={t("scoreboardBlueTeam")}
+            players={blue}
+            accentClass="text-hex-blue"
+            formatChampionName={formatChampionName}
+            t={t}
+            locale={locale}
+          />
+          <ScoreboardTeam
+            title={t("scoreboardRedTeam")}
+            players={red}
+            accentClass="text-destructive"
+            formatChampionName={formatChampionName}
+            t={t}
+            locale={locale}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoreboardTeam({
+  title,
+  players,
+  accentClass,
+  formatChampionName,
+  t,
+  locale,
+}: {
+  title: string;
+  players: Participant[];
+  accentClass: string;
+  formatChampionName: (champion: string) => string;
+  t: Translate;
+  locale: Locale;
+}) {
+  return (
+    <div>
+      <div className={`mb-2 text-xs font-bold uppercase tracking-[0.2em] ${accentClass}`}>
+        {title}
+      </div>
+      <div className="space-y-1.5">
+        {players.map((player) => (
+          <ScoreboardRow
+            key={`${player.puuid ?? player.summoner}-${player.champion}`}
+            player={player}
+            formatChampionName={formatChampionName}
+            t={t}
+            locale={locale}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScoreboardRow({
+  player,
+  formatChampionName,
+  t,
+  locale,
+}: {
+  player: Participant;
+  formatChampionName: (champion: string) => string;
+  t: Translate;
+  locale: Locale;
+}) {
+  const championLabel = formatChampionName(player.champion);
+  const cs = typeof player.cs === "number" ? player.cs : "—";
+  const items = player.items ?? [];
+  const trinket = player.trinket ?? 0;
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_48px_72px_112px] items-center gap-2 rounded-md bg-background/45 px-2 py-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <ChampionIcon champion={player.champion} size={30} ring={false} />
+        <div className="min-w-0">
+          <div className="truncate text-xs font-semibold text-foreground" title={championLabel}>
+            {championLabel}
+          </div>
+          <div className="truncate text-[10px] text-muted-foreground" title={player.summoner}>
+            {player.summoner}
+          </div>
+        </div>
+      </div>
+      <div className="text-center">
+        <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+          CS
+        </div>
+        <div className="text-xs font-semibold text-foreground">{cs}</div>
+      </div>
+      <div className="text-center">
+        <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+          K/D/A
+        </div>
+        <div className="text-xs font-semibold text-foreground">
+          {player.kills}/{player.deaths}/{player.assists}
+        </div>
+      </div>
+      <div>
+        <div className="mb-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {t("scoreboardItems")}
+        </div>
+        <ItemGrid items={items} trinket={trinket} size={17} locale={locale} />
+      </div>
+    </div>
+  );
+}
+
 function PickAlly({
   mode,
   onModeChange,
@@ -1456,6 +1684,8 @@ function PickAlly({
   onFreeForAllSelectionChange,
   onClearSelection,
   onCancel,
+  scoreboardOpen,
+  onToggleScoreboard,
   selectedA,
   selectedB,
   t,
@@ -1476,6 +1706,8 @@ function PickAlly({
   onFreeForAllSelectionChange: (players: Participant[]) => void;
   onClearSelection: () => void;
   onCancel: () => void;
+  scoreboardOpen: boolean;
+  onToggleScoreboard: () => void;
   selectedA?: Participant;
   selectedB?: Participant;
   t: Translate;
@@ -1542,10 +1774,13 @@ function PickAlly({
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
-          <Gavel className="mr-1 inline h-3.5 w-3.5" /> {t("biggerFaultQuestion")}
-        </h3>
         <div className="flex flex-wrap items-center gap-2">
+          <h3 className="mr-1 text-sm font-semibold uppercase tracking-wider text-gold">
+            <Gavel className="mr-1 inline h-3.5 w-3.5" /> {t("biggerFaultQuestion")}
+          </h3>
+          <ModeButton active={mode === "free-for-all"} onClick={() => selectMode("free-for-all")}>
+            Free for All
+          </ModeButton>
           {!showEnemyTeam ? (
             <ModeButton active={mode === "me-vs-1"} onClick={() => selectMode("me-vs-1")}>
               Me vs 1
@@ -1554,11 +1789,13 @@ function PickAlly({
           <ModeButton active={mode === "one-vs-one"} onClick={() => selectMode("one-vs-one")}>
             1 vs 1
           </ModeButton>
-          <ModeButton active={mode === "free-for-all"} onClick={() => selectMode("free-for-all")}>
-            Free for All
-          </ModeButton>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <ModeButton active={showEnemyTeam} onClick={switchTeams}>
             Switch Teams
+          </ModeButton>
+          <ModeButton active={scoreboardOpen} onClick={onToggleScoreboard}>
+            {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
           </ModeButton>
           <button
             onClick={onCancel}
