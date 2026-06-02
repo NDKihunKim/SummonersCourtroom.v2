@@ -5,6 +5,7 @@ import type { RegionalRouting } from "@/server/riot";
 import { fetchRiotWithBackoff } from "@/server/riot-rate-limit-backoff";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
+import { assertSameOrigin } from "@/server/csrf";
 import {
   UPPER_PROMPT,
   buildFreeForAllLowerPrompt,
@@ -2359,8 +2360,9 @@ async function callAiGateway(
 export const getTimelineWindow = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TimelineWindowInputSchema.parse(input))
   .handler(async ({ data }) => {
+    assertSameOrigin();
     assertContextInspectionAllowed();
-    assertRateLimit({
+    await assertRateLimit({
       scope: "timeline-window",
       limit: 10,
       windowMs: ONE_MINUTE_MS,
@@ -2417,8 +2419,9 @@ export const getTimelineWindow = createServerFn({ method: "POST" })
 export const getTimelineFullGame = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TimelineFullGameInputSchema.parse(input))
   .handler(async ({ data }) => {
+    assertSameOrigin();
     assertContextInspectionAllowed();
-    assertRateLimit({
+    await assertRateLimit({
       scope: "timeline-full-game",
       limit: 4,
       windowMs: ONE_MINUTE_MS,
@@ -2478,8 +2481,9 @@ export const getTimelineFullGame = createServerFn({ method: "POST" })
 export const getTimelineGoldSwingFullGame = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TimelineGoldSwingFullGameInputSchema.parse(input))
   .handler(async ({ data }) => {
+    assertSameOrigin();
     assertContextInspectionAllowed();
-    assertRateLimit({
+    await assertRateLimit({
       scope: "timeline-v2-full-game",
       limit: 4,
       windowMs: ONE_MINUTE_MS,
@@ -2537,15 +2541,17 @@ export const getTimelineGoldSwingFullGame = createServerFn({ method: "POST" })
 export const getJudgeVerdict = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => JudgeVerdictInputSchema.parse(input))
   .handler(async ({ data }) => {
+    assertSameOrigin();
     const requestStartedAt = Date.now();
     const requestSignal = getRequest().signal;
     if (data.includeRaw) assertContextInspectionAllowed();
     if (data.scope !== "v2-full") assertContextInspectionAllowed();
-    assertRateLimit({
+    await assertRateLimit({
       scope: "judge-verdict",
       limit: 4,
       windowMs: ONE_MINUTE_MS,
       message: "Too many AI verdict requests. Please wait a minute and try again.",
+      shared: true,
     });
     if (!data.includeRaw) await assertTurnstile(data.turnstileToken);
     if (data.scope === "window") {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
+import { assertSameOrigin } from "@/server/csrf";
 import type { Locale } from "@/i18n";
 
 const SHARE_TTL_HOURS = 72;
@@ -147,11 +148,13 @@ function normalizeSharedVerdict(row: {
 export const createSharedVerdict = createServerFn({ method: "POST" })
   .inputValidator(parseCreateSharedVerdictInput)
   .handler(async ({ data }) => {
-    assertRateLimit({
+    assertSameOrigin();
+    await assertRateLimit({
       scope: "shared-verdict-create",
       limit: 8,
       windowMs: ONE_MINUTE_MS,
       message: "Too many share requests. Please wait a minute and try again.",
+      shared: true,
     });
     await assertTurnstile(data.turnstileToken);
     await deleteExpiredShares();

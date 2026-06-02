@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
+import { assertSameOrigin } from "@/server/csrf";
 
 const OBJECTION_ERRORS = {
   RATE_LIMITED: "OBJECTION_RATE_LIMITED",
@@ -74,6 +75,7 @@ async function resolveUser(accessToken?: string): Promise<string | null> {
 export const submitVerdictFeedback = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SubmitVerdictFeedbackInputSchema.parse(input))
   .handler(async ({ data }) => {
+    assertSameOrigin();
     try {
       await assertTurnstile(data.turnstileToken);
     } catch (error) {
@@ -82,11 +84,12 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
     }
 
     try {
-      assertRateLimit({
+      await assertRateLimit({
         scope: "verdict-feedback",
         limit: 10,
         windowMs: 60 * 60_000,
         message: OBJECTION_ERRORS.RATE_LIMITED,
+        shared: true,
       });
     } catch (error) {
       console.error("[verdict-feedback] rate limited:", error);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { accountIdentityForUser } from "@/functions/account-identity.server";
 import { assertRateLimit } from "@/server/request-rate-limit";
+import { assertSameOrigin } from "@/server/csrf";
 
 const DeleteAccountInputSchema = z.object({
   accessToken: z.string().min(1),
@@ -11,7 +12,8 @@ const DeleteAccountInputSchema = z.object({
 export const deleteCurrentAccount = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => DeleteAccountInputSchema.parse(input))
   .handler(async ({ data }) => {
-    assertRateLimit({
+    assertSameOrigin();
+    await assertRateLimit({
       scope: "account-delete",
       limit: 3,
       windowMs: 60 * 60_000,

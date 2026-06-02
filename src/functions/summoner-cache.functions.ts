@@ -44,6 +44,7 @@ import {
 } from "@/server/league";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
+import { assertSameOrigin } from "@/server/csrf";
 import {
   fetchMatch,
   formatDuration,
@@ -510,7 +511,7 @@ async function bumpSearchCount(shard: string, puuid: string) {
 export const getCachedMatchHistory = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CachedRiotIdSchema.parse(input))
   .handler(async ({ data }): Promise<CachedSummonerPayload | null> => {
-    assertRateLimit({
+    await assertRateLimit({
       scope: "summoner-cache-read",
       limit: 60,
       windowMs: ONE_MINUTE_MS,
@@ -530,7 +531,7 @@ export const getCachedMatchHistory = createServerFn({ method: "POST" })
 export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RiotIdSchema.parse(input))
   .handler(async ({ data }): Promise<CachedSummonerPayload> => {
-    assertRateLimit({
+    await assertRateLimit({
       scope: "summoner-search",
       limit: 30,
       windowMs: ONE_MINUTE_MS,
@@ -548,7 +549,7 @@ export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
     }
 
     // 2. Cache miss (or empty matches) → fetch fresh from Riot.
-    assertRateLimit({
+    await assertRateLimit({
       scope: "summoner-cache-miss",
       limit: 6,
       windowMs: ONE_MINUTE_MS,
@@ -578,11 +579,13 @@ export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
 export const refreshSummoner = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RiotIdSchema.parse(input))
   .handler(async ({ data }): Promise<CachedSummonerPayload> => {
-    assertRateLimit({
+    assertSameOrigin();
+    await assertRateLimit({
       scope: "summoner-refresh",
       limit: 10,
       windowMs: ONE_MINUTE_MS,
       message: "Too many refresh requests. Please wait a minute and try again.",
+      shared: true,
     });
 
     // Read existing row to enforce cooldown without doing a Riot call first.
