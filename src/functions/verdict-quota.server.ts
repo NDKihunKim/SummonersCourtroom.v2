@@ -1,7 +1,7 @@
 import { getRequest } from "@tanstack/react-start/server";
-import type { User } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { accountIdentityForUser } from "@/functions/account-identity.server";
+import { resolveAuthUser, type AuthUser } from "@/server/auth";
 
 const ANONYMOUS_DAILY_LIMIT = 3;
 const FREE_DAILY_LIMIT = 10;
@@ -53,19 +53,6 @@ async function sha256(value: string): Promise<string> {
     .join("");
 }
 
-type ResolvedUser = { id: string; email?: string; raw: User };
-
-async function resolveUser(accessToken?: string): Promise<ResolvedUser | null> {
-  if (!accessToken) return null;
-
-  const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
-  if (error || !data.user) {
-    throw new Error("Your session expired. Please sign in again.");
-  }
-
-  return { id: data.user.id, email: data.user.email ?? undefined, raw: data.user };
-}
-
 async function cleanupDeletedIdentities() {
   const { error } = await supabaseAdmin
     .from("deleted_account_identities")
@@ -78,7 +65,7 @@ async function restoreDeletedIdentityQuota({
   user,
   ipHash,
 }: {
-  user: ResolvedUser;
+  user: AuthUser;
   ipHash: string;
 }) {
   const identity = await accountIdentityForUser(user.raw);
@@ -103,7 +90,7 @@ async function restoreDeletedIdentityQuota({
 
   const { error: usageError } = await supabaseAdmin.from("verdict_usage_daily").insert({
     usage_date: new Date(data.window_started_at).toISOString().slice(0, 10),
-    user_id: user.id,
+    user_id: user.userId,
     anonymous_id: null,
     ip_hash: ipHash,
     verdict_count: data.verdict_count,
@@ -114,11 +101,11 @@ async function restoreDeletedIdentityQuota({
   }
 }
 
-async function profilePlan(user: ResolvedUser, ipHash: string): Promise<"free" | "paid" | "unli"> {
+async function profilePlan(user: AuthUser, ipHash: string): Promise<"free" | "paid" | "unli"> {
   const { data, error } = await supabaseAdmin
     .from("user_profiles")
     .select("plan")
-    .eq("user_id", user.id)
+    .eq("user_id", user.userId)
     .maybeSingle();
 
   if (error) {
@@ -133,7 +120,7 @@ async function profilePlan(user: ResolvedUser, ipHash: string): Promise<"free" |
 
   const { error: insertError } = await supabaseAdmin
     .from("user_profiles")
-    .insert({ user_id: user.id, plan: "free" });
+    .insert({ user_id: user.userId, plan: "free" });
   if (insertError && insertError.code !== "23505") {
     console.error("[verdict-quota] failed to create account profile:", insertError);
     throw new Error("Failed to create account profile. Please try again.");
@@ -213,7 +200,7 @@ export async function getVerdictQuota({
   accessToken?: string;
   anonymousId?: string;
 }): Promise<VerdictQuotaStatus> {
-  const user = await resolveUser(accessToken);
+  const user = await resolveAuthUser(accessToken);
   const date = usageDate();
   const ipHash = await sha256(requestIp());
 
@@ -223,7 +210,7 @@ export async function getVerdictQuota({
       return { plan, limit: null, used: 0, remaining: null, usageDate: date, resetAt: null };
     }
     const limit = plan === "paid" ? PAID_DAILY_LIMIT : FREE_DAILY_LIMIT;
-    const usage = await getActiveUsage({ userId: user.id, ipHash });
+    const usage = await getActiveUsage({ userId: user.userId, ipHash });
     return {
       plan,
       limit,
@@ -253,7 +240,7 @@ export async function consumeVerdictQuota(identity: {
   accessToken?: string;
   anonymousId?: string;
 }): Promise<VerdictQuotaStatus> {
-  const user = await resolveUser(identity.accessToken);
+  const user = await resolveAuthUser(identity.accessToken);
   const date = usageDate();
   const ipHash = await sha256(requestIp());
 
@@ -271,7 +258,7 @@ export async function consumeVerdictQuota(identity: {
 
   const { data, error } = await supabaseAdmin.rpc("consume_verdict_quota_atomic", {
     p_usage_date: date,
-    p_user_id: user?.id ?? null,
+    p_user_id: user?.userId ?? null,
     p_anonymous_id: user ? null : identity.anonymousId,
     p_ip_hash: ipHash,
     p_limit: limit,
@@ -298,7 +285,7 @@ export async function refundVerdictQuota(identity: {
   accessToken?: string;
   anonymousId?: string;
 }): Promise<void> {
-  const user = await resolveUser(identity.accessToken);
+  const user = await resolveAuthUser(identity.accessToken);
   const date = usageDate();
   const ipHash = await sha256(requestIp());
   const plan: AccountPlan = user ? await profilePlan(user, ipHash) : "anonymous";
@@ -308,7 +295,7 @@ export async function refundVerdictQuota(identity: {
 
   const { error } = await supabaseAdmin.rpc("refund_verdict_quota_atomic", {
     p_usage_date: date,
-    p_user_id: user?.id ?? null,
+    p_user_id: user?.userId ?? null,
     p_anonymous_id: user ? null : identity.anonymousId,
     p_ip_hash: ipHash,
   });

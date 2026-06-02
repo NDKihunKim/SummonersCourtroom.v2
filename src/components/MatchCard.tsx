@@ -1,5 +1,7 @@
+import { JudgeLoading, type PipelineStep } from "./JudgeLoading";
+import { SharedVerdictResult, Verdict } from "./VerdictPanel";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Gavel, ArrowLeft, Check, Share2, MessageSquareWarning } from "lucide-react";
+import { Loader2, Gavel, ArrowLeft, Check, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
 import { ChampionIcon } from "./ChampionIcon";
@@ -10,6 +12,10 @@ import { RuneIcons } from "./RuneIcons";
 import { RosterColumns } from "./RosterColumns";
 import { ExpandToggle } from "./ExpandToggle";
 import { ScopeSpecifyTime } from "./ScopeSpecifyTime";
+import { ScopeActions } from "./ScopeActions";
+import { ModeButton, PlayerTile } from "./PickAllyHelpers";
+import { PickAlly } from "./PickAlly";
+import { MatchScoreboard } from "./MatchScoreboard";
 import { getJudgeVerdict } from "@/functions/timeline-window.functions";
 import {
   createSharedVerdict,
@@ -26,7 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAnonymousId } from "@/lib/anonymous-id";
 
 type Stage = "closed" | "pickAlly" | "pickScope" | "specifyTime" | "loading" | "verdict";
-type PipelineStep = "contextualize" | "judge" | "parse";
+// PipelineStep is now imported from ./JudgeLoading
 type Scope = "full" | "window" | "v2-full";
 type FaultMode = "me-vs-1" | "one-vs-one" | "free-for-all" | "switch-teams";
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
@@ -209,10 +215,6 @@ function toFreeForAllContextPlayer(player: Participant): FreeForAllContextPlayer
   };
 }
 
-function participantKey(player: Participant): string {
-  return player.puuid ?? player.summoner?.toLowerCase() ?? player.champion;
-}
-
 function isAbortLikeError(error: unknown): boolean {
   return (
     (error instanceof DOMException && error.name === "AbortError") ||
@@ -254,6 +256,77 @@ const defaultT: Translate = (key, vars) => {
     text,
   );
 };
+
+function MobileRosterList({
+  label,
+  players,
+  accent,
+  onPlayerClick,
+  formatChampionName,
+  highlightedPlayerKey,
+}: {
+  label: string;
+  players: Participant[];
+  accent: string;
+  onPlayerClick?: (summoner: string) => void;
+  formatChampionName: (champion: string) => string;
+  highlightedPlayerKey: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-border/60 bg-background/35 p-2">
+      <div className={`mb-2 text-[10px] font-semibold uppercase tracking-wider ${accent}`}>
+        {label}
+      </div>
+      <div className="space-y-1">
+        {players.map((player, index) => {
+          const playerKey = player.puuid ?? player.summoner?.toLowerCase() ?? "";
+          const isHighlighted = Boolean(highlightedPlayerKey && playerKey === highlightedPlayerKey);
+          const content = (
+            <>
+              <ChampionIcon
+                champion={player.champion}
+                size={18}
+                ring={false}
+                className="shrink-0"
+              />
+              <span className="min-w-0 flex-1 truncate text-left text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  {formatChampionName(player.champion)}
+                </span>
+                <span className="mx-1 text-muted-foreground/70">·</span>
+                <span className={isHighlighted ? "font-semibold text-gold/80" : ""}>
+                  {player.summoner}
+                </span>
+              </span>
+            </>
+          );
+          const rowClass =
+            "flex h-7 w-full min-w-0 items-center gap-1.5 rounded px-1.5 text-left transition-colors";
+
+          return onPlayerClick ? (
+            <button
+              key={`${player.summoner}-${index}`}
+              type="button"
+              className={`${rowClass} hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold`}
+              title={player.summoner}
+              onClick={() => {
+                const name = player.summoner?.trim();
+                if (!name) return;
+                onPlayerClick(name);
+              }}
+            >
+              {content}
+            </button>
+          ) : (
+            <div key={`${player.summoner}-${index}`} className={rowClass} title={player.summoner}>
+              {content}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const QUEUE_KEYS: Array<[RegExp, TranslationKey]> = [
   [/ranked\s+solo/i, "queueRankedSolo"],
@@ -367,37 +440,6 @@ function parseJudgeOutput(
   };
 }
 
-function splitReasoningChoices(reasoning: string): ReasoningChoice[] {
-  const text = reasoning.trim();
-  if (!text) return [];
-
-  const matches = [...text.matchAll(/(?:^|\n)\s*(\d{1,2})\.\s+/g)];
-  if (matches.length === 0) return [{ index: 1, text }];
-
-  return matches
-    .slice(0, 5)
-    .map((match, position) => {
-      const start = (match.index ?? 0) + match[0].length;
-      const end = matches[position + 1]?.index ?? text.length;
-      const index = Number(match[1]);
-      return {
-        index: Number.isFinite(index) ? index : position + 1,
-        text: text.slice(start, end).trim(),
-      };
-    })
-    .filter((choice) => choice.text.length > 0);
-}
-
-function objectionErrorKey(error: unknown): TranslationKey {
-  const message = error instanceof Error ? error.message : "";
-  if (message.includes("OBJECTION_AUTH_REQUIRED")) return "objectionLoginRequired";
-  if (message.includes("OBJECTION_ALREADY_SUBMITTED")) return "objectionAlreadySubmitted";
-  if (message.includes("OBJECTION_RATE_LIMITED")) return "objectionRateLimited";
-  if (message.includes("OBJECTION_SESSION_EXPIRED")) return "objectionSessionExpired";
-  if (message.includes("OBJECTION_VERIFY_FAILED")) return "objectionVerifyFailed";
-  return "objectionFailed";
-}
-
 function shareErrorKey(error: unknown): TranslationKey {
   const message = error instanceof Error ? error.message : "";
   if (message.includes("Too many share requests")) return "shareFailed";
@@ -496,6 +538,8 @@ export function MatchCard({
   const [verdictResultId, setVerdictResultId] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  const [liveAnnouncement, setLiveAnnouncement] = useState("");
   const turnstileRef = useRef<TurnstileHandle>(null);
   const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const verdictAbortControllerRef = useRef<AbortController | null>(null);
@@ -584,6 +628,53 @@ export function MatchCard({
     () => sortByRole([...match.team, viewedParticipant]),
     [match.team, viewedParticipant],
   );
+  const mobileRoster = useMemo(() => {
+    const viewedKey = viewedParticipant.puuid ?? viewedParticipant.summoner?.toLowerCase() ?? "";
+    const fullRoster = [...match.team, ...match.enemies].filter((player) => {
+      const key = player.puuid ?? player.summoner?.toLowerCase() ?? "";
+      return key !== viewedKey;
+    });
+    fullRoster.push(viewedParticipant);
+
+    const sortedBlue = sortByRole(fullRoster.filter((player) => player.teamId === 100));
+    const sortedRed = sortByRole(fullRoster.filter((player) => player.teamId === 200));
+    const hasSideData = sortedBlue.length > 0 || sortedRed.length > 0;
+
+    return {
+      blue: hasSideData ? sortedBlue : sortByRole(fullRoster.slice(0, 5)),
+      red: hasSideData ? sortedRed : sortByRole(fullRoster.slice(5, 10)),
+    };
+  }, [match.enemies, match.team, viewedParticipant]);
+  const highlightedPlayerKey =
+    viewedParticipant.puuid ?? viewedParticipant.summoner?.toLowerCase() ?? "";
+  const mobileDetailsLabels =
+    locale === "ko"
+      ? {
+          show: "상세 정보 보기",
+          hide: "상세 정보 숨기기",
+          loadout: "스펠 / 룬",
+          items: "아이템",
+          stats: "기록",
+          blue: "블루 팀",
+          red: "레드 팀",
+          cs: "CS",
+          gold: "골드",
+          damage: "피해량",
+          vision: "시야",
+        }
+      : {
+          show: "Show details",
+          hide: "Hide details",
+          loadout: "Spells / Runes",
+          items: "Items",
+          stats: "Stats",
+          blue: "Blue Team",
+          red: "Red Team",
+          cs: "CS",
+          gold: "Gold",
+          damage: "Damage",
+          vision: "Vision",
+        };
   const visibleTeamMembers = useMemo(
     () => (showEnemyTeam ? sortByRole(match.enemies) : ownTeamMembers),
     [match.enemies, ownTeamMembers, showEnemyTeam],
@@ -817,6 +908,7 @@ export function MatchCard({
     setVerdictScope("window");
     setVerdictWindow(windowRange);
     setStage("loading");
+    setLiveAnnouncement("The AI Judge is reviewing the match timeline.");
 
     mockLoadingTimersRef.current = [
       setTimeout(() => {
@@ -916,7 +1008,7 @@ export function MatchCard({
             },
           },
         },
-      });
+      }) as { content: string; verdictResultId?: string | null };
       const parsed = parseJudgeOutput(
         verdict.content,
         freeForAllTeam
@@ -950,9 +1042,12 @@ export function MatchCard({
       setVerdictScope(scope);
       setVerdictWindow(windowRange ?? null);
       setStage("verdict");
+      setLiveAnnouncement("The AI verdict is ready. Review the reasoning below.");
     } catch (e) {
       if (verdictAbortController.signal.aborted || isAbortLikeError(e)) return;
-      toast.error(getReadableVerdictError(e));
+      const errorMsg = getReadableVerdictError(e);
+      toast.error(errorMsg);
+      setLiveAnnouncement(`Error: ${errorMsg}`);
       reset();
     } finally {
       if (verdictAbortControllerRef.current === verdictAbortController) {
@@ -1011,10 +1106,12 @@ export function MatchCard({
     selectedReasons,
     source,
     shareId,
+    feedback,
   }: {
     selectedReasons: ReasoningChoice[];
     source: "verdict" | "shared";
     shareId?: string;
+    feedback?: string;
   }) {
     const currentReasoning = source === "shared" ? sharedVerdict?.reasoning : reasoning;
     const currentVerdictDisplay =
@@ -1067,6 +1164,7 @@ export function MatchCard({
         selectedPlayers,
         verdictDisplay: currentVerdictDisplay,
         selectedReasons,
+        ...(feedback ? { feedback } : {}),
       },
     });
   }
@@ -1197,6 +1295,94 @@ export function MatchCard({
               )}
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="px-4 pb-4 min-[1180px]:hidden">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-gold/70 hover:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold"
+          aria-expanded={mobileDetailsOpen}
+          onClick={() => setMobileDetailsOpen((open) => !open)}
+        >
+          {mobileDetailsOpen ? mobileDetailsLabels.hide : mobileDetailsLabels.show}
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${mobileDetailsOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        <div
+          className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            mobileDetailsOpen ? "mt-3 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+          }`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="space-y-3 rounded-md border border-border/60 bg-background/30 p-3">
+              <div className="md:hidden">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gold">
+                  {mobileDetailsLabels.loadout}
+                </div>
+                <div className="flex items-center gap-2">
+                  <SummonerSpells spells={match.spells} locale={locale} />
+                  <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
+                  <RuneIcons runes={match.runes} locale={locale} />
+                </div>
+              </div>
+
+              <div className="max-[819px]:block min-[820px]:hidden">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gold">
+                  {mobileDetailsLabels.items}
+                </div>
+                <ItemGrid items={match.items} trinket={match.trinket} locale={locale} />
+              </div>
+
+              <div className="max-[939px]:block min-[940px]:hidden">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gold">
+                  {mobileDetailsLabels.stats}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
+                    <span className="text-foreground">{match.cs}</span> {mobileDetailsLabels.cs}
+                  </div>
+                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
+                    <span className="text-foreground">{match.gold.toLocaleString()}</span>{" "}
+                    {mobileDetailsLabels.gold}
+                  </div>
+                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
+                    <span className="text-foreground">{match.damage.toLocaleString()}</span>{" "}
+                    {mobileDetailsLabels.damage}
+                  </div>
+                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
+                    <span className="text-foreground">{match.vision}</span>{" "}
+                    {mobileDetailsLabels.vision}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 min-[620px]:grid-cols-2">
+                <div className="max-[1059px]:block min-[1060px]:hidden">
+                  <MobileRosterList
+                    label={mobileDetailsLabels.blue}
+                    players={mobileRoster.blue}
+                    accent="text-hex-blue"
+                    onPlayerClick={onPlayerClick}
+                    formatChampionName={formatChampionName}
+                    highlightedPlayerKey={highlightedPlayerKey}
+                  />
+                </div>
+                <div className="max-[1179px]:block min-[1180px]:hidden">
+                  <MobileRosterList
+                    label={mobileDetailsLabels.red}
+                    players={mobileRoster.red}
+                    accent="text-destructive"
+                    onPlayerClick={onPlayerClick}
+                    formatChampionName={formatChampionName}
+                    highlightedPlayerKey={highlightedPlayerKey}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1396,6 +1582,7 @@ export function MatchCard({
                 <ModeButton
                   active={scoreboardOpen}
                   onClick={() => setScoreboardOpen((open) => !open)}
+                  aria-expanded={scoreboardOpen}
                 >
                   {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
                 </ModeButton>
@@ -1431,7 +1618,9 @@ export function MatchCard({
                   formatChampionName={formatChampionName}
                 />
               )}
-              <JudgeLoading active={activeStep} completed={completed} t={t} />
+              <div aria-live="polite" aria-atomic="true">
+                <JudgeLoading active={activeStep} completed={completed} t={t} />
+              </div>
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 {t("judgeLoadingNotice")}
               </p>
@@ -1444,6 +1633,7 @@ export function MatchCard({
                 <ModeButton
                   active={scoreboardOpen}
                   onClick={() => setScoreboardOpen((open) => !open)}
+                  aria-expanded={scoreboardOpen}
                 >
                   {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
                 </ModeButton>
@@ -1486,8 +1676,8 @@ export function MatchCard({
                 onShare={() => void shareVerdict()}
                 sharing={sharing}
                 shareDisabled={!verdictResultId}
-                onSubmitObjection={(selectedReasons) =>
-                  submitObjection({ selectedReasons, source: "verdict" })
+                onSubmitObjection={(selectedReasons, feedback) =>
+                  submitObjection({ selectedReasons, source: "verdict", feedback })
                 }
                 onAfterObjection={resetTurnstile}
                 onViewContext={() => {
@@ -1515,6 +1705,15 @@ export function MatchCard({
           </div>
         </div>
       </div>
+      {/* Screen-reader-only live region for dynamic announcements. */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveAnnouncement}
+      </div>
       <TurnstileWidget ref={turnstileRef} siteKey={turnstileSiteKey} resetKey={turnstileResetKey} />
     </div>
   );
@@ -1523,1057 +1722,3 @@ export function MatchCard({
 // NameColumn was the previous inline roster renderer. It has been replaced
 // by the dedicated `RosterColumns` component (see ./RosterColumns.tsx),
 // which adds truncation + tooltip + champion icon + zebra striping.
-
-function withFallbackTeam(player: Participant, fallbackTeamId: Participant["teamId"]): Participant {
-  return player.teamId ? player : { ...player, teamId: fallbackTeamId };
-}
-
-function MatchScoreboard({
-  match,
-  viewedParticipant,
-  open,
-  formatChampionName,
-  t,
-  locale,
-}: {
-  match: Match;
-  viewedParticipant: Participant;
-  open: boolean;
-  formatChampionName: (champion: string) => string;
-  t: Translate;
-  locale: Locale;
-}) {
-  const viewedTeamId = match.userTeamId;
-  const enemyTeamId = viewedTeamId === 100 ? 200 : viewedTeamId === 200 ? 100 : undefined;
-  const allies = [viewedParticipant, ...match.team].map((player) =>
-    withFallbackTeam(player, viewedTeamId),
-  );
-  const enemies = match.enemies.map((player) => withFallbackTeam(player, enemyTeamId));
-  const roster = [...allies, ...enemies];
-  const blue = sortByRole(roster.filter((player) => player.teamId === 100));
-  const red = sortByRole(roster.filter((player) => player.teamId === 200));
-
-  if (blue.length === 0 && red.length === 0) return null;
-
-  return (
-    <div
-      className={`grid overflow-hidden transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
-        open ? "mb-4 mt-4 grid-rows-[1fr] opacity-100" : "my-0 grid-rows-[0fr] opacity-0"
-      }`}
-      aria-hidden={!open}
-    >
-      <div className="min-h-0 overflow-hidden">
-        <div
-          className={`overflow-x-auto rounded-lg border border-border bg-card/70 p-3 transition-transform duration-300 ease-out ${
-            open ? "translate-y-0" : "-translate-y-2"
-          }`}
-        >
-          <div className="grid min-w-[820px] grid-cols-[minmax(0,1fr)_4rem_minmax(0,1fr)] items-stretch gap-3">
-            <ScoreboardTeam
-              title={t("scoreboardBlueTeam")}
-              players={blue}
-              accentClass="text-hex-blue"
-              formatChampionName={formatChampionName}
-              t={t}
-              locale={locale}
-            />
-            <div className="flex items-center justify-center">
-              <span className="text-xl font-black uppercase tracking-wider text-gold">
-                VS
-              </span>
-            </div>
-            <ScoreboardTeam
-              title={t("scoreboardRedTeam")}
-              players={red}
-              accentClass="text-destructive"
-              formatChampionName={formatChampionName}
-              t={t}
-              locale={locale}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ScoreboardTeam({
-  title,
-  players,
-  accentClass,
-  formatChampionName,
-  t,
-  locale,
-}: {
-  title: string;
-  players: Participant[];
-  accentClass: string;
-  formatChampionName: (champion: string) => string;
-  t: Translate;
-  locale: Locale;
-}) {
-  return (
-    <div>
-      <div
-        className={`mb-2 text-center text-xs font-bold uppercase tracking-[0.2em] ${accentClass}`}
-      >
-        {title}
-      </div>
-      <div className="space-y-1.5">
-        {players.map((player) => (
-          <ScoreboardRow
-            key={`${player.puuid ?? player.summoner}-${player.champion}`}
-            player={player}
-            formatChampionName={formatChampionName}
-            t={t}
-            locale={locale}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ScoreboardRow({
-  player,
-  formatChampionName,
-  t,
-  locale,
-}: {
-  player: Participant;
-  formatChampionName: (champion: string) => string;
-  t: Translate;
-  locale: Locale;
-}) {
-  const championLabel = formatChampionName(player.champion);
-  const cs = typeof player.cs === "number" ? player.cs : "—";
-  const items = player.items ?? [];
-  const trinket = player.trinket ?? 0;
-
-  return (
-    <div className="grid grid-cols-[minmax(0,148px)_minmax(0,1fr)_minmax(0,1fr)_minmax(118px,1fr)] items-center gap-2 rounded-md border border-border/60 bg-background/45 px-2 py-1.5 shadow-[0_0_16px_rgba(255,199,89,0.03)]">
-      <div className="flex min-w-0 items-center gap-2">
-        <ChampionIcon champion={player.champion} size={30} ring={false} />
-        <div className="min-w-0">
-          <div className="truncate text-xs font-semibold text-foreground" title={championLabel}>
-            {championLabel}
-          </div>
-          <div className="truncate text-[10px] text-muted-foreground" title={player.summoner}>
-            {player.summoner}
-          </div>
-        </div>
-      </div>
-      <div className="text-center">
-        <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-          CS
-        </div>
-        <div className="text-xs font-semibold text-foreground">{cs}</div>
-      </div>
-      <div className="text-center">
-        <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-          K/D/A
-        </div>
-        <div className="text-xs font-semibold text-foreground">
-          {player.kills}/{player.deaths}/{player.assists}
-        </div>
-      </div>
-      <div>
-        <div className="mb-0.5 text-center text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("scoreboardItems")}
-        </div>
-        <div className="flex justify-center">
-          <ItemGrid items={items} trinket={trinket} size={17} locale={locale} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PickAlly({
-  mode,
-  onModeChange,
-  showEnemyTeam,
-  onSwitchTeams,
-  match,
-  you,
-  allies,
-  enemies,
-  freeForAllPlayers,
-  selectedFreeForAllPlayers,
-  onPick,
-  onPickDuel,
-  onDuelSelectionChange,
-  onFreeForAllSelectionChange,
-  onClearSelection,
-  onCancel,
-  scoreboardOpen,
-  onToggleScoreboard,
-  selectedA,
-  selectedB,
-  t,
-  locale,
-  formatChampionName,
-}: {
-  mode: FaultMode;
-  onModeChange: (mode: FaultMode) => void;
-  showEnemyTeam: boolean;
-  onSwitchTeams: () => void;
-  match: Match;
-  you: Participant;
-  allies: Participant[];
-  enemies: Participant[];
-  freeForAllPlayers: Participant[];
-  selectedFreeForAllPlayers: Participant[];
-  onPick: (a: Participant) => void;
-  onPickDuel: (a: Participant, b: Participant) => void;
-  onDuelSelectionChange: (players: Participant[]) => void;
-  onFreeForAllSelectionChange: (players: Participant[]) => void;
-  onClearSelection: () => void;
-  onCancel: () => void;
-  scoreboardOpen: boolean;
-  onToggleScoreboard: () => void;
-  selectedA?: Participant;
-  selectedB?: Participant;
-  t: Translate;
-  locale: Locale;
-  formatChampionName: (champion: string) => string;
-}) {
-  const [duelPicks, setDuelPicks] = useState<Participant[]>([]);
-  const teamMembers = sortByRole(showEnemyTeam ? enemies : [...allies, you]);
-  const pickHint =
-    mode === "free-for-all"
-      ? t("verdictPickFreeForAllHint")
-      : showEnemyTeam || mode === "one-vs-one"
-        ? t("verdictPickOneVsOneHint")
-        : t("verdictPickMeVsOneHint");
-
-  function playerKey(player: Participant): string {
-    return participantKey(player);
-  }
-
-  function isPicked(player: Participant): boolean {
-    const key = playerKey(player);
-    return duelPicks.some((pick) => playerKey(pick) === key);
-  }
-
-  function isFreeForAllPicked(player: Participant): boolean {
-    const key = playerKey(player);
-    return selectedFreeForAllPlayers.some((pick) => playerKey(pick) === key);
-  }
-
-  function toggleFreeForAllPick(player: Participant) {
-    const key = playerKey(player);
-    const exists = selectedFreeForAllPlayers.some((pick) => playerKey(pick) === key);
-    const next = exists
-      ? selectedFreeForAllPlayers.filter((pick) => playerKey(pick) !== key)
-      : [...selectedFreeForAllPlayers, player].slice(0, 5);
-    onFreeForAllSelectionChange(next);
-  }
-
-  function toggleDuelPick(player: Participant) {
-    setDuelPicks((current) => {
-      const key = playerKey(player);
-      const existing = current.findIndex((pick) => playerKey(pick) === key);
-      if (existing >= 0) {
-        const next = current.filter((_, index) => index !== existing);
-        onDuelSelectionChange(next);
-        return next;
-      }
-      const next = [...current, player];
-      onDuelSelectionChange(next.slice(0, 2));
-      if (next.length === 2) onPickDuel(next[0], next[1]);
-      return next.slice(0, 2);
-    });
-  }
-
-  function selectMode(nextMode: FaultMode) {
-    onModeChange(nextMode);
-    setDuelPicks([]);
-  }
-
-  function switchTeams() {
-    setDuelPicks([]);
-    onSwitchTeams();
-  }
-
-  return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="mr-1 text-sm font-semibold uppercase tracking-wider text-gold">
-            <Gavel className="mr-1 inline h-3.5 w-3.5" /> {t("biggerFaultQuestion")}
-          </h3>
-          <ModeButton active={mode === "free-for-all"} onClick={() => selectMode("free-for-all")}>
-            Free for All
-          </ModeButton>
-          {!showEnemyTeam ? (
-            <ModeButton active={mode === "me-vs-1"} onClick={() => selectMode("me-vs-1")}>
-              Me vs 1
-            </ModeButton>
-          ) : null}
-          <ModeButton active={mode === "one-vs-one"} onClick={() => selectMode("one-vs-one")}>
-            1 vs 1
-          </ModeButton>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ModeButton active={scoreboardOpen} onClick={onToggleScoreboard}>
-            {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
-          </ModeButton>
-          <ModeButton active={showEnemyTeam} onClick={switchTeams}>
-            Switch Teams
-          </ModeButton>
-          <button
-            onClick={onCancel}
-            className="ml-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            {t("cancel")}
-          </button>
-        </div>
-      </div>
-
-      <MatchScoreboard
-        match={match}
-        viewedParticipant={you}
-        open={scoreboardOpen}
-        formatChampionName={formatChampionName}
-        t={t}
-        locale={locale}
-      />
-
-      <p className="mb-3 text-center text-xs text-muted-foreground">{pickHint}</p>
-
-      {mode === "free-for-all" ? (
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          {freeForAllPlayers.map((player, i) => (
-            <Fragment key={`${player.summoner}-${i}`}>
-              {i > 0 ? <span className="text-xl font-bold text-muted-foreground">vs</span> : null}
-              <button onClick={() => toggleFreeForAllPick(player)} className="group">
-                <PlayerTile
-                  highlighted={isFreeForAllPicked(player)}
-                  name={player.summoner}
-                  champion={player.champion}
-                  championLabel={formatChampionName(player.champion)}
-                  kda={`${player.kills}/${player.deaths}/${player.assists}`}
-                />
-              </button>
-            </Fragment>
-          ))}
-        </div>
-      ) : showEnemyTeam || mode === "one-vs-one" ? (
-        <div className="flex flex-wrap justify-center gap-3">
-          {teamMembers.map((player, i) => (
-            <button
-              key={`${player.summoner}-${i}`}
-              onClick={() => toggleDuelPick(player)}
-              className="group"
-            >
-              <PlayerTile
-                highlighted={isPicked(player)}
-                name={player.summoner}
-                champion={player.champion}
-                championLabel={formatChampionName(player.champion)}
-                kda={`${player.kills}/${player.deaths}/${player.assists}`}
-              />
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <PlayerTile
-            highlighted
-            name={you.summoner ?? "You"}
-            champion={you.champion}
-            championLabel={formatChampionName(you.champion)}
-            kda={`${you.kills}/${you.deaths}/${you.assists}`}
-          />
-          <span className="text-xl font-bold text-muted-foreground">vs</span>
-          <div className="flex flex-wrap gap-3">
-            {allies.map((a, i) => (
-              <button key={i} onClick={() => onPick(a)} className="group">
-                <PlayerTile
-                  highlighted={selectedB ? playerKey(selectedB) === playerKey(a) : false}
-                  name={a.summoner}
-                  champion={a.champion}
-                  championLabel={formatChampionName(a.champion)}
-                  kda={`${a.kills}/${a.deaths}/${a.assists}`}
-                />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModeButton({
-  active,
-  onClick,
-  disabled,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  children: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-        active
-          ? "border-gold bg-gold/15 text-gold"
-          : disabled
-            ? "cursor-not-allowed border-border bg-muted/30 text-muted-foreground/60"
-            : "border-border bg-card text-muted-foreground hover:border-gold hover:text-gold"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function PlayerTile({
-  name,
-  champion,
-  championLabel = champion,
-  kda,
-  highlighted,
-  role,
-}: {
-  name: string;
-  champion: string;
-  championLabel?: string;
-  kda: string;
-  highlighted?: boolean;
-  role?: string;
-}) {
-  return (
-    <div
-      className={`flex w-28 shrink-0 flex-col items-center gap-1 overflow-hidden rounded-lg border p-2 transition-all ${
-        highlighted
-          ? "border-gold bg-secondary/50"
-          : "border-border bg-card hover:border-gold/40 hover:bg-secondary/40"
-      }`}
-    >
-      {role ? (
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-gold/80">
-          {role}
-        </span>
-      ) : null}
-      {/* Real champion square — instantly recognisable to LoL players,
-          which is exactly what the "pick the bigger fault" UI needs. */}
-      <ChampionIcon champion={champion} size={48} />
-      {/* `w-full min-w-0` is required for `truncate` to engage on unbroken
-          strings (e.g. CJK summoner names without spaces) inside a flex
-          column with `items-center`. Without an explicit width, the span
-          shrinks to fit its content and overflows the tile. The `title`
-          attribute keeps the full name accessible on hover. */}
-      <span
-        className="block w-full min-w-0 truncate text-center text-xs font-semibold text-foreground"
-        title={championLabel}
-      >
-        {championLabel}
-      </span>
-      <span
-        className="block w-full min-w-0 truncate text-center text-[10px] text-muted-foreground"
-        title={name}
-      >
-        {name}
-      </span>
-      <span className="text-[10px] text-muted-foreground">{kda}</span>
-    </div>
-  );
-}
-
-function ScopeActions({
-  onFullGame,
-  onSpecifyTime,
-  onLegacyFullGame,
-  onV2FullContext,
-  isWin,
-  isShortGame,
-  subjectsReady,
-  showSpecifyTime,
-  t,
-}: {
-  onFullGame: () => void;
-  onLegacyFullGame?: () => void;
-  onV2FullContext?: () => void;
-  /**
-   * When provided, the "Specify Time" button is enabled and triggers this
-   * callback. Omitted (undefined) for matches that lack the matchId/puuid
-   * needed to fetch a timeline window — button stays disabled in that case.
-   */
-  onSpecifyTime?: () => void;
-  isShortGame: boolean;
-  subjectsReady: boolean;
-  showSpecifyTime: boolean;
-  /**
-   * True when this match is a Victory. On wins we hide the "Full game"
-   * button entirely — full-game judging is intentionally Defeat-only,
-   * since the prompt is framed around assigning fault for a loss. Wins
-   * can still be analyzed via the Specify-Time scope, which is neutral.
-   */
-  isWin: boolean;
-  t: Translate;
-}) {
-  const fullGameDisabled = isWin || isShortGame || !subjectsReady;
-  const fullGameTitle = isShortGame
-    ? t("verdictGameTooShortWarning")
-    : !subjectsReady
-      ? undefined
-      : isWin
-        ? t("fullGameVictoryUnavailable")
-        : undefined;
-  const specifyTimeTitle = isShortGame
-    ? t("verdictGameTooShortWarning")
-    : !subjectsReady
-      ? undefined
-      : onSpecifyTime
-        ? "Pick a 5-10 min slice of the game"
-        : "Match metadata unavailable";
-  const v2FullContextTitle = isShortGame
-    ? t("verdictGameTooShortWarning")
-    : !subjectsReady
-      ? undefined
-      : onV2FullContext
-        ? "Open V2 full-game context from top gold-shift windows"
-        : "Match metadata unavailable";
-  const legacyFullGameTitle = isShortGame
-    ? t("verdictGameTooShortWarning")
-    : !subjectsReady
-      ? undefined
-      : isWin
-        ? t("fullGameVictoryUnavailable")
-        : onLegacyFullGame
-          ? "Run legacy V1 full-game verdict"
-          : "Match metadata unavailable";
-
-  return (
-    <div className="mt-4 animate-fade-in">
-      <div className="flex flex-wrap justify-center gap-3">
-        {showSpecifyTime && (
-          <button
-            onClick={onSpecifyTime}
-            disabled={!onSpecifyTime || !subjectsReady}
-            className={
-              onSpecifyTime && subjectsReady
-                ? "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
-                : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
-            }
-            title={specifyTimeTitle}
-          >
-            {t("specifyTime")}
-          </button>
-        )}
-        {showSpecifyTime && (
-          <button
-            onClick={fullGameDisabled ? undefined : onLegacyFullGame}
-            disabled={fullGameDisabled || !onLegacyFullGame}
-            className={
-              !fullGameDisabled && onLegacyFullGame
-                ? "rounded-lg border border-border px-5 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold"
-                : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
-            }
-            title={legacyFullGameTitle}
-          >
-            V1 Verdict
-          </button>
-        )}
-        {showSpecifyTime && (
-          <button
-            onClick={onV2FullContext}
-            disabled={!onV2FullContext || !subjectsReady}
-            className={
-              onV2FullContext && subjectsReady
-                ? "rounded-lg border border-border px-5 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:border-gold hover:text-gold"
-                : "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
-            }
-            title={v2FullContextTitle}
-          >
-            V2 Full Context
-          </button>
-        )}
-        {/* Full-game scope is Defeat-only. Victory rows still show the
-            option disabled so users understand the feature boundary. */}
-        <button
-          onClick={fullGameDisabled ? undefined : onFullGame}
-          disabled={fullGameDisabled}
-          title={fullGameTitle}
-          className={
-            fullGameDisabled
-              ? "cursor-not-allowed rounded-lg border border-border bg-muted/40 px-5 py-3 text-sm font-semibold text-muted-foreground"
-              : "rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
-          }
-        >
-          {t("fullGame")}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function JudgeLoading({
-  active,
-  completed,
-  t,
-}: {
-  active: PipelineStep;
-  completed: Set<PipelineStep>;
-  t: Translate;
-}) {
-  const loadingPhrases: TranslationKey[] = [
-    "judgeLoadingPhraseDeliberating",
-    "judgeLoadingPhraseTimeline",
-    "judgeLoadingPhraseEvidence",
-    "judgeLoadingPhraseMoments",
-  ];
-  const [phraseIndex, setPhraseIndex] = useState(0);
-  const [dotCount, setDotCount] = useState(1);
-  const steps: { id: PipelineStep; label: string; sub: string }[] = [
-    { id: "contextualize", label: t("contextualizeStep"), sub: t("contextualizeStepSub") },
-    { id: "judge", label: t("judgeStep"), sub: t("judgeStepSub") },
-    { id: "parse", label: t("verdictStep"), sub: t("verdictStepSub") },
-  ];
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setPhraseIndex((index) => (index + 1) % loadingPhrases.length);
-    }, 5200);
-    return () => window.clearInterval(id);
-  }, [loadingPhrases.length]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setDotCount((count) => (count >= 3 ? 1 : count + 1));
-    }, 600);
-    return () => window.clearInterval(id);
-  }, []);
-
-  return (
-    <div className="flex flex-col items-center gap-5 py-6">
-      <div className="min-h-5 overflow-hidden text-center">
-        <p
-          key={phraseIndex}
-          className="animate-judge-loading-phrase text-sm font-semibold uppercase tracking-[0.3em] text-gold"
-        >
-          {t(loadingPhrases[phraseIndex])}
-          <span aria-hidden="true">{".".repeat(dotCount)}</span>
-        </p>
-      </div>
-      <ol className="flex w-full max-w-2xl items-start justify-between gap-2">
-        {steps.map((s, i) => {
-          const isDone = completed.has(s.id);
-          const isActive = active === s.id && !isDone;
-          return (
-            <li key={s.id} className="flex flex-1 flex-col items-center gap-2 text-center">
-              <div className="flex w-full items-center">
-                <div
-                  className={`h-px flex-1 ${i === 0 ? "opacity-0" : isDone || isActive ? "bg-gold" : "bg-border"}`}
-                />
-                <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all ${
-                    isDone
-                      ? "border-gold bg-gold/20 text-gold"
-                      : isActive
-                        ? "border-gold bg-card text-gold"
-                        : "border-border bg-card text-muted-foreground"
-                  }`}
-                >
-                  {isDone ? (
-                    <Check className="h-4 w-4" />
-                  ) : isActive ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <span className="text-xs font-semibold">{i + 1}</span>
-                  )}
-                </div>
-                <div
-                  className={`h-px flex-1 ${i === steps.length - 1 ? "opacity-0" : isDone ? "bg-gold" : "bg-border"}`}
-                />
-              </div>
-              <div>
-                <div
-                  className={`text-xs font-semibold uppercase tracking-wider ${
-                    isDone || isActive ? "text-gold" : "text-muted-foreground"
-                  }`}
-                >
-                  {s.label}
-                </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground">{s.sub}</div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
-
-function SharedVerdictResult({
-  verdict,
-  t,
-  onNewVerdict,
-}: {
-  verdict: SharedVerdictPayload;
-  t: Translate;
-  onNewVerdict?: () => void;
-}) {
-  const sharedPlayers = verdict.selectedPlayers.map(
-    (player): Participant => ({
-      champion: player.champion,
-      summoner: player.summoner ?? player.championLabel ?? player.champion,
-      kills: player.kills ?? 0,
-      deaths: player.deaths ?? 0,
-      assists: player.assists ?? 0,
-    }),
-  );
-  const championLabels = new Map(
-    verdict.selectedPlayers.map((player) => [
-      player.champion,
-      player.championLabel ?? player.champion,
-    ]),
-  );
-
-  return (
-    <div>
-      {sharedPlayers.length >= 2 ? (
-        <MatchupHeader
-          you={sharedPlayers[0]}
-          ally={sharedPlayers[1]}
-          players={sharedPlayers.length > 2 ? sharedPlayers : undefined}
-          highlightChampionKey={verdict.verdictDisplay.championKey}
-          highlightChampionName={verdict.verdictDisplay.championName}
-          formatChampionName={(champion) => championLabels.get(champion) ?? champion}
-        />
-      ) : null}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Gavel className="h-4 w-4 text-gold" />
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
-            Shared Verdict
-          </h3>
-        </div>
-        {verdict.scopeLabel && (
-          <div className="text-right text-sm font-semibold uppercase tracking-wider text-gold">
-            {verdict.scopeLabel}
-          </div>
-        )}
-      </div>
-      <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
-          {t("moreAtFault")}
-        </div>
-        <div className="mt-1 text-2xl font-bold text-gold">
-          {verdict.verdictDisplay.championName}
-        </div>
-        {verdict.verdictDisplay.summonerName && (
-          <div className="mt-1 text-xs font-medium text-muted-foreground">
-            {verdict.verdictDisplay.summonerName}
-          </div>
-        )}
-      </div>
-      <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
-        {verdict.reasoning}
-      </p>
-      <div className="mt-3 flex justify-end">
-        <button
-          type="button"
-          onClick={onNewVerdict}
-          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {t("newVerdict")}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ObjectionPanel({
-  reasoning,
-  t,
-  onSubmit,
-  onAfterSubmit,
-  renderActions,
-}: {
-  reasoning: string;
-  t: Translate;
-  onSubmit: (selectedReasons: ReasoningChoice[]) => Promise<void>;
-  onAfterSubmit: () => void;
-  renderActions: (button: React.ReactNode, saved: React.ReactNode) => React.ReactNode;
-}) {
-  const choices = splitReasoningChoices(reasoning);
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(() => new Set());
-  const [explanationsByReason, setExplanationsByReason] = useState<Record<number, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (active) setSignedIn(Boolean(data.session));
-    });
-
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSignedIn(Boolean(nextSession));
-    });
-
-    return () => {
-      active = false;
-      data.subscription.unsubscribe();
-    };
-  }, []);
-
-  function toggleChoice(index: number) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(index)) {
-        next.delete(index);
-        setExplanationsByReason((currentExplanations) => {
-          const { [index]: _removed, ...rest } = currentExplanations;
-          return rest;
-        });
-      } else {
-        next.add(index);
-      }
-      return next;
-    });
-  }
-
-  function updateExplanation(index: number, value: string) {
-    setExplanationsByReason((current) => ({ ...current, [index]: value }));
-  }
-
-  async function submit() {
-    const selectedReasons = choices
-      .filter((choice) => selected.has(choice.index))
-      .map((choice) => ({
-        ...choice,
-        explanation: explanationsByReason[choice.index]?.trim() ?? "",
-      }));
-    if (selectedReasons.length === 0) return;
-
-    setSubmitting(true);
-    try {
-      await onSubmit(selectedReasons);
-      setSubmitted(true);
-      setOpen(false);
-      setSelected(new Set());
-      setExplanationsByReason({});
-      toast.success(t("objectionSubmitted"));
-    } catch (error) {
-      if ((error instanceof Error ? error.message : "").includes("OBJECTION_ALREADY_SUBMITTED")) {
-        setSubmitted(true);
-        setOpen(false);
-      }
-      toast.error(t(objectionErrorKey(error)));
-    } finally {
-      setSubmitting(false);
-      onAfterSubmit();
-    }
-  }
-
-  if (choices.length === 0) return null;
-
-  const objectionDisabled = submitted || signedIn !== true;
-  const button = (
-    <button
-      type="button"
-      disabled={objectionDisabled}
-      onClick={() => setOpen((value) => !value)}
-      title={signedIn === false ? t("objectionLoginRequired") : undefined}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      <MessageSquareWarning className="h-3.5 w-3.5" />
-      {t("objection")}
-    </button>
-  );
-  const saved = submitted ? (
-    <span className="text-[10px] font-medium text-muted-foreground">{t("objectionSaved")}</span>
-  ) : signedIn === false ? (
-    <span className="text-[10px] font-medium text-muted-foreground">
-      {t("objectionLoginRequired")}
-    </span>
-  ) : null;
-
-  return (
-    <>
-      {renderActions(button, saved)}
-      {open && (
-        <div className="mt-3 space-y-3 rounded-lg border border-border bg-background/40 p-3 animate-fade-in">
-          <p className="text-xs font-medium text-muted-foreground">{t("objectionHelp")}</p>
-          <div className="space-y-2">
-            {choices.map((choice) => {
-              const checked = selected.has(choice.index);
-              return (
-                <div
-                  key={`${choice.index}-${choice.text}`}
-                  className={`rounded-md border p-2 text-xs leading-relaxed transition-colors ${
-                    checked
-                      ? "border-gold bg-gold/10 text-foreground"
-                      : "border-border bg-card/60 text-muted-foreground hover:border-gold/50 hover:text-foreground"
-                  }`}
-                >
-                  <label className="flex cursor-pointer gap-2">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleChoice(choice.index)}
-                      className="mt-0.5 h-3.5 w-3.5 accent-gold"
-                    />
-                    <span>
-                      <span className="font-semibold text-gold">{choice.index}. </span>
-                      {choice.text}
-                    </span>
-                  </label>
-                  {checked && (
-                    <textarea
-                      value={explanationsByReason[choice.index] ?? ""}
-                      onChange={(event) => updateExplanation(choice.index, event.target.value)}
-                      maxLength={1000}
-                      placeholder={t("objectionPlaceholder")}
-                      className="mt-2 min-h-16 w-full resize-y rounded-md border border-border bg-background/70 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="min-w-0 flex-1 text-left text-[10px] font-medium leading-relaxed text-muted-foreground">
-              {t("objectionNotice")}
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-              >
-                {t("cancel")}
-              </button>
-              <button
-                type="button"
-                disabled={submitting || selected.size === 0}
-                onClick={() => void submit()}
-                className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {submitting ? t("loading") : t("objectionSend")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function Verdict({
-  verdictDisplay,
-  reasoning,
-  windowLabel,
-  onClose,
-  onAgain,
-  onShare,
-  sharing,
-  shareDisabled,
-  onSubmitObjection,
-  onAfterObjection,
-  onViewContext,
-  t,
-}: {
-  verdictDisplay: VerdictDisplay | null;
-  reasoning: string;
-  windowLabel: string | null;
-  onClose: () => void;
-  onAgain: () => void;
-  onShare: () => void;
-  sharing: boolean;
-  shareDisabled: boolean;
-  onSubmitObjection: (selectedReasons: ReasoningChoice[]) => Promise<void>;
-  onAfterObjection: () => void;
-  onViewContext: () => void;
-  t: Translate;
-}) {
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Gavel className="h-4 w-4 text-gold" />
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-gold">
-            {t("verdictTitle")}
-          </h3>
-        </div>
-        {windowLabel && (
-          <div className="text-right text-sm font-semibold uppercase tracking-wider text-gold">
-            {windowLabel}
-          </div>
-        )}
-      </div>
-      {verdictDisplay && (
-        <div className="mb-3 rounded-lg border border-gold bg-gold/10 p-4 text-center">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80">
-            {t("moreAtFault")}
-          </div>
-          <div className="mt-1 text-2xl font-bold text-gold">{verdictDisplay.championName}</div>
-          {verdictDisplay.summonerName && (
-            <div className="mt-1 text-xs font-medium text-muted-foreground">
-              {verdictDisplay.summonerName}
-            </div>
-          )}
-        </div>
-      )}
-      <p className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
-        {reasoning}
-      </p>
-      <ObjectionPanel
-        reasoning={reasoning}
-        t={t}
-        onSubmit={onSubmitObjection}
-        onAfterSubmit={onAfterObjection}
-        renderActions={(button, saved) => (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={onShare}
-                disabled={sharing || shareDisabled}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Share2 className="h-3.5 w-3.5" />
-                {sharing ? t("loading") : t("share")}
-              </button>
-              {button}
-              {saved}
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              {SHOW_DEV_CONTEXT && (
-                <button
-                  onClick={onViewContext}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  View context
-                </button>
-              )}
-              <button
-                onClick={onAgain}
-                className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-              >
-                {t("newVerdict")}
-              </button>
-              <button
-                onClick={onClose}
-                className="rounded-md border border-gold bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20"
-              >
-                {t("close")}
-              </button>
-            </div>
-          </div>
-        )}
-      />
-    </div>
-  );
-}

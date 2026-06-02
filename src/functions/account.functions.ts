@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { accountIdentityForUser } from "@/functions/account-identity.server";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertSameOrigin } from "@/server/csrf";
+import { resolveAuthUser } from "@/server/auth";
 
 const DeleteAccountInputSchema = z.object({
   accessToken: z.string().min(1),
@@ -20,13 +21,11 @@ export const deleteCurrentAccount = createServerFn({ method: "POST" })
       message: "Too many account deletion attempts. Please wait and try again.",
     });
 
-    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(data.accessToken);
-    if (userError || !userData.user) {
-      throw new Error("Please sign in again before deleting your account.");
-    }
+    const authUser = await resolveAuthUser(data.accessToken);
+    if (!authUser) throw new Error("Please sign in again before deleting your account.");
 
-    const userId = userData.user.id;
-    const identity = await accountIdentityForUser(userData.user);
+    const userId = authUser.userId;
+    const identity = await accountIdentityForUser(authUser.raw);
 
     await supabaseAdmin
       .from("deleted_account_identities")

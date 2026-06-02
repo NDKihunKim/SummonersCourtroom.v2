@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertTurnstile, TurnstileTokenSchema } from "@/server/turnstile";
 import { assertSameOrigin } from "@/server/csrf";
+import { resolveAuthUser } from "@/server/auth";
 
 const OBJECTION_ERRORS = {
   RATE_LIMITED: "OBJECTION_RATE_LIMITED",
@@ -58,19 +59,9 @@ const SubmitVerdictFeedbackInputSchema = z.object({
   scopeLabel: z.string().max(64).nullable().optional(),
   selectedPlayers: z.array(SharedPlayerSchema).min(1).max(5),
   verdictDisplay: VerdictDisplaySchema,
-  selectedReasons: z.array(ReasoningFeedbackSchema).min(1).max(5),
+  selectedReasons: z.array(ReasoningFeedbackSchema).max(5).optional(),
+  feedback: z.string().max(2000).optional(),
 });
-
-async function resolveUser(accessToken?: string): Promise<string | null> {
-  if (!accessToken) throw new Error(OBJECTION_ERRORS.AUTH_REQUIRED);
-
-  const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
-  if (error || !data.user) {
-    throw new Error(OBJECTION_ERRORS.SESSION_EXPIRED);
-  }
-
-  return data.user.id;
-}
 
 export const submitVerdictFeedback = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SubmitVerdictFeedbackInputSchema.parse(input))
@@ -96,12 +87,15 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
       throw new Error(OBJECTION_ERRORS.RATE_LIMITED);
     }
 
-    const userId = await resolveUser(data.accessToken);
+    const authUser = await resolveAuthUser(data.accessToken);
+    if (!authUser) throw new Error(OBJECTION_ERRORS.AUTH_REQUIRED);
+    const userId = authUser.userId;
     if (!data.verdictResultId) {
       throw new Error(OBJECTION_ERRORS.SAVE_FAILED);
     }
-    const selectedReasonIndexes = data.selectedReasons.map((reason) => reason.index);
-    const selectedReasons = data.selectedReasons.map((reason) => ({
+    const selectedReasons = data.selectedReasons ?? [];
+    const selectedReasonIndexes = selectedReasons.map((reason) => reason.index);
+    const selectedReasonsPayload = selectedReasons.map((reason) => ({
       index: reason.index,
       text: reason.text,
       explanation: reason.explanation?.trim() ?? "",
@@ -119,9 +113,9 @@ export const submitVerdictFeedback = createServerFn({ method: "POST" })
       scope_label: data.scopeLabel ?? null,
       selected_players: data.selectedPlayers as unknown as never,
       verdict_display: data.verdictDisplay as unknown as never,
-      selected_reason_indexes: selectedReasonIndexes,
-      selected_reasons: selectedReasons as unknown as never,
-      complaint: null,
+      selected_reason_indexes: selectedReasonIndexes.length > 0 ? selectedReasonIndexes : [],
+      selected_reasons: selectedReasonsPayload.length > 0 ? (selectedReasonsPayload as unknown as never) : null,
+      complaint: data.feedback?.trim() || null,
     });
 
     if (error) {
