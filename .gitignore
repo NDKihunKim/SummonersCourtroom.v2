@@ -30,6 +30,9 @@ outputs/
 docs/plans/
 docs/requirements/
 
+# External agent skills (installed via npx skills / plugin)
+.agents/
+
 # Legacy builder metadata
 .lovable/
 
