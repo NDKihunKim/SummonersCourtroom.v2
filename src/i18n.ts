@@ -149,7 +149,7 @@ const translations = {
     verdictPickMeVsOneHint: "Pick the other player to judge",
     verdictPickOneVsOneHint: "Pick two players to judge",
     verdictPickFreeForAllHint: "All 5 players are selected by default (choose 3-5)",
-    scoreboardShow: "Show scoreboard",
+    scoreboardShow: "Show Scoreboard",
     scoreboardHide: "Hide scoreboard",
     scoreboardBlueTeam: "Blue Team",
     scoreboardRedTeam: "Red Team",

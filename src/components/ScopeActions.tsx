@@ -4,6 +4,7 @@ type Translate = (key: TranslationKey, vars?: Record<string, string | number>) =
 
 export function ScopeActions({
   onFullGame,
+  onCancel,
   onSpecifyTime,
   onLegacyFullGame,
   onV2FullContext,
@@ -14,6 +15,7 @@ export function ScopeActions({
   t,
 }: {
   onFullGame: () => void;
+  onCancel?: () => void;
   onLegacyFullGame?: () => void;
   onV2FullContext?: () => void;
   /**
@@ -125,6 +127,14 @@ export function ScopeActions({
         >
           {t("fullGame")}
         </button>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="rounded-lg border border-gold bg-gold/10 px-5 py-3 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
+          >
+            {t("cancel")}
+          </button>
+        )}
       </div>
     </div>
   );

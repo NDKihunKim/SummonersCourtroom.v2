@@ -164,9 +164,6 @@ export function MatchScoreboard({
               t={t}
               locale={locale}
             />
-            <div className="flex justify-center">
-              <span className="text-2xl font-black uppercase tracking-wider text-gold">VS</span>
-            </div>
             <ScoreboardTeam
               title={t("scoreboardRedTeam")}
               players={red}

@@ -1294,6 +1294,7 @@ export function MatchCard({
           {!sharedVerdict && stage === "pickScope" && (
             <ScopeActions
               onFullGame={() => runJudge("v2-full")}
+              onCancel={reset}
               onLegacyFullGame={
                 SHOW_DEV_CONTEXT &&
                 match.riotMatchId &&
