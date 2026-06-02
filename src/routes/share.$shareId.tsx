@@ -51,7 +51,7 @@ function SharePage() {
   const sharedMatchIndex =
     verdict?.matchId && profile
       ? profile.matches
-          .slice(0, 20)
+          .slice(0, 30)
           .findIndex(
             (match) => match.riotMatchId === verdict.matchId || match.id === verdict.matchId,
           )

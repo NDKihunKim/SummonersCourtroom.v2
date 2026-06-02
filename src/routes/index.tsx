@@ -122,14 +122,15 @@ export function MatchHistory({
       ? rankedEntries.flex
       : (rankedEntries.solo ?? ranked);
   // ─── Stats vs. visible split ─────────────────────────────────────────
-  // We cache up to 30 matches server-side (see `MATCH_COUNT`) so the
+  // We cache up to 30 matches server-side (see `CACHE_MATCH_LIMIT`) so the
   // Performance Block selector (10 / 20 / 30) can slice locally with no
   // extra Riot round-trip. The rendered match list defaults to the first
-  // 10 cards so the page stays scannable, and grows to 20 on demand via
-  // the "Show more matches" button (hard cap at 20 per product spec).
+  // 10 cards, grows to 20 via "Show more", and extends to 30 via "Extend".
   const INITIAL_VISIBLE = 10;
   const EXPANDED_VISIBLE = 20;
+  const EXTENDED_VISIBLE = 30;
   const [expanded, setExpanded] = useState(false);
+  const [extended, setExtended] = useState(false);
 
   // Collapse back to 10 whenever the viewed account changes — otherwise a
   // user who expanded Player A would land on Player B's page already
@@ -137,6 +138,7 @@ export function MatchHistory({
   // is cheaper and more correct than keying off `matches` identity.
   useEffect(() => {
     setExpanded(false);
+    setExtended(false);
     setRankedQueue("solo");
   }, [account.puuid]);
 
@@ -147,38 +149,48 @@ export function MatchHistory({
       )
     : -1;
   const sharedMatchVisibleCount =
-    sharedMatchIndex >= 0 && sharedMatchIndex < EXPANDED_VISIBLE ? sharedMatchIndex + 1 : 0;
+    sharedMatchIndex >= 0 && sharedMatchIndex < EXTENDED_VISIBLE ? sharedMatchIndex + 1 : 0;
   const directMatchIndex = openVerdictMatchId
     ? matches.findIndex(
         (match) => match.riotMatchId === openVerdictMatchId || match.id === openVerdictMatchId,
       )
     : -1;
   const directMatchVisibleCount =
-    directMatchIndex >= 0 && directMatchIndex < EXPANDED_VISIBLE ? directMatchIndex + 1 : 0;
+    directMatchIndex >= 0 && directMatchIndex < EXTENDED_VISIBLE ? directMatchIndex + 1 : 0;
 
-  // Cap defensively — if the cache somehow holds <10, slice() handles it;
-  // if it ever holds >20, we still respect the 20-match product cap.
+  // Three-tier cap: 10 → 20 → 30. If the cache somehow holds <10, slice()
+  // handles it; the tiered buttons only render when more matches exist.
+  const currentMaxVisible = extended
+    ? EXTENDED_VISIBLE
+    : expanded
+      ? EXPANDED_VISIBLE
+      : INITIAL_VISIBLE;
   const visibleCount = Math.min(
-    Math.max(
-      expanded ? EXPANDED_VISIBLE : INITIAL_VISIBLE,
-      sharedMatchVisibleCount,
-      directMatchVisibleCount,
-    ),
+    Math.max(currentMaxVisible, sharedMatchVisibleCount, directMatchVisibleCount),
     matches.length,
   );
   const visibleMatches = matches.slice(0, visibleCount);
 
-  // How many more matches the user could reveal by clicking the button.
-  // 0 means "hide the button entirely" (already at cap or not enough cached).
-  const remainingCount = Math.max(0, Math.min(EXPANDED_VISIBLE, matches.length) - visibleCount);
+  // How many more matches to reach EXPANDED_VISIBLE (20). Zero = first
+  // "Show more" button is hidden (already at/above 20 or not enough cached).
+  const remainingToExpand = Math.max(0, Math.min(EXPANDED_VISIBLE, matches.length) - visibleCount);
 
-  // Ref pointed at the FIRST newly-revealed card (index === INITIAL_VISIBLE).
-  // Scroll it into view after expansion so the user immediately sees the
-  // new content rather than having to hunt for it down-page.
-  const firstNewMatchRef = useRef<HTMLDivElement | null>(null);
+  // How many more to reach EXTENDED_VISIBLE (30). Only relevant when the
+  // user has already expanded to 20 but hasn't extended to 30 yet.
+  const remainingToExtend =
+    expanded && !extended
+      ? Math.max(0, Math.min(EXTENDED_VISIBLE, matches.length) - visibleCount)
+      : 0;
+
+  // Refs for the FIRST newly-revealed card at each expansion tier.
+  // Scroll them into view after the user clicks "Show more" / "Extend"
+  // so the new content is immediately visible.
+  const firstNewMatchRef = useRef<HTMLDivElement | null>(null); // index === INITIAL_VISIBLE (10)
+  const firstNewExtendedMatchRef = useRef<HTMLDivElement | null>(null); // index === EXPANDED_VISIBLE (20)
   const sharedMatchRef = useRef<HTMLDivElement | null>(null);
   const directMatchRef = useRef<HTMLDivElement | null>(null);
   const justExpandedRef = useRef(false);
+  const justExtendedRef = useRef(false);
   const didScrollToSharedRef = useRef(false);
   const didScrollToDirectRef = useRef(false);
   const [directJudgeRequest, setDirectJudgeRequest] = useState(0);
@@ -202,6 +214,16 @@ export function MatchHistory({
   }, [expanded]);
 
   useEffect(() => {
+    if (extended && justExtendedRef.current && firstNewExtendedMatchRef.current) {
+      firstNewExtendedMatchRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      justExtendedRef.current = false;
+    }
+  }, [extended]);
+
+  useEffect(() => {
     if (!sharedVerdict || didScrollToSharedRef.current || !sharedMatchRef.current) return;
     sharedMatchRef.current.scrollIntoView({
       behavior: "smooth",
@@ -212,7 +234,8 @@ export function MatchHistory({
 
   useEffect(() => {
     if (!openVerdictMatchId || openVerdictMatchId === lastOpenVerdictMatchRef.current) return;
-    if (directMatchIndex < 0 || directMatchIndex >= EXPANDED_VISIBLE) return;
+    if (directMatchIndex < 0 || directMatchIndex >= EXTENDED_VISIBLE) return;
+    if (directMatchIndex >= EXPANDED_VISIBLE) setExtended(true);
     if (directMatchIndex >= INITIAL_VISIBLE) setExpanded(true);
     lastOpenVerdictMatchRef.current = openVerdictMatchId;
     setDirectJudgeRequest((request) => request + 1);
@@ -441,10 +464,12 @@ export function MatchHistory({
                 teamId: m.userTeamId,
                 teamPosition: m.userTeamPosition,
               };
-              // Tag the first newly-revealed row so we can scroll to it
-              // after the user clicks "Show more". Only the card at index
-              // === INITIAL_VISIBLE qualifies; everything else gets no ref.
+              // Tag the first newly-revealed row at each expansion tier so
+              // we can scroll to it after the user clicks "Show more" or
+              // "Extend". Only the card at index === INITIAL_VISIBLE / ===
+              // EXPANDED_VISIBLE qualifies; everything else gets no ref.
               const isFirstNewMatch = idx === INITIAL_VISIBLE;
+              const isFirstNewExtendedMatch = idx === EXPANDED_VISIBLE;
               const isSharedMatch = Boolean(
                 sharedVerdict?.matchId &&
                 (m.riotMatchId === sharedVerdict.matchId || m.id === sharedVerdict.matchId),
@@ -461,9 +486,11 @@ export function MatchHistory({
                       ? sharedMatchRef
                       : shouldOpenDirectVerdict
                         ? directMatchRef
-                        : isFirstNewMatch
-                          ? firstNewMatchRef
-                          : undefined
+                        : isFirstNewExtendedMatch
+                          ? firstNewExtendedMatchRef
+                          : isFirstNewMatch
+                            ? firstNewMatchRef
+                            : undefined
                   }
                 >
                   <MatchCard
@@ -489,12 +516,11 @@ export function MatchHistory({
                 </div>
               );
             })}
-            {/* "Show more" CTA — rendered only while there are still more
-                matches available within the 20-match cap. Disappears
-                entirely once expanded (per product spec). */}
-            {remainingCount > 0 ? (
+            {/* "Show more" CTA — reveal matches 11–20.
+                Hidden once the list is at or beyond 20. */}
+            {remainingToExpand > 0 ? (
               <ShowMoreMatchesButton
-                remainingCount={remainingCount}
+                remainingCount={remainingToExpand}
                 t={t}
                 onClick={() => {
                   // Mark intent BEFORE flipping state so the post-render
@@ -502,6 +528,18 @@ export function MatchHistory({
                   // e.g. a parent re-render that happened to set expanded).
                   justExpandedRef.current = true;
                   setExpanded(true);
+                }}
+              />
+            ) : null}
+            {/* "Extend" CTA — reveal matches 21–30.
+                Only shown after the user has already expanded to 20. */}
+            {remainingToExtend > 0 ? (
+              <ShowMoreMatchesButton
+                remainingCount={remainingToExtend}
+                t={t}
+                onClick={() => {
+                  justExtendedRef.current = true;
+                  setExtended(true);
                 }}
               />
             ) : null}

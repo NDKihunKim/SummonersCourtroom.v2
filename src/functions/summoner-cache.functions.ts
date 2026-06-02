@@ -126,10 +126,11 @@ const ONE_MINUTE_MS = 60_000;
 /**
  * How many recent match ids we ask Riot for per cache miss / refresh.
  *
- * The cache can still retain 30 matches, but refresh only needs the latest 20
- * ids to detect newly played games and avoid re-fetching every cached detail.
+ * The cache retains up to 30 matches, so we look up 30 ids to fill it.
+ * Previously fetched 20; bumped to 30 to match the cache limit and the
+ * "Extend to 30" product tier.
  */
-const MATCH_ID_LOOKUP_COUNT = 20;
+const MATCH_ID_LOOKUP_COUNT = 30;
 const CACHE_MATCH_LIMIT = 30;
 const MATCH_DETAIL_CONCURRENCY = 5;
 
