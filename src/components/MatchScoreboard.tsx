@@ -1,5 +1,7 @@
 import { ChampionIcon } from "./ChampionIcon";
 import { ItemGrid } from "./ItemGrid";
+import { RuneIcons } from "./RuneIcons";
+import { SummonerSpells } from "./SummonerSpells";
 import { sortByRole } from "@/lib/role-order";
 import type { Match, Participant } from "@/lib/match-types";
 import type { Locale, TranslationKey } from "@/i18n";
@@ -27,14 +29,25 @@ function ScoreboardRow({
   const trinket = player.trinket ?? 0;
 
   return (
-    <div className="grid grid-cols-[minmax(0,148px)_minmax(0,1fr)_minmax(0,1fr)_minmax(118px,1fr)] items-center gap-2 rounded-md border border-border/60 bg-background/45 px-2 py-1.5 shadow-[0_0_16px_rgba(255,199,89,0.03)]">
+    <div className="grid grid-cols-[minmax(0,1.25fr)_2.4rem_3.4rem_minmax(86px,auto)] items-center gap-2 rounded-md border border-border/60 bg-background/45 px-2 py-1.5 shadow-[0_0_16px_rgba(255,199,89,0.03)] sm:grid-cols-[minmax(0,1.3fr)_2.6rem_3.6rem_minmax(108px,1fr)]">
       <div className="flex min-w-0 items-center gap-2">
         <ChampionIcon champion={player.champion} size={30} ring={false} />
+        <div className="hidden shrink-0 items-center gap-1 sm:flex">
+          <SummonerSpells spells={player.spells ?? ["", ""]} size={15} locale={locale} />
+          <div className="w-px bg-border/60" style={{ height: 15 * 2 + 2 }} />
+          <RuneIcons runes={player.runes} size={15} locale={locale} />
+        </div>
         <div className="min-w-0">
-          <div className="truncate text-xs font-semibold text-foreground" title={championLabel}>
+          <div
+            className="truncate text-xs font-semibold text-foreground sm:text-sm"
+            title={championLabel}
+          >
             {championLabel}
           </div>
-          <div className="truncate text-[10px] text-muted-foreground" title={player.summoner}>
+          <div
+            className="truncate text-[10px] leading-tight text-muted-foreground sm:text-xs"
+            title={player.summoner}
+          >
             {player.summoner}
           </div>
         </div>
@@ -138,11 +151,32 @@ export function MatchScoreboard({
     >
       <div className="min-h-0 overflow-hidden">
         <div
-          className={`overflow-x-auto rounded-lg border border-border bg-card/70 p-3 transition-transform duration-300 ease-out ${
+          className={`overflow-hidden rounded-lg border border-border bg-card/70 p-3 transition-transform duration-300 ease-out min-[900px]:overflow-x-auto ${
             open ? "translate-y-0" : "-translate-y-2"
           }`}
         >
-          <div className="grid min-w-[820px] grid-cols-[minmax(0,1fr)_4rem_minmax(0,1fr)] items-stretch gap-3">
+          <div className="space-y-4 min-[900px]:hidden">
+            <ScoreboardTeam
+              title={t("scoreboardBlueTeam")}
+              players={blue}
+              accentClass="text-hex-blue"
+              formatChampionName={formatChampionName}
+              t={t}
+              locale={locale}
+            />
+            <div className="flex justify-center">
+              <span className="text-2xl font-black uppercase tracking-wider text-gold">VS</span>
+            </div>
+            <ScoreboardTeam
+              title={t("scoreboardRedTeam")}
+              players={red}
+              accentClass="text-destructive"
+              formatChampionName={formatChampionName}
+              t={t}
+              locale={locale}
+            />
+          </div>
+          <div className="hidden min-w-[860px] grid-cols-[minmax(0,1fr)_4rem_minmax(0,1fr)] items-stretch gap-3 min-[900px]:grid">
             <ScoreboardTeam
               title={t("scoreboardBlueTeam")}
               players={blue}
@@ -152,9 +186,7 @@ export function MatchScoreboard({
               locale={locale}
             />
             <div className="flex items-center justify-center">
-              <span className="text-xl font-black uppercase tracking-wider text-gold">
-                VS
-              </span>
+              <span className="text-xl font-black uppercase tracking-wider text-gold">VS</span>
             </div>
             <ScoreboardTeam
               title={t("scoreboardRedTeam")}

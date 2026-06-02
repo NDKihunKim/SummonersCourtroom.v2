@@ -19,6 +19,10 @@ export type Participant = {
   items?: number[];
   /** Trinket slot (item6). Optional for older cached match rows. */
   trinket?: number;
+  /** Summoner spells. Optional for cached rows written before scoreboard loadouts. */
+  spells?: [string, string];
+  /** Keystone + secondary rune tree. Optional for cached rows written before scoreboard loadouts. */
+  runes?: { keystoneId: number; secondaryStyleId: number };
   /** Riot PUUID for the ally — required for the judge pipeline. */
   puuid?: string;
   /**

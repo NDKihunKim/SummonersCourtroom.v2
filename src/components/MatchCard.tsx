@@ -1,7 +1,7 @@
 import { JudgeLoading, type PipelineStep } from "./JudgeLoading";
 import { SharedVerdictResult, Verdict } from "./VerdictPanel";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Gavel, ArrowLeft, Check, ChevronDown } from "lucide-react";
+import { Loader2, Gavel, ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { Match, Participant } from "@/lib/match-types";
 import { ChampionIcon } from "./ChampionIcon";
@@ -257,77 +257,6 @@ const defaultT: Translate = (key, vars) => {
   );
 };
 
-function MobileRosterList({
-  label,
-  players,
-  accent,
-  onPlayerClick,
-  formatChampionName,
-  highlightedPlayerKey,
-}: {
-  label: string;
-  players: Participant[];
-  accent: string;
-  onPlayerClick?: (summoner: string) => void;
-  formatChampionName: (champion: string) => string;
-  highlightedPlayerKey: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-md border border-border/60 bg-background/35 p-2">
-      <div className={`mb-2 text-[10px] font-semibold uppercase tracking-wider ${accent}`}>
-        {label}
-      </div>
-      <div className="space-y-1">
-        {players.map((player, index) => {
-          const playerKey = player.puuid ?? player.summoner?.toLowerCase() ?? "";
-          const isHighlighted = Boolean(highlightedPlayerKey && playerKey === highlightedPlayerKey);
-          const content = (
-            <>
-              <ChampionIcon
-                champion={player.champion}
-                size={18}
-                ring={false}
-                className="shrink-0"
-              />
-              <span className="min-w-0 flex-1 truncate text-left text-[11px] text-muted-foreground">
-                <span className="font-medium text-foreground">
-                  {formatChampionName(player.champion)}
-                </span>
-                <span className="mx-1 text-muted-foreground/70">·</span>
-                <span className={isHighlighted ? "font-semibold text-gold/80" : ""}>
-                  {player.summoner}
-                </span>
-              </span>
-            </>
-          );
-          const rowClass =
-            "flex h-7 w-full min-w-0 items-center gap-1.5 rounded px-1.5 text-left transition-colors";
-
-          return onPlayerClick ? (
-            <button
-              key={`${player.summoner}-${index}`}
-              type="button"
-              className={`${rowClass} hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold`}
-              title={player.summoner}
-              onClick={() => {
-                const name = player.summoner?.trim();
-                if (!name) return;
-                onPlayerClick(name);
-              }}
-            >
-              {content}
-            </button>
-          ) : (
-            <div key={`${player.summoner}-${index}`} className={rowClass} title={player.summoner}>
-              {content}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 const QUEUE_KEYS: Array<[RegExp, TranslationKey]> = [
   [/ranked\s+solo/i, "queueRankedSolo"],
   [/ranked\s+flex/i, "queueRankedFlex"],
@@ -538,7 +467,6 @@ export function MatchCard({
   const [verdictResultId, setVerdictResultId] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
-  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const [liveAnnouncement, setLiveAnnouncement] = useState("");
   const turnstileRef = useRef<TurnstileHandle>(null);
   const mockLoadingTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -605,6 +533,8 @@ export function MatchCard({
       cs: match.cs,
       items: match.items,
       trinket: match.trinket,
+      spells: match.spells,
+      runes: match.runes,
       puuid: you?.puuid ?? match.userPuuid,
       teamId: match.userTeamId,
       teamPosition: match.userTeamPosition,
@@ -616,6 +546,8 @@ export function MatchCard({
       match.deaths,
       match.items,
       match.kills,
+      match.runes,
+      match.spells,
       match.trinket,
       match.userPuuid,
       match.userTeamId,
@@ -628,53 +560,6 @@ export function MatchCard({
     () => sortByRole([...match.team, viewedParticipant]),
     [match.team, viewedParticipant],
   );
-  const mobileRoster = useMemo(() => {
-    const viewedKey = viewedParticipant.puuid ?? viewedParticipant.summoner?.toLowerCase() ?? "";
-    const fullRoster = [...match.team, ...match.enemies].filter((player) => {
-      const key = player.puuid ?? player.summoner?.toLowerCase() ?? "";
-      return key !== viewedKey;
-    });
-    fullRoster.push(viewedParticipant);
-
-    const sortedBlue = sortByRole(fullRoster.filter((player) => player.teamId === 100));
-    const sortedRed = sortByRole(fullRoster.filter((player) => player.teamId === 200));
-    const hasSideData = sortedBlue.length > 0 || sortedRed.length > 0;
-
-    return {
-      blue: hasSideData ? sortedBlue : sortByRole(fullRoster.slice(0, 5)),
-      red: hasSideData ? sortedRed : sortByRole(fullRoster.slice(5, 10)),
-    };
-  }, [match.enemies, match.team, viewedParticipant]);
-  const highlightedPlayerKey =
-    viewedParticipant.puuid ?? viewedParticipant.summoner?.toLowerCase() ?? "";
-  const mobileDetailsLabels =
-    locale === "ko"
-      ? {
-          show: "상세 정보 보기",
-          hide: "상세 정보 숨기기",
-          loadout: "스펠 / 룬",
-          items: "아이템",
-          stats: "기록",
-          blue: "블루 팀",
-          red: "레드 팀",
-          cs: "CS",
-          gold: "골드",
-          damage: "피해량",
-          vision: "시야",
-        }
-      : {
-          show: "Show details",
-          hide: "Hide details",
-          loadout: "Spells / Runes",
-          items: "Items",
-          stats: "Stats",
-          blue: "Blue Team",
-          red: "Red Team",
-          cs: "CS",
-          gold: "Gold",
-          damage: "Damage",
-          vision: "Vision",
-        };
   const visibleTeamMembers = useMemo(
     () => (showEnemyTeam ? sortByRole(match.enemies) : ownTeamMembers),
     [match.enemies, ownTeamMembers, showEnemyTeam],
@@ -1176,9 +1061,9 @@ export function MatchCard({
       } ${expanded ? "" : "hover:translate-x-1"}`}
       style={{ boxShadow: "var(--shadow-elegant)" }}
     >
-      <div className="relative p-4">
-        <div className="flex items-center gap-4">
-          <div className="w-24 shrink-0">
+      <div className="relative p-3 sm:p-4">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+          <div className="w-[82px] shrink-0 sm:w-24">
             <div className={`text-sm font-bold ${win ? "text-hex-blue" : "text-destructive"}`}>
               {resultLabel}
             </div>
@@ -1192,7 +1077,7 @@ export function MatchCard({
               reads as its label directly underneath. `min-w-0` + `truncate`
               keep long / unbroken champion names (e.g. "Aurelion Sol")
               from pushing the rest of the row sideways. */}
-          <div className="flex w-[60px] shrink-0 flex-col items-center gap-1">
+          <div className="flex w-[54px] shrink-0 flex-col items-center gap-1 sm:w-[60px]">
             {/* Real Data Dragon champion square (with letter-tile fallback
                 if Riot ships an unmapped name or the image fails to load). */}
             <ChampionIcon champion={match.champion} size={52} />
@@ -1213,8 +1098,8 @@ export function MatchCard({
             <RuneIcons runes={match.runes} locale={locale} />
           </div>
 
-          <div className="ml-2 min-w-[110px] text-center">
-            <div className="text-lg font-bold text-foreground">
+          <div className="ml-1 min-w-[82px] text-center sm:ml-2 sm:min-w-[110px]">
+            <div className="text-base font-bold text-foreground sm:text-lg">
               {match.kills} <span className="text-muted-foreground">/</span>{" "}
               <span className="text-destructive">{match.deaths}</span>{" "}
               <span className="text-muted-foreground">/</span> {match.assists}
@@ -1266,7 +1151,7 @@ export function MatchCard({
               closed — the parent owns this gating so <ExpandToggle />
               can stay dumb/reusable. */}
           {stage === "closed" && !sharedVerdict && (
-            <div className="ml-auto flex flex-1 justify-center">
+            <div className="ml-auto flex min-w-[44px] flex-1 justify-center">
               {isRankedGame && !isShortVerdictGame ? (
                 <ExpandToggle
                   onClick={() => {
@@ -1295,94 +1180,6 @@ export function MatchCard({
               )}
             </div>
           )}
-        </div>
-      </div>
-
-      <div className="px-4 pb-4 min-[1180px]:hidden">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-gold/70 hover:text-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold"
-          aria-expanded={mobileDetailsOpen}
-          onClick={() => setMobileDetailsOpen((open) => !open)}
-        >
-          {mobileDetailsOpen ? mobileDetailsLabels.hide : mobileDetailsLabels.show}
-          <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform ${mobileDetailsOpen ? "rotate-180" : ""}`}
-          />
-        </button>
-
-        <div
-          className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
-            mobileDetailsOpen ? "mt-3 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-          }`}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <div className="space-y-3 rounded-md border border-border/60 bg-background/30 p-3">
-              <div className="md:hidden">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gold">
-                  {mobileDetailsLabels.loadout}
-                </div>
-                <div className="flex items-center gap-2">
-                  <SummonerSpells spells={match.spells} locale={locale} />
-                  <div className="w-px bg-border/60" style={{ height: 22 * 2 + 2 }} />
-                  <RuneIcons runes={match.runes} locale={locale} />
-                </div>
-              </div>
-
-              <div className="max-[819px]:block min-[820px]:hidden">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gold">
-                  {mobileDetailsLabels.items}
-                </div>
-                <ItemGrid items={match.items} trinket={match.trinket} locale={locale} />
-              </div>
-
-              <div className="max-[939px]:block min-[940px]:hidden">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gold">
-                  {mobileDetailsLabels.stats}
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
-                    <span className="text-foreground">{match.cs}</span> {mobileDetailsLabels.cs}
-                  </div>
-                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
-                    <span className="text-foreground">{match.gold.toLocaleString()}</span>{" "}
-                    {mobileDetailsLabels.gold}
-                  </div>
-                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
-                    <span className="text-foreground">{match.damage.toLocaleString()}</span>{" "}
-                    {mobileDetailsLabels.damage}
-                  </div>
-                  <div className="rounded border border-border/50 bg-card/40 px-2 py-1.5">
-                    <span className="text-foreground">{match.vision}</span>{" "}
-                    {mobileDetailsLabels.vision}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 min-[620px]:grid-cols-2">
-                <div className="max-[1059px]:block min-[1060px]:hidden">
-                  <MobileRosterList
-                    label={mobileDetailsLabels.blue}
-                    players={mobileRoster.blue}
-                    accent="text-hex-blue"
-                    onPlayerClick={onPlayerClick}
-                    formatChampionName={formatChampionName}
-                    highlightedPlayerKey={highlightedPlayerKey}
-                  />
-                </div>
-                <div className="max-[1179px]:block min-[1180px]:hidden">
-                  <MobileRosterList
-                    label={mobileDetailsLabels.red}
-                    players={mobileRoster.red}
-                    accent="text-destructive"
-                    onPlayerClick={onPlayerClick}
-                    formatChampionName={formatChampionName}
-                    highlightedPlayerKey={highlightedPlayerKey}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 

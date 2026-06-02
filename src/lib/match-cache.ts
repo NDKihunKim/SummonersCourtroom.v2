@@ -8,7 +8,10 @@ function hasParticipantScoreboardFields(match: Match): boolean {
       Array.isArray(participant.items) &&
       participant.items.length === 6 &&
       typeof participant.trinket === "number" &&
-      Number.isFinite(participant.trinket),
+      Number.isFinite(participant.trinket) &&
+      Array.isArray(participant.spells) &&
+      participant.spells.length === 2 &&
+      Boolean(participant.runes),
   );
 }
 
