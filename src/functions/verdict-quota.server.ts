@@ -3,17 +3,12 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { accountIdentityForUser } from "@/functions/account-identity.server";
 import { resolveAuthUser, type AuthUser } from "@/server/auth";
 
-const ANONYMOUS_DAILY_LIMIT = 3;
-const FREE_DAILY_LIMIT = 10;
-const PAID_DAILY_LIMIT = 50;
-
-export type AccountPlan = "anonymous" | "free" | "paid" | "unli";
+const DAILY_VERDICT_LIMIT = 50;
 
 export type VerdictQuotaStatus = {
-  plan: AccountPlan;
-  limit: number | null;
+  limit: number;
   used: number;
-  remaining: number | null;
+  remaining: number;
   usageDate: string;
   resetAt: string | null;
 };
@@ -101,33 +96,6 @@ async function restoreDeletedIdentityQuota({
   }
 }
 
-async function profilePlan(user: AuthUser, ipHash: string): Promise<"free" | "paid" | "unli"> {
-  const { data, error } = await supabaseAdmin
-    .from("user_profiles")
-    .select("plan")
-    .eq("user_id", user.userId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[verdict-quota] failed to load account plan:", error);
-    throw new Error("Failed to load account plan. Please try again.");
-  }
-  if (data?.plan === "unli") return "unli";
-  if (data?.plan === "paid") return "paid";
-  if (data?.plan === "free") return "free";
-
-  await restoreDeletedIdentityQuota({ user, ipHash });
-
-  const { error: insertError } = await supabaseAdmin
-    .from("user_profiles")
-    .insert({ user_id: user.userId, plan: "free" });
-  if (insertError && insertError.code !== "23505") {
-    console.error("[verdict-quota] failed to create account profile:", insertError);
-    throw new Error("Failed to create account profile. Please try again.");
-  }
-  return "free";
-}
-
 async function getActiveUsage({
   userId,
   anonymousId,
@@ -205,17 +173,11 @@ export async function getVerdictQuota({
   const ipHash = await sha256(requestIp());
 
   if (user) {
-    const plan = await profilePlan(user, ipHash);
-    if (plan === "unli") {
-      return { plan, limit: null, used: 0, remaining: null, usageDate: date, resetAt: null };
-    }
-    const limit = plan === "paid" ? PAID_DAILY_LIMIT : FREE_DAILY_LIMIT;
     const usage = await getActiveUsage({ userId: user.userId, ipHash });
     return {
-      plan,
-      limit,
+      limit: DAILY_VERDICT_LIMIT,
       used: usage.used,
-      remaining: Math.max(0, limit - usage.used),
+      remaining: Math.max(0, DAILY_VERDICT_LIMIT - usage.used),
       usageDate: date,
       resetAt: usage.resetAt,
     };
@@ -227,10 +189,9 @@ export async function getVerdictQuota({
 
   const usage = await getActiveUsage({ anonymousId, ipHash });
   return {
-    plan: "anonymous",
-    limit: ANONYMOUS_DAILY_LIMIT,
+    limit: DAILY_VERDICT_LIMIT,
     used: usage.used,
-    remaining: Math.max(0, ANONYMOUS_DAILY_LIMIT - usage.used),
+    remaining: Math.max(0, DAILY_VERDICT_LIMIT - usage.used),
     usageDate: date,
     resetAt: usage.resetAt,
   };
@@ -244,14 +205,6 @@ export async function consumeVerdictQuota(identity: {
   const date = usageDate();
   const ipHash = await sha256(requestIp());
 
-  const plan: AccountPlan = user ? await profilePlan(user, ipHash) : "anonymous";
-  if (plan === "unli") {
-    return { plan, limit: null, used: 0, remaining: null, usageDate: date, resetAt: null };
-  }
-
-  const limit =
-    plan === "paid" ? PAID_DAILY_LIMIT : plan === "free" ? FREE_DAILY_LIMIT : ANONYMOUS_DAILY_LIMIT;
-
   if (!user && !identity.anonymousId) {
     throw new Error("Anonymous usage id is missing. Please refresh and try again.");
   }
@@ -261,19 +214,18 @@ export async function consumeVerdictQuota(identity: {
     p_user_id: user?.userId ?? null,
     p_anonymous_id: user ? null : identity.anonymousId,
     p_ip_hash: ipHash,
-    p_limit: limit,
+    p_limit: DAILY_VERDICT_LIMIT,
   });
 
   if (error) throw new Error("Failed to update verdict quota.");
 
   const result = parseAtomicQuotaResult(data);
   if (!result.consumed) {
-    throw new Error(`Daily AI verdict limit reached (${result.used}/${result.limit || limit}).`);
+    throw new Error(`Daily AI verdict limit reached (${result.used}/${result.limit || DAILY_VERDICT_LIMIT}).`);
   }
 
   return {
-    plan,
-    limit,
+    limit: DAILY_VERDICT_LIMIT,
     used: result.used,
     remaining: result.remaining,
     usageDate: date,
@@ -288,9 +240,7 @@ export async function refundVerdictQuota(identity: {
   const user = await resolveAuthUser(identity.accessToken);
   const date = usageDate();
   const ipHash = await sha256(requestIp());
-  const plan: AccountPlan = user ? await profilePlan(user, ipHash) : "anonymous";
 
-  if (plan === "unli") return;
   if (!user && !identity.anonymousId) return;
 
   const { error } = await supabaseAdmin.rpc("refund_verdict_quota_atomic", {

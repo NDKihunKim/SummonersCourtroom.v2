@@ -67,7 +67,7 @@ export const deleteCurrentAccount = createServerFn({ method: "POST" })
           {
             identity_hash: identity.hash,
             provider: identity.provider,
-            plan: profile?.plan ?? "free",
+            plan: "free",
             verdict_count: usage?.verdict_count ?? 0,
             window_started_at: windowStartedAt,
             reset_at: resetAt,

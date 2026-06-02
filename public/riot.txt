@@ -1,0 +1,8 @@
+# Riot Developer Portal Application Verification
+# Replace the URL below with your actual Riot Developer Portal application URL once registered.
+# Example: https://developer.riotgames.com/apps/<your-app-id>
+#
+# This file must be accessible at https://<your-domain>/riot.txt
+# for Riot to verify domain ownership during the production key application process.
+#
+# Register your app at: https://developer.riotgames.com

@@ -355,51 +355,16 @@ export function AppShell({
     }
   }
 
-  function quotaPlanLabel(status: VerdictQuotaStatus): string {
-    const planLabels: Record<VerdictQuotaStatus["plan"], string> = {
-      anonymous: t?.("dashboardPlanAnonymous") ?? "Visitor",
-      free: t?.("dashboardPlanFree") ?? "Daily User",
-      paid: t?.("dashboardPlanPaid") ?? "Premium User",
-      unli: t?.("dashboardPlanUnli") ?? "Unlimited User",
-    };
-    return planLabels[status.plan];
-  }
-
-  function quotaHeaderPlanLabel(status: VerdictQuotaStatus): string {
-    return quotaPlanLabel(status).replace(/\s+User$/u, "");
-  }
-
   function quotaValueText(status: VerdictQuotaStatus): string {
-    if (status.plan === "unli") {
-      return t?.("dashboardQuotaUnlimitedShort") ?? "Unlimited";
-    }
-    return `${status.remaining ?? 0}/${status.limit ?? 0}`;
-  }
-
-  function quotaText(status: VerdictQuotaStatus): string {
-    if (status.plan === "unli") {
-      return (
-        t?.("dashboardQuotaUnlimited", { plan: quotaPlanLabel(status) }) ??
-        "Unlimited verdicts available today"
-      );
-    }
-    return (
-      t?.("dashboardQuota", {
-        remaining: status.remaining ?? 0,
-        limit: status.limit ?? 0,
-        plan: quotaPlanLabel(status),
-      }) ?? `${status.remaining ?? 0}/${status.limit ?? 0} verdicts available today`
-    );
+    return `${status.remaining}/${status.limit}`;
   }
 
   function quotaPercent(status: VerdictQuotaStatus): number {
-    if (status.plan === "unli") return 100;
     if (!status.limit) return 0;
-    return Math.max(0, Math.min(100, ((status.remaining ?? 0) / status.limit) * 100));
+    return Math.max(0, Math.min(100, (status.remaining / status.limit) * 100));
   }
 
   function quotaFillClass(status: VerdictQuotaStatus): string {
-    if (status.plan === "unli") return "bg-gold";
     const percent = quotaPercent(status);
     if (percent <= 0) return "bg-destructive";
     if (percent <= 34) return "bg-destructive";
@@ -408,7 +373,7 @@ export function AppShell({
   }
 
   function quotaResetText(status: VerdictQuotaStatus): string | null {
-    if (status.plan === "unli" || status.remaining !== 0 || !status.limit || !status.resetAt) {
+    if (status.remaining !== 0 || !status.limit || !status.resetAt) {
       return null;
     }
 
@@ -427,7 +392,6 @@ export function AppShell({
   }
 
   function quotaResetTimerText(status: VerdictQuotaStatus): string {
-    if (status.plan === "unli") return t?.("dashboardQuotaUnlimitedShort") ?? "Unlimited";
     if (!status.resetAt) {
       return t?.("dashboardQuotaResetStartsAfterFirstVerdict") ?? "Starts after your first verdict";
     }
@@ -489,7 +453,7 @@ export function AppShell({
           status: session
             ? (t?.("dashboardSignedInWith", { provider: authProviderLabel() }) ??
               `Signed in with ${authProviderLabel()}`)
-            : (t?.("dashboardAnonymousQuotaHelp") ?? "Sign in for a higher daily verdict limit."),
+            : (t?.("dashboardAnonymousQuotaHelp") ?? "Sign in to submit objections and feedback."),
         }) ??
         (session
           ? `Account status: signed in with ${authProviderLabel()}.`
@@ -502,9 +466,9 @@ export function AppShell({
       details:
         t?.("dashboardOptionUsageDetails", {
           quota: quota
-            ? quotaText(quota)
+            ? `${quota.remaining}/${quota.limit}`
             : (t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."),
-        }) ?? (quota ? quotaText(quota) : "Verdict quota unavailable."),
+        }) ?? (quota ? `${quota.remaining}/${quota.limit}` : "Verdict quota unavailable."),
     },
     {
       id: "privacy",
@@ -666,14 +630,6 @@ export function AppShell({
                                   </p>
                                 ) : quota ? (
                                   <>
-                                    <div className="flex items-center justify-between gap-3">
-                                      <span className="text-muted-foreground">
-                                        {t?.("dashboardUsagePlan") ?? "Plan"}
-                                      </span>
-                                      <span className="text-right font-semibold text-foreground">
-                                        {quotaPlanLabel(quota)}
-                                      </span>
-                                    </div>
                                     <div className="flex items-center justify-between gap-3">
                                       <span className="text-muted-foreground">
                                         {t?.("dashboardUsageCurrentQuota") ?? "Current quota"}
@@ -866,31 +822,23 @@ export function AppShell({
                         {t?.("dashboardQuotaTitle") ?? "Verdict quota"}
                       </span>
                     </div>
-                    {quota && (
-                      <span className="shrink-0 text-muted-foreground">
-                        {quotaHeaderPlanLabel(quota)}
-                      </span>
-                    )}
                   </div>
                   <div className="space-y-2">
                     <p className="text-center text-xs text-muted-foreground">
                       {quotaLoading
                         ? (t?.("dashboardQuotaLoading") ?? "Loading verdict quota...")
                         : quota
-                          ? quotaText(quota)
+                          ? `${quota.remaining}/${quota.limit} verdicts available today`
                           : quotaError
                             ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
-                            : session
-                              ? (t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable.")
-                              : (t?.("dashboardAnonymousQuotaHelp") ??
-                                "Sign in for a higher daily verdict limit.")}
+                            : (t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable.")}
                     </p>
                     <div
                       role="meter"
                       aria-valuemin={0}
                       aria-valuemax={quota?.limit ?? 100}
-                      aria-valuenow={quota?.remaining ?? (quota?.plan === "unli" ? 100 : 0)}
-                      aria-valuetext={quota ? quotaText(quota) : undefined}
+                      aria-valuenow={quota?.remaining ?? 0}
+                      aria-valuetext={quota ? `${quota.remaining}/${quota.limit} verdicts available today` : undefined}
                       className="h-2.5 overflow-hidden rounded-full border border-border bg-background/70"
                     >
                       <div

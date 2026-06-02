@@ -122,7 +122,7 @@ export function PickAlly({
 
   return (
     <div>
-      <div className="mb-3 flex flex-col gap-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="mr-1 text-sm font-semibold uppercase tracking-wider text-gold">
             <Gavel className="mr-1 inline h-3.5 w-3.5" /> {t("biggerFaultQuestion")}
