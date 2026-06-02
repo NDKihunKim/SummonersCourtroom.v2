@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Star, Swords, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { MatchCard } from "@/components/MatchCard";
-import { AdFrame } from "@/components/AdFrame";
+import { AppShell } from "@/components/AppShell";
 import { ShowMoreMatchesButton } from "@/components/ShowMoreMatchesButton";
 import type { Shard } from "@/lib/regions";
 import type { CachedSummonerPayload } from "@/functions/summoner-cache.functions";
@@ -43,11 +43,10 @@ export const Route = createFileRoute("/")({
 function Index() {
   const { locale, setLocale, t } = useLocale();
   return (
-    <AdFrame fitViewport locale={locale} onLocaleChange={setLocale} t={t}>
+    <AppShell fitViewport locale={locale} onLocaleChange={setLocale} t={t}>
       {/* h-full lets the hero fill the leftover space between the
-          north & south ads (AdFrame's middle row is flex-1 in fit
-          mode). Padding is reduced so the form stays visible on
-          shorter viewports without scrolling. */}
+          app shell footer/dashboard chrome. Padding is reduced so the
+          form stays visible on shorter viewports without scrolling. */}
       <div
         className="min-h-[calc(100dvh-4rem)] sm:min-h-[calc(100dvh-5rem)]"
         style={{ background: "var(--gradient-hero)" }}
@@ -72,7 +71,7 @@ function Index() {
           </p>
         </div>
       </div>
-    </AdFrame>
+    </AppShell>
   );
 }
 

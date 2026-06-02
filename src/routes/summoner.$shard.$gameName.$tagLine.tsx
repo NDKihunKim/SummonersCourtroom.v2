@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { AdFrame } from "@/components/AdFrame";
+import { AppShell } from "@/components/AppShell";
 import { SummonerSearchBar } from "@/components/SummonerSearchBar";
 import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
 import {
@@ -181,13 +181,13 @@ function SummonerProfilePage() {
 
   if (!shard) {
     return (
-      <AdFrame locale={locale} onLocaleChange={setLocale} t={t}>
+      <AppShell locale={locale} onLocaleChange={setLocale} t={t}>
         <main className="min-h-dvh px-4 py-24" style={{ background: "var(--gradient-hero)" }}>
           <div className="mx-auto max-w-xl rounded-xl border border-border bg-card p-6 text-center text-muted-foreground">
             {t("selectRegion")}
           </div>
         </main>
-      </AdFrame>
+      </AppShell>
     );
   }
 
@@ -199,7 +199,7 @@ function SummonerProfilePage() {
     });
 
     return (
-      <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+      <AppShell homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
         <MatchHistory
           result={data}
           shard={shard}
@@ -238,12 +238,12 @@ function SummonerProfilePage() {
           locale={locale}
           t={t}
         />
-      </AdFrame>
+      </AppShell>
     );
   }
 
   return (
-    <AdFrame locale={locale} onLocaleChange={setLocale} t={t}>
+    <AppShell locale={locale} onLocaleChange={setLocale} t={t}>
       <main className="min-h-dvh px-4 py-24" style={{ background: "var(--gradient-hero)" }}>
         <div className="mx-auto max-w-xl rounded-xl border border-border bg-card p-6 text-center">
           {isLoadingCache || isFetching || !autoFetchAttemptedRef.current ? (
@@ -286,6 +286,6 @@ function SummonerProfilePage() {
           />
         </div>
       </main>
-    </AdFrame>
+    </AppShell>
   );
 }

@@ -98,13 +98,10 @@ function DiscordIcon({ className }: { className?: string }) {
 }
 
 /**
- * Mock ad slots (north/south leaderboards + east/west skyscrapers) have
- * been removed per product decision. AdFrame now just provides the
- * page-level wrapper so existing call sites keep working without any
- * layout shift around the content column.
+ * AppShell provides the page-level layout wrapper shared by public pages,
+ * including dashboard controls, language selection, and footer links.
  */
-
-export function AdFrame({
+export function AppShell({
   children,
   fitViewport = false,
   homeHref = "/",

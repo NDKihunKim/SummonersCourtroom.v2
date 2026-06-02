@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { AdFrame } from "@/components/AdFrame";
+import { AppShell } from "@/components/AppShell";
 import {
   getCachedMatchHistory,
   type CachedSummonerPayload,
@@ -116,28 +116,28 @@ function SharePage() {
 
   if (error) {
     return (
-      <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+      <AppShell homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
         <UnavailableCard title="Shared verdict unavailable" message={error} />
-      </AdFrame>
+      </AppShell>
     );
   }
 
   if (!verdict) {
     return (
-      <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+      <AppShell homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
         <main className="min-h-dvh px-4 py-16" style={{ background: "var(--gradient-hero)" }}>
           <div className="mx-auto max-w-xl rounded-xl border border-border bg-card p-6 text-center text-muted-foreground">
             <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-gold" />
             {t("loading")}
           </div>
         </main>
-      </AdFrame>
+      </AppShell>
     );
   }
 
   if (!profile || !verdict.profile || !isKnownShard(verdict.profile.shard)) {
     return (
-      <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+      <AppShell homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
         <UnavailableCard
           title="Shared profile unavailable"
           message={
@@ -147,12 +147,12 @@ function SharePage() {
           }
           loading={!profileUnavailable}
         />
-      </AdFrame>
+      </AppShell>
     );
   }
 
   return (
-    <AdFrame homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
+    <AppShell homeHref="/" locale={locale} onLocaleChange={setLocale} t={t}>
       <MatchHistory
         result={profile}
         shard={verdict.profile.shard}
@@ -184,7 +184,7 @@ function SharePage() {
         locale={locale}
         t={t}
       />
-    </AdFrame>
+    </AppShell>
   );
 }
 
