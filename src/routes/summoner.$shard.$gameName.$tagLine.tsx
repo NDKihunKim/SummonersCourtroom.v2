@@ -265,17 +265,10 @@ function SummonerProfilePage() {
               </div>
               <button
                 type="button"
-                onClick={() => void fetchProfile()}
-                disabled={isFetching}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void navigate({ to: "/" })}
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-gold bg-gold/10 px-5 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20"
               >
-                {isFetching ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
-                  </>
-                ) : (
-                  t("fetchPlayerProfile")
-                )}
+                {t("fetchPlayerProfile")}
               </button>
             </div>
           )}
