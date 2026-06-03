@@ -54,3 +54,4 @@ __pycache__/
 
 python/.venv/
 supabase/.temp/
+.claude/
