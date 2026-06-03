@@ -103,7 +103,7 @@ Consider these factors:
 
 - **Momentum swing context:** A death or missed presence can be high fault when the brief shows an immediate sequence where it creates a numbers disadvantage, enables follow-up kills, or leads directly into an enemy objective/building push.
 
-- **Resource and contribution context:** Use gold, CS, level, health, XP, and champion damage only when they explain a decision. A deficit alone is not fault; the fault must come from how the subject played around that state.
+- **Resource and contribution context:** Use gold, CS, level, health, XP, and champion damage only when they explain a decision. A deficit alone is not fault; the fault must come from how the subject played around that state. When citing gold numbers to compare players, always compare the same metric — both total gold or both current gold. Never mix total gold with current gold in the same comparison. If you cannot confirm which gold metric is shown, describe the gap qualitatively (e.g., "far behind in gold") rather than citing mismatched numbers.
 
 - **Non-participation and low-value map play:** Heavily weigh repeated patterns where a subject farms, stays isolated, avoids relevant fights/objectives/building defense, or contributes no visible pressure while decisive events happen elsewhere. Treat this as high process fault only when the brief shows the subject's activity/location and the missed event or lack of useful trade.
 
@@ -131,6 +131,10 @@ Consider these factors:
 
 - Do not reward or punish actions that require unseen vision, cooldown, communication, or intent.
 
+**GAME-END DETECTION:**
+
+Before writing the verdict, scan the Chronological Context for building destruction events involving "Nexus Turret 1" or "Nexus Turret 2". If either team's nexus turrets were destroyed by the winning team, the game ended by nexus destruction. If no nexus turret kills appear, the game likely ended by surrender. Use this only as background color when evaluating late-game positioning and defense — a surrender means the losing team conceded before the base was fully breached, while nexus destruction may show a final defensive sequence or collapse.
+
 **CAUSE AND LABEL ALIGNMENT:**
 
 - The fault label must match the example. If the reason says "poor objective presence", the example must show the subject dead before, absent from, or far from a relevant objective/building event in a way that made contest meaningfully harder.
@@ -144,6 +148,8 @@ Consider these factors:
 - For position-based causality, keep timestamps close. Prefer position evidence within about 15 seconds of the event it explains. If the position snapshot is older than about 15 seconds, phrase the point cautiously or choose a different example; do not claim direct absence or distance from an objective based on stale position evidence.
 
 - Do not write movement/pathing claims like "moved away", "chose to leave", "rotated away", or "walked away from the team" unless multiple chronological lines directly show that movement. If only one snapshot is shown, state only the observable position, such as "was isolated near top lane".
+
+- A player's death and a nearby structure loss (turret, inhibitor, nexus) happening at similar timestamps does not automatically mean the death "caused" or "directly contributed to" the structure loss. Only claim causation when the brief shows a direct sequence: the death created a numbers disadvantage that specifically enabled the enemy to push and destroy that structure shortly after. Temporal proximity without a visible causal chain is not causation. Do not link a death to a structure loss in the same sentence unless the brief explicitly shows the enemy capitalizing on the numbers advantage at that structure.
 
 **LOCATION WORDING:**
 
@@ -160,6 +166,8 @@ Never use "if they had" or "they should have" except when comparing to standard 
 **EXAMPLE VERIFICATION:**
 
 Before writing each numbered reason, choose the single strongest example from the Structured Context Brief for that reason. Verify that its timestamp, subject action, location, and event appear in the brief. If an example cannot be directly matched to the brief, do not use it. Prefer fewer reasons over unsupported reasons.
+
+Each timestamp or death event may only anchor ONE reasoning point. Do not reuse the same moment as the primary example for multiple different reasons. If a specific timestamp or death is already used as the example for one fault pattern, choose a different event for the next reason. Distinct fault patterns require distinct evidence.
 
 **USER-FACING WORDING:**
 
@@ -335,13 +343,23 @@ When evidence exists, decide which player from ${comparisonLabel} showed the gre
 - Use exactly one strongest example per reason. Do not stack several unrelated examples.
 - Keep timestamps close to the event being explained; do not claim direct absence from stale position evidence.
 - When using frame snapshot evidence, do not print the exact snapshot timestamp in the final answer. If the point is tied to a nearby event, cite the event timestamp only. Otherwise use natural wording such as "around this stage of the game", "by the late game", or "when Sylas was level 4..." instead of "at 07:00...".
-- Use exact level, CS, jungle CS, gold, or KDA numbers when they help explain the gap. Never print exact champion damage numbers; describe champion damage as low, limited, high, or meaningful instead.
+- Use exact level, CS, jungle CS, gold, or KDA numbers when they help explain the gap. When comparing gold between players, always compare the same metric — both total gold or both current gold. Never mix total gold with current gold in the same comparison sentence. If unsure which metric is shown, describe the gap qualitatively. Never print exact champion damage numbers; describe champion damage as low, limited, high, or meaningful instead.
 - For jungle or resource comparisons, compare the player to the opposing role when available, but explain how the gap affected objective control, skirmishing, or map pressure. Do not make the reason sound like scoreboard blame only.
 - Do not blame a side-lane player for not defending an off-lane outer turret unless the shown moment proves that rotation was expected, nearby, or part of a decisive grouped defense. Normal lane presence is reasonable unless a higher-value missed fight, neutral objective, inhibitor/nexus defense, or game-ending sequence is shown.
 - Do not mention internal source words such as "brief", "context", "snapshot", "frame", "data", or "prompt".
 - Do not use meta phrases like "shown moments", "highlighted moments", "available data", or "the selected windows" in the final answer. Write naturally, such as "throughout the game", "during the decisive sequence", or "around the late-game fight".
 - Do not print raw coordinates. Convert locations to readable landmarks such as dragon pit, Baron, river side, jungle side, lane, or named turret/inhibitor.
 - Do not claim intent such as throwing, trolling, giving up, or refusing to play.
+
+**GAME-END DETECTION:**
+
+Before writing the verdict, scan the Chronological Context for building destruction events involving "Nexus Turret 1" or "Nexus Turret 2". If either team's nexus turrets were destroyed by the winning team, the game ended by nexus destruction. If no nexus turret kills appear, the game likely ended by surrender. Use this only as background color when evaluating late-game positioning and defense — a surrender means the losing team conceded before the base was fully breached, while nexus destruction may show a final defensive sequence or collapse.
+
+**CAUSATION AND EXAMPLE RULES:**
+
+- A player's death and a nearby structure loss (turret, inhibitor, nexus) happening at similar timestamps does not automatically mean the death "caused" or "directly contributed to" the structure loss. Only claim causation when the brief shows a direct sequence: the death created a numbers disadvantage that specifically enabled the enemy to push and destroy that structure shortly after. Temporal proximity without a visible causal chain is not causation.
+
+- Each timestamp or death event may only anchor ONE reasoning point. Do not reuse the same moment as the primary example for multiple different reasons. Distinct fault patterns require distinct evidence.
 
 **OUTPUT FORMAT:**
 
