@@ -3,7 +3,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { accountIdentityForUser } from "@/functions/account-identity.server";
 import { resolveAuthUser, type AuthUser } from "@/server/auth";
 
-const DAILY_VERDICT_LIMIT = 50;
+const VERDICT_QUOTA_LIMIT = 10;
+const VERDICT_QUOTA_WINDOW_MS = 30 * 60 * 1000;
 
 export type VerdictQuotaStatus = {
   limit: number;
@@ -81,7 +82,7 @@ async function restoreDeletedIdentityQuota({
   if (!data?.window_started_at || data.verdict_count <= 0) return;
 
   const windowStart = Date.parse(data.window_started_at);
-  if (!Number.isFinite(windowStart) || windowStart <= Date.now() - 24 * 60 * 60_000) return;
+  if (!Number.isFinite(windowStart) || windowStart <= Date.now() - VERDICT_QUOTA_WINDOW_MS) return;
 
   const { error: usageError } = await supabaseAdmin.from("verdict_usage_daily").insert({
     usage_date: new Date(data.window_started_at).toISOString().slice(0, 10),
@@ -105,7 +106,7 @@ async function getActiveUsage({
   anonymousId?: string;
   ipHash: string;
 }): Promise<{ used: number; resetAt: string | null }> {
-  const activeSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const activeSince = new Date(Date.now() - VERDICT_QUOTA_WINDOW_MS).toISOString();
 
   if (userId) {
     const { data, error } = await supabaseAdmin
@@ -141,7 +142,7 @@ async function getActiveUsage({
 }
 
 function resetAtFromWindowStart(windowStartedAt: string): string {
-  return new Date(Date.parse(windowStartedAt) + 24 * 60 * 60 * 1000).toISOString();
+  return new Date(Date.parse(windowStartedAt) + VERDICT_QUOTA_WINDOW_MS).toISOString();
 }
 
 function parseAtomicQuotaResult(value: unknown): {
@@ -175,9 +176,9 @@ export async function getVerdictQuota({
   if (user) {
     const usage = await getActiveUsage({ userId: user.userId, ipHash });
     return {
-      limit: DAILY_VERDICT_LIMIT,
+      limit: VERDICT_QUOTA_LIMIT,
       used: usage.used,
-      remaining: Math.max(0, DAILY_VERDICT_LIMIT - usage.used),
+      remaining: Math.max(0, VERDICT_QUOTA_LIMIT - usage.used),
       usageDate: date,
       resetAt: usage.resetAt,
     };
@@ -189,9 +190,9 @@ export async function getVerdictQuota({
 
   const usage = await getActiveUsage({ anonymousId, ipHash });
   return {
-    limit: DAILY_VERDICT_LIMIT,
+    limit: VERDICT_QUOTA_LIMIT,
     used: usage.used,
-    remaining: Math.max(0, DAILY_VERDICT_LIMIT - usage.used),
+    remaining: Math.max(0, VERDICT_QUOTA_LIMIT - usage.used),
     usageDate: date,
     resetAt: usage.resetAt,
   };
@@ -214,18 +215,22 @@ export async function consumeVerdictQuota(identity: {
     p_user_id: user?.userId ?? null,
     p_anonymous_id: user ? null : identity.anonymousId,
     p_ip_hash: ipHash,
-    p_limit: DAILY_VERDICT_LIMIT,
+    p_limit: VERDICT_QUOTA_LIMIT,
+    p_window_ms: VERDICT_QUOTA_WINDOW_MS,
   });
 
-  if (error) throw new Error("Failed to update verdict quota.");
+  if (error) {
+    console.error("[verdict-quota] failed to consume verdict quota:", error);
+    throw new Error("Failed to update verdict quota.");
+  }
 
   const result = parseAtomicQuotaResult(data);
   if (!result.consumed) {
-    throw new Error(`Daily AI verdict limit reached (${result.used}/${result.limit || DAILY_VERDICT_LIMIT}).`);
+    throw new Error(`AI verdict limit reached (${result.used}/${result.limit || VERDICT_QUOTA_LIMIT}).`);
   }
 
   return {
-    limit: DAILY_VERDICT_LIMIT,
+    limit: VERDICT_QUOTA_LIMIT,
     used: result.used,
     remaining: result.remaining,
     usageDate: date,
@@ -248,7 +253,11 @@ export async function refundVerdictQuota(identity: {
     p_user_id: user?.userId ?? null,
     p_anonymous_id: user ? null : identity.anonymousId,
     p_ip_hash: ipHash,
+    p_window_ms: VERDICT_QUOTA_WINDOW_MS,
   });
 
-  if (error) throw new Error("Failed to refund verdict quota.");
+  if (error) {
+    console.error("[verdict-quota] failed to refund verdict quota:", error);
+    throw new Error("Failed to refund verdict quota.");
+  }
 }

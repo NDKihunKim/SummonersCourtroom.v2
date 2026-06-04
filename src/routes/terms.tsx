@@ -137,7 +137,7 @@ function TermsPage() {
 
       <Section title="Accounts, usage limits, and sharing">
         <p>
-          Some features may require sign-in, human verification, or rolling 24-hour usage limits.
+          Some features may require sign-in, human verification, or rolling usage limits.
           Summoner's Courtroom may change these limits or reject requests to protect reliability,
           manage cost, and prevent abuse.
         </p>

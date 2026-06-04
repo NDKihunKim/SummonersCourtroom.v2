@@ -828,7 +828,10 @@ export function AppShell({
                       {quotaLoading
                         ? (t?.("dashboardQuotaLoading") ?? "Loading verdict quota...")
                         : quota
-                          ? `${quota.remaining}/${quota.limit} verdicts available today`
+                          ? (t?.("dashboardQuota", {
+                              remaining: quota.remaining,
+                              limit: quota.limit,
+                            }) ?? `${quota.remaining}/${quota.limit} verdicts available`)
                           : quotaError
                             ? `${t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable."} ${quotaError}`
                             : (t?.("dashboardQuotaUnavailable") ?? "Verdict quota unavailable.")}
@@ -838,7 +841,14 @@ export function AppShell({
                       aria-valuemin={0}
                       aria-valuemax={quota?.limit ?? 100}
                       aria-valuenow={quota?.remaining ?? 0}
-                      aria-valuetext={quota ? `${quota.remaining}/${quota.limit} verdicts available today` : undefined}
+                      aria-valuetext={
+                        quota
+                          ? (t?.("dashboardQuota", {
+                              remaining: quota.remaining,
+                              limit: quota.limit,
+                            }) ?? `${quota.remaining}/${quota.limit} verdicts available`)
+                          : undefined
+                      }
                       className="h-2.5 overflow-hidden rounded-full border border-border bg-background/70"
                     >
                       <div

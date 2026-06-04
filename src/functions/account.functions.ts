@@ -6,6 +6,8 @@ import { assertRateLimit } from "@/server/request-rate-limit";
 import { assertSameOrigin } from "@/server/csrf";
 import { resolveAuthUser } from "@/server/auth";
 
+const VERDICT_QUOTA_WINDOW_MS = 30 * 60 * 1000;
+
 const DeleteAccountInputSchema = z.object({
   accessToken: z.string().min(1),
 });
@@ -43,7 +45,7 @@ export const deleteCurrentAccount = createServerFn({ method: "POST" })
         throw new Error("Failed to delete account. Please try again.");
       }
 
-      const activeSince = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+      const activeSince = new Date(Date.now() - VERDICT_QUOTA_WINDOW_MS).toISOString();
       const { data: usage, error: usageError } = await supabaseAdmin
         .from("verdict_usage_daily")
         .select("verdict_count, window_started_at")
@@ -59,7 +61,7 @@ export const deleteCurrentAccount = createServerFn({ method: "POST" })
 
       const windowStartedAt = usage?.window_started_at ?? null;
       const resetAt = windowStartedAt
-        ? new Date(Date.parse(windowStartedAt) + 24 * 60 * 60_000).toISOString()
+        ? new Date(Date.parse(windowStartedAt) + VERDICT_QUOTA_WINDOW_MS).toISOString()
         : null;
       const { error: identityError } = await supabaseAdmin
         .from("deleted_account_identities")

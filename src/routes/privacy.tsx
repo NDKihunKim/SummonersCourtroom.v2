@@ -184,7 +184,7 @@ function PrivacyPage() {
         </p>
         <p>
           Summoner's Courtroom stores account verdict usage counts and the start and reset time of a
-          rolling 24-hour usage window to limit excessive use.
+          rolling 30-minute usage window to limit excessive use.
         </p>
         <p>
           If you delete your account, your Supabase Auth account is deleted. To prevent deleted

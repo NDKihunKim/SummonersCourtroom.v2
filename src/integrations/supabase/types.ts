@@ -419,6 +419,7 @@ export type Database = {
           p_limit: number
           p_usage_date: string
           p_user_id: string
+          p_window_ms: number
         }
         Returns: Json
       }
@@ -428,6 +429,7 @@ export type Database = {
           p_ip_hash: string
           p_usage_date: string
           p_user_id: string
+          p_window_ms: number
         }
         Returns: Json
       }

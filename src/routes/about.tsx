@@ -93,7 +93,7 @@ function AboutPage() {
       <Section title="Current features">
         <p>
           The service currently supports recent completed-match lookup, ranked match AI verdicts,
-          rolling 24-hour verdict usage limits, saved players, recent searches, and shared verdict
+          rolling verdict usage limits, saved players, recent searches, and shared verdict
           links that expire after 72 hours.
         </p>
         <p>

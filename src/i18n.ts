@@ -59,7 +59,7 @@ const translations = {
     dashboardProfileComingSoon: "User profiles and sign-in are coming later.",
     dashboardAnonymousQuotaHelp: "Sign in to submit objections and feedback.",
     dashboardQuotaTitle: "Verdict quota",
-    dashboardQuota: "{remaining}/{limit} verdicts available today",
+    dashboardQuota: "{remaining}/{limit} verdicts available",
     dashboardQuotaLoading: "Loading verdict quota...",
     dashboardQuotaUnavailable: "Verdict quota unavailable.",
     dashboardQuotaResetsIn: "Resets in {time}",
