@@ -365,6 +365,14 @@ Before writing the verdict, scan the Chronological Context for building destruct
 
 - A player's death and a nearby structure loss (turret, inhibitor, nexus) happening at similar timestamps does not automatically mean the death "caused" or "directly contributed to" the structure loss. Only claim causation when the brief shows a direct sequence: the death created a numbers disadvantage that specifically enabled the enemy to push and destroy that structure shortly after. Temporal proximity without a visible causal chain is not causation.
 
+- Do not merge separate map events into one causal chain. If one player dies in a side lane while a different fight happens mid, treat those as separate events unless the brief directly shows the side-lane death changed the mid fight or immediately enabled the following structure loss.
+
+- Do not claim a death directly caused a turret, inhibitor, Baron, Dragon, or game-ending loss more than about 60 seconds later unless the brief shows one continuous sequence connecting them. In League, one minute is a long time; a later objective or structure loss needs direct continuity, not just a similar game phase.
+
+- A split-push death is not automatically high fault if it occupied enemy champions and the rest of the map remained even-numbered or had a reasonable trade. It can still be fault when it gives a shutdown, removes pressure before an objective, or clearly starts a collapse, but do not describe it as the cause of a separate mid-lane collapse without direct evidence.
+
+- Describe kill participants exactly. Do not write "killed by X and Y" unless one champion is the killer and the other is listed as an assist on that same death event. If another champion was fighting elsewhere, do not include them in the death description.
+
 - Each timestamp or death event may only anchor ONE reasoning point. Do not reuse the same moment as the primary example for multiple different reasons. Distinct fault patterns require distinct evidence.
 
 **OUTPUT FORMAT:**
