@@ -56,7 +56,7 @@ function PrivacyPage() {
             처리될 수 있습니다.
           </p>
           <p>
-            Summoner's Courtroom은 계정별 판결 이용 횟수와 24시간 이용 창의 시작 및 초기화 시간을
+            Summoner's Courtroom은 계정별 판결 이용 횟수와 30분 롤링 이용 창의 시작 및 초기화 시간을
             저장해 과도한 사용을 제한합니다.
           </p>
           <p>

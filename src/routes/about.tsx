@@ -44,7 +44,7 @@ function AboutPage() {
 
         <Section title="현재 제공되는 기능">
           <p>
-            이 서비스는 최근 완료 경기 조회, 랭크 경기 AI 판결, 24시간 기준 판결 이용 횟수 관리,
+            이 서비스는 최근 완료 경기 조회, 랭크 경기 AI 판결, 30분 롤링 기준 판결 이용 횟수 관리,
             저장한 플레이어와 최근 검색, 72시간 동안 유지되는 공유 판결 링크를 제공합니다.
           </p>
           <p>
@@ -93,8 +93,8 @@ function AboutPage() {
       <Section title="Current features">
         <p>
           The service currently supports recent completed-match lookup, ranked match AI verdicts,
-          rolling verdict usage limits, saved players, recent searches, and shared verdict
-          links that expire after 72 hours.
+          rolling verdict usage limits, saved players, recent searches, and shared verdict links
+          that expire after 72 hours.
         </p>
         <p>
           AI verdicts are review assistance for post-game reflection. They are not official Riot

@@ -128,11 +128,11 @@ export function PickAlly({
             <Gavel className="mr-1 inline h-3.5 w-3.5" /> {t("biggerFaultQuestion")}
           </h3>
           <ModeButton active={mode === "free-for-all"} onClick={() => selectMode("free-for-all")}>
-            Free for All
+            {t("faultModeFreeForAll")}
           </ModeButton>
           {!showEnemyTeam ? (
             <ModeButton active={mode === "me-vs-1"} onClick={() => selectMode("me-vs-1")}>
-              Me vs 1
+              {t("faultModeMeVsOne")}
             </ModeButton>
           ) : null}
           <ModeButton active={mode === "one-vs-one"} onClick={() => selectMode("one-vs-one")}>
@@ -144,7 +144,7 @@ export function PickAlly({
             {scoreboardOpen ? t("scoreboardHide") : t("scoreboardShow")}
           </ModeButton>
           <ModeButton active={showEnemyTeam} onClick={switchTeams}>
-            Switch Teams
+            {t("faultModeSwitchTeams")}
           </ModeButton>
         </div>
       </div>

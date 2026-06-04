@@ -57,7 +57,7 @@ function TermsPage() {
 
         <Section title="계정, 이용 제한, 공유">
           <p>
-            일부 기능은 로그인, 사람 인증, 또는 24시간 기준 이용 제한이 적용될 수 있습니다.
+            일부 기능은 로그인, 사람 인증, 또는 30분 롤링 기준 이용 제한이 적용될 수 있습니다.
             Summoner's Courtroom은 서비스 안정성, 비용 관리, 남용 방지를 위해 이러한 제한을
             변경하거나 요청을 거부할 수 있습니다.
           </p>
@@ -137,9 +137,9 @@ function TermsPage() {
 
       <Section title="Accounts, usage limits, and sharing">
         <p>
-          Some features may require sign-in, human verification, or rolling usage limits.
-          Summoner's Courtroom may change these limits or reject requests to protect reliability,
-          manage cost, and prevent abuse.
+          Some features may require sign-in, human verification, or rolling usage limits. Summoner's
+          Courtroom may change these limits or reject requests to protect reliability, manage cost,
+          and prevent abuse.
         </p>
         <p>
           Shared verdict links are available for a limited time and let link recipients view the

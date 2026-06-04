@@ -588,6 +588,9 @@ export function MatchCard({
       : faultMode === "me-vs-1"
         ? Boolean(pickedAlly)
         : Boolean(pickedSubjectA && pickedAlly);
+  const showScopeActions =
+    stage === "pickScope" || (stage === "pickAlly" && faultMode !== "free-for-all");
+  const showDevScopeActions = SHOW_DEV_CONTEXT && subjectsReady;
 
   function clearMockLoadingTimers() {
     mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
@@ -1291,12 +1294,12 @@ export function MatchCard({
               />
             )}
 
-          {!sharedVerdict && stage === "pickScope" && (
+          {!sharedVerdict && showScopeActions && (
             <ScopeActions
               onFullGame={() => runJudge("v2-full")}
               onCancel={reset}
               onLegacyFullGame={
-                SHOW_DEV_CONTEXT &&
+                showDevScopeActions &&
                 match.riotMatchId &&
                 match.userPuuid &&
                 !isShortVerdictGame &&
@@ -1305,7 +1308,7 @@ export function MatchCard({
                   : undefined
               }
               onV2FullContext={
-                SHOW_DEV_CONTEXT &&
+                showDevScopeActions &&
                 match.riotMatchId &&
                 match.userPuuid &&
                 !isShortVerdictGame &&
@@ -1331,7 +1334,7 @@ export function MatchCard({
               isWin={showEnemyTeam ? !win : win}
               isShortGame={isShortVerdictGame}
               subjectsReady={subjectsReady}
-              showSpecifyTime={SHOW_DEV_CONTEXT}
+              showSpecifyTime={showDevScopeActions}
               t={t}
               onSpecifyTime={
                 match.riotMatchId && match.userPuuid && !isShortVerdictGame && subjectsReady
