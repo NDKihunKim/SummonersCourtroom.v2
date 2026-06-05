@@ -4,20 +4,23 @@ type Translate = (key: TranslationKey, vars?: Record<string, string | number>) =
 
 export function ScopeActions({
   onFullGame,
+  onFullGameBlocked,
   onCancel,
   onSpecifyTime,
   onLegacyFullGame,
   onV2FullContext,
-  isWin,
+  fullGameBlockReason,
   isShortGame,
   subjectsReady,
   showSpecifyTime,
   t,
 }: {
   onFullGame: () => void;
+  onFullGameBlocked?: () => void;
   onCancel?: () => void;
   onLegacyFullGame?: () => void;
   onV2FullContext?: () => void;
+  fullGameBlockReason?: string;
   /**
    * When provided, the "Specify Time" button is enabled and triggers this
    * callback. Omitted (undefined) for matches that lack the matchId/puuid
@@ -27,23 +30,10 @@ export function ScopeActions({
   isShortGame: boolean;
   subjectsReady: boolean;
   showSpecifyTime: boolean;
-  /**
-   * True when this match is a Victory. On wins we hide the "Full game"
-   * button entirely — full-game judging is intentionally Defeat-only,
-   * since the prompt is framed around assigning fault for a loss. Wins
-   * can still be analyzed via the Specify-Time scope, which is neutral.
-   */
-  isWin: boolean;
   t: Translate;
 }) {
-  const fullGameDisabled = isWin || isShortGame || !subjectsReady;
-  const fullGameTitle = isShortGame
-    ? t("verdictGameTooShortWarning")
-    : !subjectsReady
-      ? undefined
-      : isWin
-        ? t("fullGameVictoryUnavailable")
-        : undefined;
+  const fullGameDisabled = Boolean(fullGameBlockReason);
+  const fullGameTitle = fullGameBlockReason;
   const specifyTimeTitle = isShortGame
     ? t("verdictGameTooShortWarning")
     : !subjectsReady
@@ -62,8 +52,8 @@ export function ScopeActions({
     ? t("verdictGameTooShortWarning")
     : !subjectsReady
       ? undefined
-      : isWin
-        ? t("fullGameVictoryUnavailable")
+      : fullGameBlockReason
+        ? fullGameBlockReason
         : onLegacyFullGame
           ? "Run legacy V1 full-game verdict"
           : "Match metadata unavailable";
@@ -116,8 +106,8 @@ export function ScopeActions({
         {/* Full-game scope is Defeat-only. Victory rows still show the
             option disabled so users understand the feature boundary. */}
         <button
-          onClick={fullGameDisabled ? undefined : onFullGame}
-          disabled={fullGameDisabled}
+          onClick={fullGameDisabled ? onFullGameBlocked : onFullGame}
+          aria-disabled={fullGameDisabled}
           title={fullGameTitle}
           className={
             fullGameDisabled

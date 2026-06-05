@@ -57,11 +57,9 @@ type WindowResponse = {
 type JudgeRawResult = {
   content: string;
   reasoningContent?: string;
-  model?: string;
   thinking?: { enabled: boolean; effort: "high" | "max" };
   usage?: unknown;
   costEstimate?: unknown;
-  raw?: unknown;
   prompt?: unknown;
 };
 
@@ -109,7 +107,7 @@ export function TimelineWindowResult({
   /**
    * Full match + viewing player. When provided, a "TEAMS:" block listing
    * each team's champions and roles is appended to the upper prompt so the
-   * Judge LLM has a quick at-a-glance roster. Optional — when omitted the
+   * judge service has a quick at-a-glance roster. Optional — when omitted the
    * upper prompt renders without the rundown.
    */
   match?: Match;
@@ -130,7 +128,7 @@ export function TimelineWindowResult({
   // Memo-light: just two string substitutions per render. Plenty fast and
   // avoids the boilerplate of useMemo for sub-millisecond work.
   // The team rundown (TEAMS: ... block) is appended to the upper prompt
-  // when we have both `match` and `you`, so the LLM can see the full 5v5
+  // when we have both `match` and `you`, so the judge service can see the full 5v5
   // roster + roles at the top of the brief.
   const teamRundown = match && you ? buildTeamRundown(match, you) : "";
   const formatChampionName = useChampionNameFormatter(locale);
@@ -340,7 +338,7 @@ export function TimelineWindowResult({
       });
       setJudgeResult(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AI gateway request failed");
+      setError(e instanceof Error ? e.message : "AI service request failed");
     } finally {
       setJudgeLoading(false);
     }
@@ -388,7 +386,7 @@ export function TimelineWindowResult({
               disabled={judgeLoading}
               className="rounded border border-gold/60 px-2 py-1 text-xs text-gold hover:border-gold disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {judgeLoading ? "Running AI Gateway..." : "Run AI Gateway"}
+              {judgeLoading ? "Running AI service..." : "Run AI service"}
             </button>
           </>
         )}
@@ -428,11 +426,9 @@ export function TimelineWindowResult({
               <pre className="max-h-[420px] overflow-auto rounded border border-gold/50 bg-background p-4 font-mono text-[11px] leading-relaxed text-foreground">
                 {JSON.stringify(
                   {
-                    model: judgeResult.model,
                     thinking: judgeResult.thinking,
                     usage: judgeResult.usage,
                     costEstimate: judgeResult.costEstimate,
-                    raw: judgeResult.raw,
                     prompt: judgeResult.prompt,
                   },
                   null,

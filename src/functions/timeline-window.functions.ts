@@ -2738,8 +2738,6 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
       maxTokens: aiResult.maxTokens ?? 0,
       durationMs: Date.now() - requestStartedAt,
     });
-    const raw = includeDiagnostics ? aiResult.raw : undefined;
-
     if (!includeDiagnostics) {
       return {
         content: aiResult.content,
@@ -2750,11 +2748,9 @@ export const getJudgeVerdict = createServerFn({ method: "POST" })
     return {
       content: aiResult.content,
       reasoningContent: aiResult.reasoningContent,
-      model: aiResult.model,
       thinking: aiResult.thinking,
       usage: aiResult.usage,
       costEstimate,
-      raw,
       prompt: promptPayload,
       context: windowResponse,
       verdictResultId,

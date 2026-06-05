@@ -444,6 +444,7 @@ export function MatchCard({
   const durationLabel = formatDuration(match.duration, locale, t);
   const matchDurationMs = parseMatchDurationToMs(match.duration);
   const isShortVerdictGame = matchDurationMs != null && matchDurationMs < MIN_VERDICT_GAME_MS;
+  const isLongFullGameVerdict = matchDurationMs != null && matchDurationMs > MAX_FULL_GAME_VERDICT_MS;
   const [relativeNowMs, setRelativeNowMs] = useState(() => Date.now());
   const playedAtLabel =
     typeof match.playedAtMs === "number"
@@ -591,6 +592,20 @@ export function MatchCard({
   const showScopeActions =
     stage === "pickScope" || (stage === "pickAlly" && faultMode !== "free-for-all");
   const showDevScopeActions = SHOW_DEV_CONTEXT && subjectsReady;
+  const viewedSideWon = showEnemyTeam ? !win : win;
+  const fullGameBlockReason = !isRankedGame
+    ? t("fullGameBlockedRanked")
+    : isShortVerdictGame
+      ? t("fullGameBlockedShort")
+      : isLongFullGameVerdict
+        ? t("fullGameBlockedLong")
+        : viewedSideWon
+          ? t("fullGameBlockedVictory")
+          : !subjectsReady
+            ? t("fullGameBlockedSubjects")
+            : !match.riotMatchId || !match.userPuuid
+              ? t("fullGameBlockedMetadata")
+              : undefined;
 
   function clearMockLoadingTimers() {
     mockLoadingTimersRef.current.forEach((timer) => clearTimeout(timer));
@@ -1331,7 +1346,10 @@ export function MatchCard({
                     }
                   : undefined
               }
-              isWin={showEnemyTeam ? !win : win}
+              fullGameBlockReason={fullGameBlockReason}
+              onFullGameBlocked={() => {
+                if (fullGameBlockReason) toast.warning(fullGameBlockReason);
+              }}
               isShortGame={isShortVerdictGame}
               subjectsReady={subjectsReady}
               showSpecifyTime={showDevScopeActions}

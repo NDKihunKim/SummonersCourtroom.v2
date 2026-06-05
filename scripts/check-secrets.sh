@@ -20,7 +20,7 @@ PATTERNS=(
   "RGAPI-[a-zA-Z0-9_-]{8,}"           # Riot API key
   "sb_secret_[a-zA-Z0-9_]+"           # Supabase secret key
   "eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"  # JWT (service role)
-  "sk-[a-zA-Z0-9]{32,}"               # AI API key (OpenAI/DeepSeek format)
+  "sk-[a-zA-Z0-9]{32,}"               # AI provider key format
   "SUPABASE_SERVICE_ROLE_KEY=eyJ"     # Service role key assignment
   "SUPABASE_DB_PASSWORD=[^ ]{4,}"     # DB password assignment
   "AI_GATEWAY_TOKEN=[^ ]{8,}"         # AI gateway token assignment
