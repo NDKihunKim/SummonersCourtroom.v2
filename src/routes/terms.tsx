@@ -23,6 +23,7 @@ function TermsPage() {
       <PolicyPage
         title="이용약관"
         eyebrow="이용 규칙"
+        updatedAt="최종 업데이트: 2026년 6월 5일"
         locale={locale}
         onLocaleChange={setLocale}
         t={t}
@@ -103,6 +104,7 @@ function TermsPage() {
     <PolicyPage
       title="Terms of Use"
       eyebrow="Usage Rules"
+      updatedAt="Last updated: June 5, 2026"
       locale={locale}
       onLocaleChange={setLocale}
       t={t}

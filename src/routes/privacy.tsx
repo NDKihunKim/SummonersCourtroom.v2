@@ -23,10 +23,22 @@ function PrivacyPage() {
       <PolicyPage
         title="개인정보 처리방침"
         eyebrow="데이터 처리 방식"
+        updatedAt="최종 업데이트: 2026년 6월 5일"
         locale={locale}
         onLocaleChange={setLocale}
         t={t}
       >
+        <Section title="요약">
+          <p>
+            Summoner's Courtroom은 공개 Riot 경기 데이터, 로그인 시 계정 데이터, 브라우저 로컬
+            저장소, 제한적인 서버 캐시를 사용합니다. 개인정보를 판매하지 않습니다.
+          </p>
+          <p>
+            데이터는 경기 기록 조회, AI 판결 제공, 공유 링크 생성, 서비스 안정성 유지, 남용 방지를
+            위해 필요한 범위에서 처리됩니다.
+          </p>
+        </Section>
+
         <Section title="사용자가 제공하거나 검색하는 정보">
           <p>
             Riot ID를 검색하면 Summoner's Courtroom은 해당 Riot ID와 선택한 League 서버 지역을
@@ -110,9 +122,9 @@ function PrivacyPage() {
 
         <Section title="광고와 쿠키">
           <p>
-            Summoner's Courtroom은 아직 Google AdSense 코드를 추가하지 않았습니다. 향후 광고가
-            추가되면 Google 및 파트너는 광고 제공과 측정을 위해 쿠키, 웹 비콘, IP 주소 또는 기타
-            식별자를 사용할 수 있습니다.
+            Summoner's Courtroom은 현재 광고 쿠키를 사용하지 않습니다. 향후 광고가 추가되면 이
+            방침을 업데이트하고, Google 및 파트너가 광고 제공과 측정을 위해 쿠키, 웹 비콘, IP 주소
+            또는 기타 식별자를 사용할 수 있음을 안내합니다.
           </p>
           <p>
             Google이 파트너 사이트 또는 앱 사용 시 데이터를 사용하는 방식은{" "}
@@ -125,6 +137,20 @@ function PrivacyPage() {
               Google 파트너 사이트 정책
             </a>
             에서 확인할 수 있습니다.
+          </p>
+        </Section>
+
+        <Section title="데이터 삭제 요청">
+          <p>
+            계정 또는 저장 데이터 삭제를 요청하려면{" "}
+            <a
+              className="font-semibold text-gold underline-offset-4 hover:underline"
+              href={`mailto:${CONTACT_EMAIL}`}
+            >
+              {CONTACT_EMAIL}
+            </a>
+            로 문의해 주세요. 남용 방지와 보안 목적으로 보관이 필요한 제한적인 기록은 위에 설명된
+            기간 동안 유지될 수 있습니다.
           </p>
         </Section>
 
@@ -148,10 +174,22 @@ function PrivacyPage() {
     <PolicyPage
       title="Privacy Policy"
       eyebrow="Data Practices"
+      updatedAt="Last updated: June 5, 2026"
       locale={locale}
       onLocaleChange={setLocale}
       t={t}
     >
+      <Section title="Summary">
+        <p>
+          Summoner's Courtroom uses public Riot match data, account data if you sign in, local
+          browser storage, and limited server-side caching. We do not sell personal data.
+        </p>
+        <p>
+          Data is processed to load match history, provide AI verdicts, create shared links,
+          maintain service reliability, and prevent abuse.
+        </p>
+      </Section>
+
       <Section title="Information you provide or search">
         <p>
           When you search a Riot ID, Summoner's Courtroom uses that Riot ID and selected League
@@ -240,9 +278,9 @@ function PrivacyPage() {
 
       <Section title="Advertising and cookies">
         <p>
-          Summoner's Courtroom does not add Google AdSense code yet. If ads are added later, Google
-          and its partners may use cookies, web beacons, IP addresses, or other identifiers to serve
-          and measure ads.
+          Summoner's Courtroom does not currently use advertising cookies. If advertising is added
+          later, this policy will be updated and Google or its partners may use cookies, web
+          beacons, IP addresses, or other identifiers to serve and measure ads.
         </p>
         <p>
           Learn how Google uses data when you use partner sites or apps at{" "}
@@ -255,6 +293,20 @@ function PrivacyPage() {
             Google's partner sites policy
           </a>
           .
+        </p>
+      </Section>
+
+      <Section title="Data deletion requests">
+        <p>
+          To request account or stored data deletion, email{" "}
+          <a
+            className="font-semibold text-gold underline-offset-4 hover:underline"
+            href={`mailto:${CONTACT_EMAIL}`}
+          >
+            {CONTACT_EMAIL}
+          </a>
+          . Limited records required for abuse prevention and security may be retained for the
+          periods described above.
         </p>
       </Section>
 

@@ -23,6 +23,7 @@ function LegalPage() {
       <PolicyPage
         title="법적 고지"
         eyebrow="정책 및 고지"
+        updatedAt="최종 업데이트: 2026년 6월 5일"
         locale={locale}
         onLocaleChange={setLocale}
         t={t}
@@ -65,6 +66,7 @@ function LegalPage() {
     <PolicyPage
       title="Legal"
       eyebrow="Policies and Disclosures"
+      updatedAt="Last updated: June 5, 2026"
       locale={locale}
       onLocaleChange={setLocale}
       t={t}

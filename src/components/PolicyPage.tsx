@@ -6,11 +6,12 @@ import type { Locale, TranslationKey } from "@/i18n";
 export const CONTACT_EMAIL = "support@summcourt.com";
 
 export const RIOT_DISCLAIMER =
-  "Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
+  "© 2026 Summoner's Courtroom. Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
 
 export function PolicyPage({
   title,
   eyebrow,
+  updatedAt,
   children,
   locale = "en",
   onLocaleChange,
@@ -18,6 +19,7 @@ export function PolicyPage({
 }: {
   title: string;
   eyebrow?: string;
+  updatedAt?: string;
   children: ReactNode;
   locale?: Locale;
   onLocaleChange?: (locale: Locale) => void;
@@ -33,6 +35,7 @@ export function PolicyPage({
             </p>
           )}
           <h1 className="text-3xl font-bold text-foreground sm:text-4xl">{title}</h1>
+          {updatedAt && <p className="mt-3 text-xs text-muted-foreground">{updatedAt}</p>}
           <div className="mt-8 space-y-7 text-sm leading-7 text-muted-foreground sm:text-base">
             {children}
           </div>

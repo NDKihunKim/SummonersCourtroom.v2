@@ -36,7 +36,7 @@ import {
 import { deleteCurrentAccount } from "@/functions/account.functions";
 
 const RIOT_DISCLAIMER =
-  "Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
+  "© 2026 Summoner's Courtroom. Summoner's Courtroom isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.";
 const LAST_AUTH_PROVIDER_KEY = "summoners-courtroom:last-auth-provider";
 
 const FOOTER_LINKS = [
