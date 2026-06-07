@@ -29,6 +29,7 @@ dist-ssr
 outputs/
 docs/plans/
 docs/requirements/
+docs/monitoring-runbook.md
 
 # External agent skills (installed via npx skills / plugin)
 .agents/
