@@ -126,11 +126,12 @@ const ONE_MINUTE_MS = 60_000;
 /**
  * How many recent match ids we ask Riot for per cache miss / refresh.
  *
- * The cache retains up to 30 matches, so we look up 30 ids to fill it.
- * Previously fetched 20; bumped to 30 to match the cache limit and the
- * "Extend to 30" product tier.
+ * Capped at 20 to keep total subrequests (Riot fetches + Supabase backoff
+ * checks + cache writes) under the Cloudflare Worker Free-plan limit of 50.
+ * Each match fetch triggers a backoff check; caching that check per-scope
+ * eliminates ~20 redundant Supabase queries so the remaining budget fits.
  */
-const MATCH_ID_LOOKUP_COUNT = 30;
+const MATCH_ID_LOOKUP_COUNT = 20;
 const CACHE_MATCH_LIMIT = 30;
 const MATCH_DETAIL_CONCURRENCY = 5;
 
@@ -451,34 +452,55 @@ async function upsertCache(
   const nextCount = (existing?.search_count ?? 0) + 1;
   const now = new Date().toISOString();
 
-  const { error } = await supabaseAdmin.from("cached_summoners").upsert(
-    {
-      shard,
-      puuid: fresh.account.puuid,
-      game_name: fresh.account.gameName,
-      tag_line: fresh.account.tagLine,
-      tier: fresh.ranked?.tier ?? null,
-      division: fresh.ranked?.division ?? null,
-      lp: fresh.ranked?.lp ?? null,
-      ranked_entries: fresh.rankedEntries as unknown as never,
-      queue_type: "RANKED_SOLO_5x5",
-      search_count: nextCount,
-      cached_at: now,
-      last_refresh_at: now,
-      // Real summoner profile icon (best-effort — null when summoner-v4 failed).
-      profile_icon_id: fresh.profileIconId,
-      // JSONB column — cast through unknown so TS accepts the structured
-      // payload as the generated `Json` alias.
-      matches: fresh.matches as unknown as never,
-    },
+  const upsertRow = {
+    shard,
+    puuid: fresh.account.puuid,
+    game_name: fresh.account.gameName,
+    tag_line: fresh.account.tagLine,
+    tier: fresh.ranked?.tier ?? null,
+    division: fresh.ranked?.division ?? null,
+    lp: fresh.ranked?.lp ?? null,
+    ranked_entries: fresh.rankedEntries as unknown as never,
+    queue_type: "RANKED_SOLO_5x5",
+    search_count: nextCount,
+    cached_at: now,
+    last_refresh_at: now,
+    profile_icon_id: fresh.profileIconId,
+    matches: fresh.matches as unknown as never,
+  };
+
+  console.log("[summoner-cache] upsert attempting", {
+    shard,
+    puuid: fresh.account.puuid,
+    matchesCount: fresh.matches.length,
+    isRefresh,
+  });
+
+  const { error, status } = await supabaseAdmin.from("cached_summoners").upsert(
+    upsertRow,
     { onConflict: "shard,puuid" },
   );
 
   if (error) {
-    // Cache write failures are non-fatal — we still want to serve the data
-    // we just fetched. Log and move on.
-    console.error("[summoner-cache] upsert failed:", error, { isRefresh });
+    console.error("[summoner-cache] UPSERT_FAILED", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      status,
+      matchesCount: fresh.matches.length,
+      isRefresh,
+    });
+    throw new Error(
+      `Failed to cache summoner data: ${error.message || "unknown error"}`,
+      { cause: error },
+    );
   }
+
+  console.log("[summoner-cache] upsert succeeded", {
+    puuid: fresh.account.puuid,
+    isRefresh,
+  });
 
   return new Date(now).getTime();
 }
@@ -495,11 +517,14 @@ async function bumpSearchCount(shard: string, puuid: string) {
     .eq("puuid", puuid)
     .maybeSingle();
   if (!existing) return;
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from("cached_summoners")
     .update({ search_count: (existing.search_count ?? 0) + 1 })
     .eq("shard", shard)
     .eq("puuid", puuid);
+  if (error) {
+    console.error("[summoner-cache] bump search count failed:", error);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -562,7 +587,16 @@ export const getOrFetchMatchHistory = createServerFn({ method: "POST" })
     });
     await assertTurnstile(data.turnstileToken);
     const fresh = await fetchFreshFromRiot(data.shard, data.gameName, data.tagLine);
-    const cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ false);
+
+    // Cache writes are best-effort — if the upsert fails we still serve the
+    // fresh data to the user so the page works. The error is logged so it can
+    // be investigated without blocking the user experience.
+    let cachedAtMs = Date.now();
+    try {
+      cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ false);
+    } catch (err) {
+      console.error("[summoner-cache] upsert failed, serving uncached:", err);
+    }
 
     return {
       account: fresh.account,
@@ -612,7 +646,15 @@ export const refreshSummoner = createServerFn({ method: "POST" })
       data.tagLine,
       existingMatches,
     );
-    const cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ true);
+
+    // Cache writes are best-effort — if the upsert fails we still serve the
+    // fresh data so the refresh doesn't appear broken.
+    let cachedAtMs = Date.now();
+    try {
+      cachedAtMs = await upsertCache(data.shard, fresh, /* isRefresh */ true);
+    } catch (err) {
+      console.error("[summoner-cache] refresh upsert failed, serving uncached:", err);
+    }
 
     return {
       account: fresh.account,

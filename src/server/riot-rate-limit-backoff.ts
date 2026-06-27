@@ -63,7 +63,26 @@ function formatWait(seconds: number): string {
   return `${minutes} minutes`;
 }
 
+/**
+ * Per-request cache of backoff state keyed by scope.
+ *
+ * Every Riot API call goes through fetchRiotWithBackoff which checks
+ * the backoff table before proceeding. Without caching, fetching 30
+ * match details produces 30 redundant Supabase queries for the same
+ * routing region — exhausting the Cloudflare Worker's 50-subrequest
+ * limit before the final cache upsert can run.
+ *
+ * This cache lives for the duration of a single Worker invocation so
+ * we never serve stale backoff state across requests.
+ */
+const backoffCache = new Map<RiotScope, { blockedUntilMs: number | null; fetchedAt: number }>();
+const BACKOFF_CACHE_TTL_MS = 5_000; // 5s within a single request is effectively forever
+
 async function getBlockedUntil(scope: RiotScope): Promise<number | null> {
+  const cached = backoffCache.get(scope);
+  if (cached && Date.now() - cached.fetchedAt < BACKOFF_CACHE_TTL_MS) {
+    return cached.blockedUntilMs;
+  }
   const { data, error } = await supabaseAdmin
     .from("riot_rate_limit_backoffs")
     .select("blocked_until")
@@ -72,12 +91,19 @@ async function getBlockedUntil(scope: RiotScope): Promise<number | null> {
 
   if (error) {
     console.error("[riot-rate-limit] failed to read shared backoff:", error);
+    // Cache failures too so a single broken query doesn't trigger
+    // 30 more failures in the same request.
+    backoffCache.set(scope, { blockedUntilMs: null, fetchedAt: Date.now() });
     return null;
   }
 
-  if (!data?.blocked_until) return null;
-  const blockedUntilMs = Date.parse(data.blocked_until);
-  return Number.isFinite(blockedUntilMs) ? blockedUntilMs : null;
+  let blockedUntilMs: number | null = null;
+  if (data?.blocked_until) {
+    const parsed = Date.parse(data.blocked_until);
+    blockedUntilMs = Number.isFinite(parsed) ? parsed : null;
+  }
+  backoffCache.set(scope, { blockedUntilMs, fetchedAt: Date.now() });
+  return blockedUntilMs;
 }
 
 async function assertRiotBackoffOpen(scope: RiotScope) {
