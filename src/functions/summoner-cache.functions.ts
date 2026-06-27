@@ -452,43 +452,29 @@ async function upsertCache(
   const nextCount = (existing?.search_count ?? 0) + 1;
   const now = new Date().toISOString();
 
-  const upsertRow = {
-    shard,
-    puuid: fresh.account.puuid,
-    game_name: fresh.account.gameName,
-    tag_line: fresh.account.tagLine,
-    tier: fresh.ranked?.tier ?? null,
-    division: fresh.ranked?.division ?? null,
-    lp: fresh.ranked?.lp ?? null,
-    ranked_entries: fresh.rankedEntries as unknown as never,
-    queue_type: "RANKED_SOLO_5x5",
-    search_count: nextCount,
-    cached_at: now,
-    last_refresh_at: now,
-    profile_icon_id: fresh.profileIconId,
-    matches: fresh.matches as unknown as never,
-  };
-
-  console.log("[summoner-cache] upsert attempting", {
-    shard,
-    puuid: fresh.account.puuid,
-    matchesCount: fresh.matches.length,
-    isRefresh,
-  });
-
-  const { error, status } = await supabaseAdmin.from("cached_summoners").upsert(
-    upsertRow,
+  const { error } = await supabaseAdmin.from("cached_summoners").upsert(
+    {
+      shard,
+      puuid: fresh.account.puuid,
+      game_name: fresh.account.gameName,
+      tag_line: fresh.account.tagLine,
+      tier: fresh.ranked?.tier ?? null,
+      division: fresh.ranked?.division ?? null,
+      lp: fresh.ranked?.lp ?? null,
+      ranked_entries: fresh.rankedEntries as unknown as never,
+      queue_type: "RANKED_SOLO_5x5",
+      search_count: nextCount,
+      cached_at: now,
+      last_refresh_at: now,
+      profile_icon_id: fresh.profileIconId,
+      matches: fresh.matches as unknown as never,
+    },
     { onConflict: "shard,puuid" },
   );
 
   if (error) {
-    console.error("[summoner-cache] UPSERT_FAILED", {
-      message: error.message,
+    console.error("[summoner-cache] upsert failed:", error.message, {
       code: error.code,
-      details: error.details,
-      hint: error.hint,
-      status,
-      matchesCount: fresh.matches.length,
       isRefresh,
     });
     throw new Error(
@@ -496,11 +482,6 @@ async function upsertCache(
       { cause: error },
     );
   }
-
-  console.log("[summoner-cache] upsert succeeded", {
-    puuid: fresh.account.puuid,
-    isRefresh,
-  });
 
   return new Date(now).getTime();
 }
