@@ -2206,12 +2206,17 @@ function safeBlob(value: string | number | boolean | undefined): string {
 
 async function writeVerdictAnalytics(event: VerdictAnalyticsEvent) {
   try {
-    const { env } = await import("cloudflare:workers");
-    const analytics = env.analytic_engine;
-    if (!analytics) return;
+    // ponytail: cloudflare:workers only exists in Workers runtime; skip in local dev
+    let analytics: unknown;
+    try {
+      ({ env: { analytic_engine: analytics } } = await import("cloudflare:workers"));
+    } catch {
+      return;
+    }
+    if (!analytics || typeof (analytics as { writeDataPoint?: unknown }).writeDataPoint !== "function") return;
 
     const usage = event.usage;
-    analytics.writeDataPoint({
+    (analytics as { writeDataPoint(d: unknown): void }).writeDataPoint({
       indexes: ["verdict_request"],
       blobs: [
         "verdict_request",
@@ -2287,7 +2292,7 @@ async function callAiGateway(
   const timeout = setTimeout(() => {
     timedOut = true;
     timeoutController.abort();
-  }, 120_000);
+  }, 180_000); // ponytail: 180s accounts for thinking models on large game-context prompts; bump if still timing out
   const signal = combineAbortSignals([requestSignal, timeoutController.signal]);
   let res: Response;
   try {
