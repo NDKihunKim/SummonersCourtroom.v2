@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://summcourt.com/sitemap.xml
